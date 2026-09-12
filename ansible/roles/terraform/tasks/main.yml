@@ -1,0 +1,54 @@
+---
+- name: Assert Debian host
+  ansible.builtin.assert:
+    that:
+      - ansible_facts.os_family == 'Debian'
+    fail_msg: "Terraform installation currently supports Debian-family hosts only."
+
+- name: Install packages required by HashiCorp repository
+  ansible.builtin.apt:
+    name:
+      - gpg
+      - wget
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Download HashiCorp repository signing key
+  ansible.builtin.get_url:
+    url: https://apt.releases.hashicorp.com/gpg
+    dest: /tmp/hashicorp-archive-keyring.asc
+    mode: "0644"
+
+- name: Install HashiCorp repository signing key
+  ansible.builtin.command:
+    cmd: >-
+      gpg --batch --yes --dearmor
+      --output /usr/share/keyrings/hashicorp-archive-keyring.gpg
+      /tmp/hashicorp-archive-keyring.asc
+  changed_when: false
+
+- name: Configure official HashiCorp apt repository
+  ansible.builtin.copy:
+    dest: /etc/apt/sources.list.d/hashicorp.list
+    owner: root
+    group: root
+    mode: "0644"
+    content: >-
+      deb [arch={{ ansible_facts.architecture | replace('x86_64', 'amd64') }} signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg]
+      https://apt.releases.hashicorp.com {{ ansible_facts.distribution_release }} main
+
+- name: Install Terraform CLI
+  ansible.builtin.apt:
+    name: terraform
+    state: present
+    update_cache: true
+
+- name: Read installed Terraform version
+  ansible.builtin.command: terraform version
+  register: terraform_version_output
+  changed_when: false
+
+- name: Show installed Terraform version
+  ansible.builtin.debug:
+    var: terraform_version_output.stdout_lines
