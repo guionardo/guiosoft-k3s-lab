@@ -52,7 +52,9 @@ O Disaster Recovery já possui readiness check, restore rehearsal isolado via R2
 
 A frente ativa agora é observabilidade. O `kube-prometheus-stack` está instalado e saudável com Prometheus, Alertmanager, Grafana, kube-state-metrics e node-exporter. Tempo `2.2.3` e OpenTelemetry Collector chart `0.172.1` também foram instalados e validados em `Running`, com PVC Tempo de 5 GiB em `local-path`. Grafana, Tempo e Collector permanecem sem Ingress público.
 
-O repositório também contém um workload Go instrumentado com OpenTelemetry para validar o fluxo real aplicação -> Collector -> Tempo. Ele usa Go `1.27.1`, OpenTelemetry Go `1.46.0`, retorna o `trace_id` da requisição e possui um teste automatizado que consulta esse mesmo trace diretamente no Tempo antes de depender da UI do Grafana.
+O workload Go instrumentado com OpenTelemetry também foi validado ponta a ponta: uma requisição gera `trace_id`, o trace atravessa aplicação -> Collector -> Tempo e o teste automatizado consegue recuperá-lo diretamente pela API do Tempo. O próximo passo visual é abrir esse trace no Grafana Explore.
+
+Também existe um target para gerar um kubeconfig administrativo destinado a outra máquina da LAN. Ele preserva as credenciais e troca apenas o endpoint da API para o `InternalIP` do servidor, evitando `127.0.0.1`/`localhost`.
 
 ## Divisão de responsabilidades
 
@@ -108,6 +110,7 @@ make bootstrap
 make tools
 make storage
 make k3s
+make kubeconfig-external
 make storage-test
 make storage-test-recreate
 make storage-test-placement
@@ -147,6 +150,32 @@ O `Makefile` é a interface operacional preferida. Os scripts continuam sendo a 
 O target `make storage` é conservador: valida que os discos esperados já estão montados, cria somente diretórios e links sob `/srv/k3s`, e não formata, reparticiona, move ou remove dados existentes.
 
 O target `make k3s` garante que novos volumes locais usem `/mnt/store1/k3s/local-path`. Para validar persistência, `make storage-test` cria um PVC descartável e `make storage-test-recreate` recria apenas o Pod mantendo o mesmo volume. `make storage-test-placement` valida sem alterações que o PV atual está no disco esperado.
+
+## Acesso remoto com kubectl
+
+Para exibir um kubeconfig administrativo adequado a outra máquina da mesma LAN:
+
+```bash
+make kubeconfig-external
+```
+
+O target descobre o `InternalIP` do node e substitui apenas o `server:` do kubeconfig, preservando CA, certificados e chaves. Para gravar o resultado com permissões restritas:
+
+```bash
+umask 077
+make kubeconfig-external > k3s-guiosoft.yaml
+```
+
+É possível sobrescrever o endereço ou a porta explicitamente:
+
+```bash
+make kubeconfig-external ADDRESS=192.168.88.9
+make kubeconfig-external ADDRESS=192.168.88.9 PORT=6443
+```
+
+Esse kubeconfig contém credenciais administrativas e nunca deve ser versionado. A API Kubernetes deve continuar acessível somente pela LAN administrativa; não publicar a porta `6443` na Internet nem pelo Cloudflare Tunnel.
+
+Detalhes em [`docs/remote-kubectl.md`](docs/remote-kubectl.md).
 
 Secrets declarativos podem ser cifrados com SOPS + age. A chave privada age permanece fora do Git; somente o recipient público é versionado. Credenciais de infraestrutura, como as do Restic/R2, também são mantidas somente em arquivos `.sops.yaml` cifrados.
 
@@ -200,7 +229,7 @@ make otel-go-demo-install
 make otel-go-demo-test
 ```
 
-O demo é construído localmente com Docker, importado no containerd do K3s com `k3s ctr images import` e executado com `imagePullPolicy: Never`, evitando a dependência de um registry apenas para esse workload didático. O teste usa port-forward temporário em loopback, gera uma requisição, captura o `trace_id` retornado e valida que o mesmo trace pode ser recuperado pela API do Tempo.
+O demo é construído localmente com Docker, importado no containerd do K3s com `k3s ctr images import` e executado com `imagePullPolicy: Never`, evitando a dependência de um registry apenas para esse workload didático. O teste usa port-forward temporário em loopback, gera uma requisição, captura o `trace_id` retornado e valida que o mesmo trace pode ser recuperado pela API do Tempo. Esse fluxo já foi validado no cluster atual.
 
 Grafana usa PVC de 2 GiB e não recebe Ingress nesta fase. Para acesso local:
 
@@ -280,7 +309,9 @@ A evolução atual foi baseada em:
 - reprovisionamento controlado do PVC descartável e validação do novo path em `/mnt/store1/k3s/local-path`;
 - validação de `dr-readiness` e do restore isolado diretamente do R2;
 - validação real do `kube-prometheus-stack`, Tempo e OpenTelemetry Collector no cluster atual;
-- documentação oficial do K3s para `default-local-storage-path`, datastore SQLite, backup/restore e containerd integrado;
+- validação real de um trace OpenTelemetry ponta a ponta aplicação -> Collector -> Tempo;
+- documentação oficial do K3s para cluster access, `default-local-storage-path`, datastore SQLite, backup/restore e containerd integrado;
+- documentação oficial do Kubernetes sobre kubeconfig e `kubectl config`;
 - documentação do Rancher `local-path-provisioner`;
 - documentação oficial do SOPS e age;
 - documentação oficial do systemd para timers persistentes;
