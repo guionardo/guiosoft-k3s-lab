@@ -10,7 +10,8 @@ Laboratório pessoal para estudar Kubernetes com K3s em um servidor Debian 13 ex
 - aprender os principais conceitos de Kubernetes com workloads reais;
 - manter infraestrutura e configuração em código;
 - possibilitar reconstrução do ambiente após falha do disco do sistema;
-- separar claramente infraestrutura reconstruível de dados persistentes.
+- separar claramente infraestrutura reconstruível de dados persistentes;
+- ao final, consolidar todo o processo, decisões, trade-offs, problemas e validações em material de estudo detalhado e em artigos publicáveis para blog e LinkedIn.
 
 ## Arquitetura alvo
 
@@ -222,6 +223,19 @@ make observability-grafana ADDRESS=192.168.88.9
 ```
 
 Detalhes em [`docs/observability.md`](docs/observability.md) e [`docs/otel-go-demo.md`](docs/otel-go-demo.md).
+
+## Documentação final
+
+Além da documentação operacional mantida durante a implementação, o roadmap reserva uma etapa final específica para transformar o projeto em material de estudo e publicação. Essa etapa deverá reconstruir a jornada completa, incluindo decisões, alternativas descartadas, trade-offs, erros, troubleshooting, evidências de validação e fontes oficiais.
+
+Os entregáveis finais previstos são:
+
+- guia técnico detalhado e reproduzível;
+- material de estudo sobre K3s/Kubernetes, IaC, storage, backup, Cloudflare e observabilidade;
+- artigo técnico completo para blog;
+- versão condensada para LinkedIn.
+
+A publicação deverá passar por revisão explícita para remover secrets, identificadores desnecessários e detalhes sensíveis do ambiente.
 
 ## Disaster Recovery
 
