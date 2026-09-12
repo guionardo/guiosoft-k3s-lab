@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: help discovery ansible-deps preflight bootstrap tools k3s storage storage-test storage-test-status storage-test-recreate storage-test-delete firewall-audit cluster-status lab-deploy lab-status lab-test lab-delete tf-cloudflare-discovery tf-cloudflare-init tf-cloudflare-fmt tf-cloudflare-validate tf-cloudflare-import tf-cloudflare-plan
+.PHONY: help discovery ansible-deps preflight bootstrap tools k3s storage storage-test storage-test-status storage-test-recreate storage-test-delete firewall-audit cluster-status lab-deploy lab-status lab-test lab-delete secrets-test tf-cloudflare-discovery tf-cloudflare-init tf-cloudflare-fmt tf-cloudflare-validate tf-cloudflare-import tf-cloudflare-plan
 
 help:
 	@echo "guiosoft-k3s-lab"
@@ -23,6 +23,7 @@ help:
 	@echo "  make lab-status            Mostra recursos do workload de teste"
 	@echo "  make lab-test              Testa o Ingress localmente via Traefik"
 	@echo "  make lab-delete            Remove o workload de teste"
+	@echo "  make secrets-test          Valida round-trip SOPS + age sem persistir segredo"
 	@echo "  make tf-cloudflare-discovery Descobre IDs existentes sem imprimir tokens"
 	@echo "  make tf-cloudflare-init    Inicializa provider Terraform da Cloudflare"
 	@echo "  make tf-cloudflare-fmt     Valida formatação Terraform"
@@ -103,6 +104,19 @@ lab-test:
 lab-delete:
 	kubectl delete -f kubernetes/apps/k3s-test/ --ignore-not-found
 	kubectl delete -f kubernetes/namespaces/lab.yaml --ignore-not-found
+
+secrets-test:
+	@set -euo pipefail; \
+	TMPDIR=$$(mktemp -d); \
+	trap 'rm -rf "$$TMPDIR"' EXIT; \
+	PLAIN="$$TMPDIR/test.sops.yaml"; \
+	ENC="$$TMPDIR/encrypted.sops.yaml"; \
+	DEC="$$TMPDIR/decrypted.yaml"; \
+	printf '%s\n' 'secret: sops-age-roundtrip-ok' > "$$PLAIN"; \
+	sops --encrypt --config .sops.yaml "$$PLAIN" > "$$ENC"; \
+	sops --decrypt "$$ENC" > "$$DEC"; \
+	diff -u "$$PLAIN" "$$DEC"; \
+	echo "SOPS + age round-trip OK"
 
 tf-cloudflare-discovery:
 	bash scripts/cloudflare-discovery.sh
