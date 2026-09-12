@@ -8,6 +8,11 @@ k3s_version: v1.36.4+k3s1
 kubectl_version: v1.36.4
 kubectl_arch: amd64
 
+# Helm is used for cluster add-ons such as kube-prometheus-stack.
+helm_version: v4.3.0
+helm_arch: amd64
+helm_sha256: 86584a54def73570558f66f5111cc53dfed56689637ae32c1201205d494f54fb
+
 k3s_node_name: guiosoft-info
 k3s_data_dir: /var/lib/rancher/k3s
 k3s_write_kubeconfig_mode: "0640"
