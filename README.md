@@ -56,9 +56,9 @@ A fundação de observabilidade está operacional. O `kube-prometheus-stack`, Te
 
 `make observability-validate` foi validado no cluster atual com 13/13 scrape targets Prometheus `up`, query `up` retornando 13 séries, Pods Ready e todos os PVCs Bound. Na mesma amostra, o node estava em aproximadamente 782m CPU (13%) e 8331 MiB de RAM (52%); Grafana (~440 MiB) e Prometheus (~337 MiB) eram os maiores consumidores de memória da stack.
 
-O demo OpenTelemetry também foi validado em modo distribuído: `otel-go-demo` propaga W3C `traceparent` para `otel-go-downstream`, e o teste confirma os dois `service.name` dentro do mesmo trace no Tempo.
+O demo OpenTelemetry também foi validado em modo distribuído: `otel-go-demo` propaga W3C `traceparent` para `otel-go-downstream`, e o teste confirma os dois `service.name` dentro do mesmo trace no Tempo. A navegação visual Loki -> Tempo e Tempo -> Loki também foi validada no Grafana.
 
-A fundação de logs está operacional. `make observability-logging-test` confirmou uma linha de log contendo exatamente o mesmo `trace_id` da requisição, validando o caminho Alloy -> Loki e a correlação backend logs <-> traces. Resta validar visualmente a navegação Loki -> Tempo e Tempo -> Loki no Grafana.
+O mesmo demo agora expõe métricas Prometheus customizadas de requests, latência, requests em andamento, chamadas downstream e erros. Um `ServiceMonitor` seleciona os dois Services do namespace `lab`, e o target `make otel-go-demo-metrics-test` gera tráfego e confirma a ingestão dessas métricas pela API do Prometheus.
 
 ## Divisão de responsabilidades
 
@@ -117,6 +117,7 @@ make observability-grafana-reload
 make observability-grafana
 make otel-go-demo-install
 make otel-go-demo-test
+make otel-go-demo-metrics-test
 make tf-cloudflare-plan
 make tf-r2-plan
 ```
@@ -185,17 +186,27 @@ make otel-go-demo-install
 make otel-go-demo-test
 ```
 
-A correlação backend entre logs e traces também está validada. Para validar logs:
+As métricas de aplicação ficam em `/metrics` e são coletadas por `ServiceMonitor`. Para validar o caminho aplicação -> Prometheus:
 
 ```bash
-make observability-logging-test
+make otel-go-demo-metrics-test
 ```
 
-O próximo fechamento visual no Grafana é:
+As principais séries são:
 
 ```text
-Loki log -> TraceID -> Tempo trace
-Tempo trace -> tracesToLogs -> Loki logs
+otel_demo_http_requests_total
+otel_demo_http_request_duration_seconds
+otel_demo_requests_in_flight
+otel_demo_downstream_requests_total
+otel_demo_downstream_request_duration_seconds
+otel_demo_downstream_errors_total
+```
+
+Exemplo de PromQL:
+
+```promql
+rate(otel_demo_http_requests_total[5m])
 ```
 
 Grafana continua sem Ingress nesta fase. Para acesso local:
@@ -255,7 +266,9 @@ A evolução atual foi baseada em:
 - validação real do `kube-prometheus-stack`, Tempo, OpenTelemetry Collector, Loki e Alloy no cluster atual;
 - validação real de 13/13 targets Prometheus `up` e health dos datasources Prometheus/Tempo/Loki;
 - validação real de tracing distribuído `otel-go-demo -> otel-go-downstream` com W3C Trace Context;
-- validação real de logs `otel-go-demo -> Alloy -> Loki` e correlação pelo mesmo `trace_id`;
+- validação real de logs `otel-go-demo -> Alloy -> Loki`, correlação pelo mesmo `trace_id` e navegação visual no Grafana;
+- Prometheus Go client `v1.24.1` para métricas customizadas;
+- documentação oficial do Prometheus Operator sobre `ServiceMonitor`;
 - documentação oficial do OpenTelemetry sobre propagação de contexto e W3C Trace Context;
 - documentação oficial do K3s para cluster access, storage, datastore e backup/restore;
 - documentação oficial do Kubernetes sobre kubeconfig e `kubectl`;
@@ -264,6 +277,8 @@ A evolução atual foi baseada em:
 
 Referências relevantes:
 
+- https://github.com/prometheus/client_golang/releases
+- https://prometheus-operator.dev/docs/developer/getting-started/
 - https://opentelemetry.io/docs/concepts/context-propagation/
 - https://www.w3.org/TR/trace-context/
 - https://grafana.com/docs/grafana/latest/administration/provisioning/#data-sources
