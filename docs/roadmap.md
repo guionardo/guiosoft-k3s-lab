@@ -43,11 +43,12 @@ Objetivo: entender o estado atual, eliminar dependências desnecessárias e prep
 - [x] executar preflight no host já limpo;
 - [x] executar bootstrap do Debian;
 - [x] instalar `v1.36.4+k3s1` via Ansible;
-- [ ] configurar kubectl para uso administrativo sem `sudo k3s kubectl`;
+- [x] automatizar configuração de `kubectl` e kubeconfig para o usuário administrativo local;
+- [ ] validar `kubectl` sem `sudo` no host;
 - [x] validar node/CoreDNS/Traefik/local-path após estabilização inicial;
 - [x] criar namespace `lab`;
 - [x] deploy de workload de teste;
-- [ ] documentar troubleshooting básico.
+- [x] documentar troubleshooting básico.
 
 ## Fase 3 — Networking e Cloudflare
 
@@ -58,8 +59,8 @@ Objetivo: entender o estado atual, eliminar dependências desnecessárias e prep
 - [x] corrigir origin do wildcard do Tunnel para `http://127.0.0.1:80`;
 - [x] apontar o wildcard DNS `*.guiosoft.info` para o Cloudflare Tunnel em vez do origin IP legado;
 - [x] validar caminho Cloudflare -> Tunnel -> Traefik -> Ingress -> Service -> Pod com HTTP 200;
-- [ ] definir padrão de Ingress para aplicações;
-- [ ] definir comportamento para hostnames sem Ingress conhecido;
+- [x] definir padrão de Ingress para aplicações;
+- [ ] definir e validar comportamento para hostnames sem Ingress conhecido;
 - [ ] colocar gradualmente DNS/Tunnel sob Terraform;
 - [ ] migrar `cloudflared` para Kubernetes apenas depois do fluxo estar validado.
 
