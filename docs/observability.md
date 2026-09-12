@@ -146,7 +146,7 @@ make observability-logging-install
 make observability-logging-status
 ```
 
-O primeiro target instala Loki e Alloy e depois reaplica o `kube-prometheus-stack` para provisionar os datasources Grafana.
+O primeiro target instala Loki e Alloy, reaplica o `kube-prometheus-stack`, reinicia o workload do Grafana para recarregar o provisioning de datasources e valida via API que Prometheus, Tempo e Loki existem.
 
 ### Validação automática
 
@@ -189,12 +189,13 @@ request
             mesmo trace_id
 ```
 
-## Correlação no Grafana
+## Correlação e datasources no Grafana
 
-O Grafana recebe dois datasources declarativos:
+O Grafana recebe datasources declarativos para:
 
-- `Tempo` (`uid: tempo`);
-- `Loki` (`uid: loki`).
+- Prometheus (`uid: prometheus`), criado pelo `kube-prometheus-stack`;
+- Tempo (`uid: tempo`);
+- Loki (`uid: loki`).
 
 O datasource Loki contém um `derivedFields` para reconhecer:
 
@@ -213,33 +214,55 @@ Loki log -> TraceID -> Tempo trace
 Tempo trace -> tracesToLogs -> Loki logs
 ```
 
+Como datasources provisionados podem exigir reload/restart do Grafana após uma mudança na configuração, existem agora targets explícitos:
+
+```bash
+make observability-grafana-reload
+make observability-grafana-datasources
+```
+
+`observability-grafana-reload` reinicia o StatefulSet/Deployment do Grafana e depois valida os datasources. `observability-grafana-datasources` consulta a API do Grafana via port-forward local e exige a presença dos UIDs `prometheus`, `tempo` e `loki`.
+
 A correlação no backend está validada; falta somente validar visualmente os links no Grafana Explore.
 
 ## Acesso ao Grafana
 
-Grafana continua privado, sem Ingress:
+Grafana continua sem Ingress. Por padrão:
 
 ```bash
 make observability-grafana
 ```
 
-Acesso local:
+abre somente em:
 
 ```text
 http://127.0.0.1:3000
 ```
 
+Para acesso pela LAN administrativa:
+
+```bash
+make observability-grafana ADDRESS=192.168.88.9
+```
+
+Também é possível sobrescrever a porta:
+
+```bash
+make observability-grafana ADDRESS=192.168.88.9 PORT=3000
+```
+
 ## Próximas etapas
 
-1. executar/revisar `make observability-validate` para os scrape targets Prometheus;
-2. abrir Grafana e validar visualmente Loki -> TraceID -> Tempo;
-3. validar também Tempo -> tracesToLogs -> Loki;
-4. revisar dashboards padrão e alertas ruidosos/incompatíveis com K3s;
-5. revisar consumo de CPU/memória/storage da stack completa;
-6. evoluir o demo para dois serviços com propagação distribuída;
-7. adicionar exemplars/span metrics quando fizer sentido;
-8. adicionar dashboards/alertas customizados essenciais;
-9. somente depois avaliar publicação protegida do Grafana.
+1. validar/recarregar datasources Grafana, em especial Loki;
+2. executar/revisar `make observability-validate` para os scrape targets Prometheus;
+3. abrir Grafana e validar visualmente Loki -> TraceID -> Tempo;
+4. validar também Tempo -> tracesToLogs -> Loki;
+5. revisar dashboards padrão e alertas ruidosos/incompatíveis com K3s;
+6. revisar consumo de CPU/memória/storage da stack completa;
+7. evoluir o demo para dois serviços com propagação distribuída;
+8. adicionar exemplars/span metrics quando fizer sentido;
+9. adicionar dashboards/alertas customizados essenciais;
+10. somente depois avaliar publicação protegida do Grafana.
 
 ## Fontes
 
@@ -253,6 +276,7 @@ http://127.0.0.1:3000
 - https://artifacthub.io/packages/helm/grafana/alloy
 - https://grafana.com/docs/loki/latest/send-data/promtail/
 - https://grafana.com/docs/grafana/latest/datasources/loki/
+- https://grafana.com/docs/grafana/latest/administration/provisioning/#data-sources
 - https://grafana.com/docs/grafana-cloud/connect-externally-hosted/data-sources/tempo/configure-tempo-data-source/configure-trace-to-logs/
 - https://grafana.com/docs/tempo/latest/
 - https://opentelemetry.io/docs/collector/
