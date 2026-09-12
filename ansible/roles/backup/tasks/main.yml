@@ -1,0 +1,113 @@
+---
+- name: Verify backup storage mount exists
+  ansible.builtin.command: "mountpoint -q {{ storage_backup_mount }}"
+  register: backup_mount_check
+  changed_when: false
+  failed_when: false
+
+- name: Refuse backup automation when backup disk is not mounted
+  ansible.builtin.assert:
+    that:
+      - backup_mount_check.rc == 0
+    fail_msg: >-
+      Expected backup mount {{ storage_backup_mount }} is not available. Refusing to
+      install the scheduled backup because it could silently write to the root filesystem.
+
+- name: Validate backup retention policy
+  ansible.builtin.assert:
+    that:
+      - k3s_backup_keep | int >= 2
+    fail_msg: "k3s_backup_keep must be at least 2."
+
+- name: Create K3s backup directory
+  ansible.builtin.file:
+    path: "{{ k3s_backup_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Install K3s backup script
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../scripts/k3s-backup.sh"
+    dest: /usr/local/sbin/k3s-backup
+    owner: root
+    group: root
+    mode: "0750"
+
+- name: Install K3s backup retention script
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../scripts/k3s-backup-prune.sh"
+    dest: /usr/local/sbin/k3s-backup-prune
+    owner: root
+    group: root
+    mode: "0750"
+
+- name: Install K3s backup service
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/k3s-backup.service
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=Backup K3s SQLite datastore and server token
+      Documentation=https://docs.k3s.io/datastore/backup-restore
+      Wants=network-online.target
+      After=network-online.target k3s.service
+
+      [Service]
+      Type=oneshot
+      Environment=K3S_DATA_DIR={{ k3s_data_dir }}
+      Environment=K3S_BACKUP_DIR={{ k3s_backup_dir }}
+      Environment=K3S_BACKUP_KEEP={{ k3s_backup_keep }}
+      ExecStart=/usr/local/sbin/k3s-backup
+      ExecStart=/usr/local/sbin/k3s-backup-prune
+      Nice=10
+      IOSchedulingClass=best-effort
+      IOSchedulingPriority=7
+      PrivateTmp=true
+      NoNewPrivileges=true
+  notify: Reload systemd
+
+- name: Install K3s backup timer
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/k3s-backup.timer
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=Run K3s backup daily
+
+      [Timer]
+      OnCalendar={{ k3s_backup_on_calendar }}
+      Persistent=true
+      RandomizedDelaySec={{ k3s_backup_randomized_delay }}
+      Unit=k3s-backup.service
+
+      [Install]
+      WantedBy=timers.target
+  notify: Reload systemd
+
+- name: Flush systemd reload before enabling timer
+  ansible.builtin.meta: flush_handlers
+
+- name: Enable and start K3s backup timer
+  ansible.builtin.systemd:
+    name: k3s-backup.timer
+    enabled: true
+    state: started
+
+- name: Read K3s backup timer state
+  ansible.builtin.command: systemctl list-timers k3s-backup.timer --no-pager
+  register: backup_timer_state
+  changed_when: false
+
+- name: Show K3s backup timer summary
+  ansible.builtin.debug:
+    msg:
+      - "Backup directory: {{ k3s_backup_dir }}"
+      - "Retention: keep {{ k3s_backup_keep }} complete archives"
+      - "Schedule: {{ k3s_backup_on_calendar }} with random delay {{ k3s_backup_randomized_delay }}"
+      - "{{ backup_timer_state.stdout_lines }}"
