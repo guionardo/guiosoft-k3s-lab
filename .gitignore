@@ -10,6 +10,12 @@
 *.secret
 secrets/
 
+# Allow only encrypted Kubernetes secret manifests and their documentation.
+!kubernetes/secrets/
+kubernetes/secrets/*
+!kubernetes/secrets/README.md
+!kubernetes/secrets/*.sops.yaml
+
 # Kubernetes
 kubeconfig
 kubeconfig.*
