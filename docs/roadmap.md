@@ -97,7 +97,7 @@ Para cada workload futuro:
 - [x] validar em runtime as métricas customizadas do demo no Prometheus (frontend, histogram buckets, downstream e serviço downstream);
 - [x] adicionar dashboard customizado `OTel Go Demo - Application Metrics`;
 - [x] adicionar regras `OtelGoDemoHighErrorRate`, `OtelGoDemoHighP95Latency` e `OtelGoDemoDownstreamErrors`;
-- [ ] validar em runtime a reconciliação das regras customizadas pelo Prometheus Operator;
+- [x] validar em runtime a reconciliação das regras customizadas pelo Prometheus Operator;
 - [ ] revisar dashboards Grafana padrão;
 - [ ] revisar alertas ruidosos/incompatíveis com K3s.
 
