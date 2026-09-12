@@ -18,6 +18,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/resource"
@@ -31,60 +32,33 @@ var (
 	httpClient    = &http.Client{Timeout: 3 * time.Second}
 
 	httpRequests = prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "otel_demo_http_requests_total",
-			Help: "Total HTTP requests handled by the demo services.",
-		},
+		prometheus.CounterOpts{Name: "otel_demo_http_requests_total", Help: "Total HTTP requests handled by the demo services."},
 		[]string{"service", "method", "path", "status"},
 	)
 	httpRequestDuration = prometheus.NewHistogramVec(
-		prometheus.HistogramOpts{
-			Name:    "otel_demo_http_request_duration_seconds",
-			Help:    "HTTP request latency for the demo services.",
-			Buckets: prometheus.DefBuckets,
-		},
+		prometheus.HistogramOpts{Name: "otel_demo_http_request_duration_seconds", Help: "HTTP request latency for the demo services.", Buckets: prometheus.DefBuckets},
 		[]string{"service", "method", "path"},
 	)
 	requestsInFlight = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: "otel_demo_requests_in_flight",
-			Help: "Current in-flight HTTP requests for instrumented demo endpoints.",
-		},
+		prometheus.GaugeOpts{Name: "otel_demo_requests_in_flight", Help: "Current in-flight HTTP requests for instrumented demo endpoints."},
 		[]string{"service", "path"},
 	)
 	downstreamRequests = prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "otel_demo_downstream_requests_total",
-			Help: "Total downstream HTTP calls issued by the frontend demo service.",
-		},
+		prometheus.CounterOpts{Name: "otel_demo_downstream_requests_total", Help: "Total downstream HTTP calls issued by the frontend demo service."},
 		[]string{"service", "status"},
 	)
 	downstreamRequestDuration = prometheus.NewHistogramVec(
-		prometheus.HistogramOpts{
-			Name:    "otel_demo_downstream_request_duration_seconds",
-			Help:    "Latency of downstream HTTP calls issued by the frontend demo service.",
-			Buckets: prometheus.DefBuckets,
-		},
+		prometheus.HistogramOpts{Name: "otel_demo_downstream_request_duration_seconds", Help: "Latency of downstream HTTP calls issued by the frontend demo service.", Buckets: prometheus.DefBuckets},
 		[]string{"service"},
 	)
 	downstreamErrors = prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "otel_demo_downstream_errors_total",
-			Help: "Total failed downstream HTTP calls issued by the frontend demo service.",
-		},
+		prometheus.CounterOpts{Name: "otel_demo_downstream_errors_total", Help: "Total failed downstream HTTP calls issued by the frontend demo service."},
 		[]string{"service"},
 	)
 )
 
 func init() {
-	prometheus.MustRegister(
-		httpRequests,
-		httpRequestDuration,
-		requestsInFlight,
-		downstreamRequests,
-		downstreamRequestDuration,
-		downstreamErrors,
-	)
+	prometheus.MustRegister(httpRequests, httpRequestDuration, requestsInFlight, downstreamRequests, downstreamRequestDuration, downstreamErrors)
 }
 
 func main() {
@@ -110,12 +84,7 @@ func main() {
 	mux.HandleFunc("/work", instrumentHTTP("/work", workHandler))
 	mux.HandleFunc("/process", instrumentHTTP("/process", processHandler))
 
-	server := &http.Server{
-		Addr:              ":8080",
-		Handler:           mux,
-		ReadHeaderTimeout: 5 * time.Second,
-	}
-
+	server := &http.Server{Addr: ":8080", Handler: mux, ReadHeaderTimeout: 5 * time.Second}
 	go func() {
 		log.Printf("%s listening on %s", serviceName, server.Addr)
 		if err := server.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
@@ -136,28 +105,12 @@ func main() {
 
 func initTracing(ctx context.Context) (func(context.Context) error, error) {
 	endpoint := envOrDefault("OTEL_EXPORTER_OTLP_ENDPOINT", "otel-collector-opentelemetry-collector.monitoring.svc.cluster.local:4317")
-
-	exporter, err := otlptracegrpc.New(ctx,
-		otlptracegrpc.WithEndpoint(endpoint),
-		otlptracegrpc.WithInsecure(),
-	)
+	exporter, err := otlptracegrpc.New(ctx, otlptracegrpc.WithEndpoint(endpoint), otlptracegrpc.WithInsecure())
 	if err != nil {
 		return nil, err
 	}
-
-	res := resource.NewWithAttributes(
-		"",
-		attribute.String("service.name", serviceName),
-		attribute.String("service.version", "0.3.0"),
-		attribute.String("deployment.environment", "homelab"),
-	)
-
-	provider := sdktrace.NewTracerProvider(
-		sdktrace.WithBatcher(exporter),
-		sdktrace.WithSampler(sdktrace.AlwaysSample()),
-		sdktrace.WithResource(res),
-	)
-
+	res := resource.NewWithAttributes("", attribute.String("service.name", serviceName), attribute.String("service.version", "0.4.0"), attribute.String("deployment.environment", "homelab"))
+	provider := sdktrace.NewTracerProvider(sdktrace.WithBatcher(exporter), sdktrace.WithSampler(sdktrace.AlwaysSample()), sdktrace.WithResource(res))
 	otel.SetTracerProvider(provider)
 	otel.SetTextMapPropagator(propagation.TraceContext{})
 	return provider.Shutdown, nil
@@ -166,14 +119,11 @@ func initTracing(ctx context.Context) (func(context.Context) error, error) {
 func workHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := otel.GetTextMapPropagator().Extract(r.Context(), propagation.HeaderCarrier(r.Header))
 	tracer := otel.Tracer(serviceName)
-	ctx, span := tracer.Start(ctx, "HTTP GET /work",
-		trace.WithSpanKind(trace.SpanKindServer),
-		trace.WithAttributes(
-			attribute.String("http.request.method", r.Method),
-			attribute.String("url.path", r.URL.Path),
-		),
-	)
+	ctx, span := tracer.Start(ctx, "HTTP GET /work", trace.WithSpanKind(trace.SpanKindServer), trace.WithAttributes(attribute.String("http.request.method", r.Method), attribute.String("url.path", r.URL.Path)))
 	defer span.End()
+
+	traceID := span.SpanContext().TraceID().String()
+	w.Header().Set("X-Trace-ID", traceID)
 
 	simulateStage(ctx, tracer, "validate.request", 8, 25)
 	simulateStage(ctx, tracer, "database.lookup", 20, 60)
@@ -183,7 +133,17 @@ func workHandler(w http.ResponseWriter, r *http.Request) {
 	if downstreamURL != "" {
 		if err := callDownstream(ctx, tracer); err != nil {
 			span.RecordError(err)
-			http.Error(w, fmt.Sprintf("downstream call failed: %v", err), http.StatusBadGateway)
+			span.SetStatus(codes.Error, err.Error())
+			span.SetAttributes(attribute.String("demo.downstream.status", "error"))
+			log.Printf("request failed service=%s method=%s path=%s trace_id=%s downstream=error error=%q", serviceName, r.Method, r.URL.Path, traceID, err.Error())
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadGateway)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"service":    serviceName,
+				"trace_id":   traceID,
+				"downstream": "error",
+				"error":      err.Error(),
+			})
 			return
 		}
 		downstream = "ok"
@@ -191,29 +151,16 @@ func workHandler(w http.ResponseWriter, r *http.Request) {
 		simulateStage(ctx, tracer, "external.call", 30, 90)
 	}
 
-	traceID := span.SpanContext().TraceID().String()
+	span.SetAttributes(attribute.String("demo.downstream.status", downstream))
 	log.Printf("request completed service=%s method=%s path=%s trace_id=%s downstream=%s", serviceName, r.Method, r.URL.Path, traceID, downstream)
-
 	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("X-Trace-ID", traceID)
-	_ = json.NewEncoder(w).Encode(map[string]any{
-		"service":    serviceName,
-		"trace_id":   traceID,
-		"downstream": downstream,
-		"message":    "trace emitted through OpenTelemetry Collector",
-	})
+	_ = json.NewEncoder(w).Encode(map[string]any{"service": serviceName, "trace_id": traceID, "downstream": downstream, "message": "trace emitted through OpenTelemetry Collector"})
 }
 
 func processHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := otel.GetTextMapPropagator().Extract(r.Context(), propagation.HeaderCarrier(r.Header))
 	tracer := otel.Tracer(serviceName)
-	ctx, span := tracer.Start(ctx, "HTTP GET /process",
-		trace.WithSpanKind(trace.SpanKindServer),
-		trace.WithAttributes(
-			attribute.String("http.request.method", r.Method),
-			attribute.String("url.path", r.URL.Path),
-		),
-	)
+	ctx, span := tracer.Start(ctx, "HTTP GET /process", trace.WithSpanKind(trace.SpanKindServer), trace.WithAttributes(attribute.String("http.request.method", r.Method), attribute.String("url.path", r.URL.Path)))
 	defer span.End()
 
 	simulateStage(ctx, tracer, "downstream.load", 15, 45)
@@ -221,13 +168,9 @@ func processHandler(w http.ResponseWriter, r *http.Request) {
 
 	traceID := span.SpanContext().TraceID().String()
 	log.Printf("request completed service=%s method=%s path=%s trace_id=%s", serviceName, r.Method, r.URL.Path, traceID)
-
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]any{
-		"service":  serviceName,
-		"trace_id": traceID,
-		"status":   "processed",
-	})
+	w.Header().Set("X-Trace-ID", traceID)
+	_ = json.NewEncoder(w).Encode(map[string]any{"service": serviceName, "trace_id": traceID, "status": "processed"})
 }
 
 func callDownstream(ctx context.Context, tracer trace.Tracer) (err error) {
@@ -241,26 +184,30 @@ func callDownstream(ctx context.Context, tracer trace.Tracer) (err error) {
 		}
 	}()
 
-	ctx, span := tracer.Start(ctx, "HTTP GET downstream /process",
-		trace.WithSpanKind(trace.SpanKindClient),
-		trace.WithAttributes(attribute.String("server.address", downstreamURL)),
-	)
+	ctx, span := tracer.Start(ctx, "HTTP GET downstream /process", trace.WithSpanKind(trace.SpanKindClient), trace.WithAttributes(attribute.String("server.address", downstreamURL)))
 	defer span.End()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, downstreamURL, nil)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return err
 	}
 	otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
 
 	resp, err := httpClient.Do(req)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		status = "http_error"
-		return fmt.Errorf("unexpected status %s", resp.Status)
+		err = fmt.Errorf("unexpected status %s", resp.Status)
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		return err
 	}
 	status = "ok"
 	return nil
@@ -271,10 +218,8 @@ func instrumentHTTP(path string, next http.HandlerFunc) http.HandlerFunc {
 		started := time.Now()
 		requestsInFlight.WithLabelValues(serviceName, path).Inc()
 		defer requestsInFlight.WithLabelValues(serviceName, path).Dec()
-
 		recorder := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 		next(recorder, r)
-
 		httpRequests.WithLabelValues(serviceName, r.Method, path, strconv.Itoa(recorder.status)).Inc()
 		httpRequestDuration.WithLabelValues(serviceName, r.Method, path).Observe(time.Since(started).Seconds())
 	}
@@ -293,17 +238,13 @@ func (r *statusRecorder) WriteHeader(status int) {
 func simulateStage(ctx context.Context, tracer trace.Tracer, name string, minMs, maxMs int) {
 	ctx, span := tracer.Start(ctx, name, trace.WithSpanKind(trace.SpanKindInternal))
 	defer span.End()
-
 	delay := minMs + rand.IntN(maxMs-minMs+1)
-	span.SetAttributes(
-		attribute.String("demo.stage", name),
-		attribute.Int("demo.delay_ms", delay),
-	)
-
+	span.SetAttributes(attribute.String("demo.stage", name), attribute.Int("demo.delay_ms", delay))
 	select {
 	case <-time.After(time.Duration(delay) * time.Millisecond):
 	case <-ctx.Done():
 		span.RecordError(ctx.Err())
+		span.SetStatus(codes.Error, ctx.Err().Error())
 	}
 }
 
