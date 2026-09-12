@@ -19,15 +19,22 @@ if [[ ! -f "$ENV_FILE" ]]; then
 fi
 
 if [[ -e "$OUTPUT_FILE" ]]; then
-  echo "error: output already exists: $OUTPUT_FILE" >&2
-  echo "Refusing to overwrite an existing encrypted secret automatically." >&2
-  exit 1
+  if [[ ! -s "$OUTPUT_FILE" ]]; then
+    # A failed command using shell redirection may leave an empty output file.
+    # Empty files contain no secret data and are safe to discard before retrying.
+    rm -f "$OUTPUT_FILE"
+  else
+    echo "error: output already exists: $OUTPUT_FILE" >&2
+    echo "Refusing to overwrite an existing encrypted secret automatically." >&2
+    exit 1
+  fi
 fi
 
 mkdir -p "$(dirname "$OUTPUT_FILE")"
 TMPDIR="$(mktemp -d)"
 trap 'rm -rf "$TMPDIR"' EXIT
 PLAIN="$TMPDIR/firecrawl-secret.yaml"
+ENCRYPTED="$TMPDIR/firecrawl-secrets.sops.yaml"
 
 python3 - "$ENV_FILE" "$PLAIN" <<'PY'
 import sys
@@ -107,11 +114,17 @@ for key in allowed:
 out_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 PY
 
-sops --encrypt --config .sops.yaml "$PLAIN" > "$OUTPUT_FILE"
-chmod 0600 "$OUTPUT_FILE"
+# .sops.yaml matches files ending in .sops.yaml. Because the plaintext lives in a
+# temporary file with a different name, tell SOPS which final filename should be
+# used when evaluating creation_rules.
+sops --encrypt \
+  --config .sops.yaml \
+  --filename-override "$OUTPUT_FILE" \
+  "$PLAIN" > "$ENCRYPTED"
 
-# Validate decryptability without printing plaintext.
-sops --decrypt "$OUTPUT_FILE" >/dev/null
+# Validate before moving the encrypted artifact into the repository tree.
+sops --decrypt "$ENCRYPTED" >/dev/null
+install -m 0600 "$ENCRYPTED" "$OUTPUT_FILE"
 
 echo "Encrypted Firecrawl Secret created: $OUTPUT_FILE"
 echo "Values were not printed and plaintext was only held in a temporary directory."
