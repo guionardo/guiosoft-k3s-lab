@@ -44,9 +44,11 @@ A infraestrutura Cloudflare está declarada em Terraform usando o provider v5. O
 
 SOPS + age estão instalados via Ansible. A identidade age é criada de forma idempotente somente quando ausente, a configuração pública do recipient está versionada em `.sops.yaml`, e o fluxo de encrypt/decrypt e de Kubernetes Secrets cifrados foi validado.
 
-O backup do K3s foi validado manualmente, por restore rehearsal não destrutivo e pelo mesmo serviço usado no timer systemd. O timer diário e a retenção local estão operacionais.
+O backup do K3s foi validado manualmente, por restore rehearsal não destrutivo e pelo mesmo serviço usado no timer systemd. O timer diário, a retenção local e a cadeia automática de envio off-host estão operacionais.
 
-A camada off-host usa Restic sobre Cloudflare R2. O bucket `guiosoft-k3s-backups` é gerenciado por uma stack Terraform separada, as credenciais runtime ficam cifradas com SOPS + age, e o round-trip real Restic -> R2 -> restore já foi validado por SHA-256. A automação do `k3s-backup.service` agora também envia o backup mais recente para o R2 e aplica retenção remota pelo próprio Restic; falta apenas validar essa execução completa pelo serviço agendado.
+A camada off-host usa Restic sobre Cloudflare R2. O bucket `guiosoft-k3s-backups` é gerenciado por uma stack Terraform separada, as credenciais runtime ficam cifradas com SOPS + age, o round-trip real Restic -> R2 -> restore já foi validado por SHA-256 e o `k3s-backup.service` foi validado executando a cadeia completa local -> Restic -> R2 com `restic check` remoto.
+
+A próxima frente é o backup de dados de aplicações. Existe agora um inventário read-only de PVCs/PVs e dos caminhos persistentes associados para classificar cada workload antes de implementar qualquer política de backup de filesystem ou banco de dados.
 
 ## Divisão de responsabilidades
 
@@ -110,6 +112,7 @@ make backup-verify
 make backup-install
 make backup-status
 make backup-run
+make backup-inventory
 make restic-r2-secret
 make restic-r2-install
 make restic-r2-test
@@ -145,6 +148,8 @@ Cloudflare R2
         ↓
 retenção daily/weekly/monthly pelo Restic
 ```
+
+Para dados de aplicações, `make backup-inventory` é somente leitura e serve para identificar PVCs, PVs, caminhos físicos e Pods consumidores antes de definir backups. Bancos de dados serão tratados com mecanismos nativos da engine, não com cópia crua de arquivos em execução.
 
 ## Primeira etapa: discovery
 
