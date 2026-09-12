@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: help discovery ansible-deps preflight bootstrap tools k3s storage storage-test storage-test-status storage-test-recreate storage-test-delete backup-create backup-list backup-verify firewall-audit cluster-status lab-deploy lab-status lab-test lab-delete secrets-test secret-edit secret-view secret-validate secret-apply tf-cloudflare-discovery tf-cloudflare-init tf-cloudflare-fmt tf-cloudflare-validate tf-cloudflare-import tf-cloudflare-plan
+.PHONY: help discovery ansible-deps preflight bootstrap tools k3s storage storage-test storage-test-status storage-test-recreate storage-test-delete backup-create backup-list backup-verify backup-install backup-status backup-run backup-prune firewall-audit cluster-status lab-deploy lab-status lab-test lab-delete secrets-test secret-edit secret-view secret-validate secret-apply tf-cloudflare-discovery tf-cloudflare-init tf-cloudflare-fmt tf-cloudflare-validate tf-cloudflare-import tf-cloudflare-plan
 
 help:
 	@echo "guiosoft-k3s-lab"
@@ -20,6 +20,10 @@ help:
 	@echo "  make backup-create         Cria backup local do datastore SQLite + token do K3s"
 	@echo "  make backup-list           Lista backups locais e checksums do K3s"
 	@echo "  make backup-verify         Reidrata e valida o backup mais recente sem tocar no K3s ativo"
+	@echo "  make backup-install        Instala timer systemd e política de retenção via Ansible"
+	@echo "  make backup-status         Mostra timer e últimas execuções do backup"
+	@echo "  make backup-run            Dispara agora o mesmo serviço usado pelo timer"
+	@echo "  make backup-prune          Executa manualmente a retenção configurada"
 	@echo "  make firewall-audit        Audita firewall/listeners após K3s sem alterar regras"
 	@echo "  make cluster-status        Mostra nodes, pods e services do cluster"
 	@echo "  make lab-deploy            Cria namespace e workload de teste"
@@ -97,6 +101,23 @@ backup-list:
 
 backup-verify:
 	sudo bash scripts/k3s-backup-verify.sh $(if $(FILE),"$(FILE)",)
+
+backup-install:
+	cd ansible && ansible-playbook -K playbooks/backup.yml
+
+backup-status:
+	sudo systemctl status k3s-backup.timer --no-pager
+	sudo systemctl list-timers k3s-backup.timer --no-pager
+	@echo
+	@echo "Últimas execuções:"
+	sudo journalctl -u k3s-backup.service -n 40 --no-pager
+
+backup-run:
+	sudo systemctl start k3s-backup.service
+	$(MAKE) backup-list
+
+backup-prune:
+	sudo K3S_BACKUP_KEEP=$${K3S_BACKUP_KEEP:-14} bash scripts/k3s-backup-prune.sh
 
 firewall-audit:
 	cd ansible && ansible-playbook -K playbooks/firewall-audit.yml
