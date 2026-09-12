@@ -146,7 +146,9 @@ Objetivo: reconstruir um servidor a partir de Debian limpo + Git + backups.
 
 - [x] documentar pré-requisitos externos e sequência de rehearsal em `docs/disaster-recovery.md`;
 - [x] adicionar readiness check somente leitura para Git, SOPS/age, Restic/R2 e backup local;
-- [ ] validar `make dr-readiness` no host atual;
+- [x] validar `make dr-readiness` no host atual;
+- [x] implementar rehearsal isolado que restaura o snapshot K3s diretamente do R2 sem tocar no cluster ativo;
+- [ ] validar `make dr-r2-rehearsal` no host atual;
 - [ ] garantir cópia off-host independente da identidade privada age;
 - [ ] automatizar bootstrap do ambiente de DR;
 - [ ] implementar restore destrutivo somente para alvo explicitamente marcado como DR;
