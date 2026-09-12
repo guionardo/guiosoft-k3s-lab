@@ -10,9 +10,12 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
@@ -26,7 +29,63 @@ var (
 	serviceName   = envOrDefault("SERVICE_NAME", "otel-go-demo")
 	downstreamURL = os.Getenv("DOWNSTREAM_URL")
 	httpClient    = &http.Client{Timeout: 3 * time.Second}
+
+	httpRequests = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "otel_demo_http_requests_total",
+			Help: "Total HTTP requests handled by the demo services.",
+		},
+		[]string{"service", "method", "path", "status"},
+	)
+	httpRequestDuration = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "otel_demo_http_request_duration_seconds",
+			Help:    "HTTP request latency for the demo services.",
+			Buckets: prometheus.DefBuckets,
+		},
+		[]string{"service", "method", "path"},
+	)
+	requestsInFlight = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "otel_demo_requests_in_flight",
+			Help: "Current in-flight HTTP requests for instrumented demo endpoints.",
+		},
+		[]string{"service", "path"},
+	)
+	downstreamRequests = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "otel_demo_downstream_requests_total",
+			Help: "Total downstream HTTP calls issued by the frontend demo service.",
+		},
+		[]string{"service", "status"},
+	)
+	downstreamRequestDuration = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "otel_demo_downstream_request_duration_seconds",
+			Help:    "Latency of downstream HTTP calls issued by the frontend demo service.",
+			Buckets: prometheus.DefBuckets,
+		},
+		[]string{"service"},
+	)
+	downstreamErrors = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "otel_demo_downstream_errors_total",
+			Help: "Total failed downstream HTTP calls issued by the frontend demo service.",
+		},
+		[]string{"service"},
+	)
 )
+
+func init() {
+	prometheus.MustRegister(
+		httpRequests,
+		httpRequestDuration,
+		requestsInFlight,
+		downstreamRequests,
+		downstreamRequestDuration,
+		downstreamErrors,
+	)
+}
 
 func main() {
 	ctx := context.Background()
@@ -47,8 +106,9 @@ func main() {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok\n"))
 	})
-	mux.HandleFunc("/work", workHandler)
-	mux.HandleFunc("/process", processHandler)
+	mux.Handle("/metrics", promhttp.Handler())
+	mux.HandleFunc("/work", instrumentHTTP("/work", workHandler))
+	mux.HandleFunc("/process", instrumentHTTP("/process", processHandler))
 
 	server := &http.Server{
 		Addr:              ":8080",
@@ -88,7 +148,7 @@ func initTracing(ctx context.Context) (func(context.Context) error, error) {
 	res := resource.NewWithAttributes(
 		"",
 		attribute.String("service.name", serviceName),
-		attribute.String("service.version", "0.2.0"),
+		attribute.String("service.version", "0.3.0"),
 		attribute.String("deployment.environment", "homelab"),
 	)
 
@@ -170,7 +230,17 @@ func processHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func callDownstream(ctx context.Context, tracer trace.Tracer) error {
+func callDownstream(ctx context.Context, tracer trace.Tracer) (err error) {
+	started := time.Now()
+	status := "error"
+	defer func() {
+		downstreamRequestDuration.WithLabelValues(serviceName).Observe(time.Since(started).Seconds())
+		downstreamRequests.WithLabelValues(serviceName, status).Inc()
+		if err != nil {
+			downstreamErrors.WithLabelValues(serviceName).Inc()
+		}
+	}()
+
 	ctx, span := tracer.Start(ctx, "HTTP GET downstream /process",
 		trace.WithSpanKind(trace.SpanKindClient),
 		trace.WithAttributes(attribute.String("server.address", downstreamURL)),
@@ -189,9 +259,35 @@ func callDownstream(ctx context.Context, tracer trace.Tracer) error {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		status = "http_error"
 		return fmt.Errorf("unexpected status %s", resp.Status)
 	}
+	status = "ok"
 	return nil
+}
+
+func instrumentHTTP(path string, next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		started := time.Now()
+		requestsInFlight.WithLabelValues(serviceName, path).Inc()
+		defer requestsInFlight.WithLabelValues(serviceName, path).Dec()
+
+		recorder := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
+		next(recorder, r)
+
+		httpRequests.WithLabelValues(serviceName, r.Method, path, strconv.Itoa(recorder.status)).Inc()
+		httpRequestDuration.WithLabelValues(serviceName, r.Method, path).Observe(time.Since(started).Seconds())
+	}
+}
+
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+}
+
+func (r *statusRecorder) WriteHeader(status int) {
+	r.status = status
+	r.ResponseWriter.WriteHeader(status)
 }
 
 func simulateStage(ctx context.Context, tracer trace.Tracer, name string, minMs, maxMs int) {
