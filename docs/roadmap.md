@@ -100,9 +100,13 @@ Para qualquer workload escolhido futuramente:
 - [x] validar restore rehearsal não destrutivo do backup;
 - [x] implementar agendamento systemd via Ansible;
 - [x] implementar retenção local conservadora por quantidade de archives;
-- [ ] validar timer, execução agendada e retenção no host;
+- [x] validar timer, execução agendada e retenção no host;
+- [x] adicionar restic ao tooling Ansible para preparar backup off-host;
+- [ ] validar round-trip local do restic;
+- [ ] escolher/configurar destino restic realmente off-host;
+- [ ] automatizar cópia off-host e retenção remota;
+- [ ] validar restore a partir do destino off-host;
 - [ ] executar restore completo do K3s a partir de backup em ambiente de disaster recovery;
-- [ ] backup externo/off-host;
 - [ ] testes periódicos de restore.
 
 ## Fase 6 — Observabilidade
