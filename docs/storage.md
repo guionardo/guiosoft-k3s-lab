@@ -2,7 +2,7 @@
 
 ## Objetivo
 
-Preparar um layout previsível para dados persistentes do K3s sem formatar discos, mover dados existentes ou alterar o `local-path` atual antes de uma validação explícita.
+Preparar um layout previsível para dados persistentes do K3s sem formatar discos, mover dados existentes ou alterar dados já existentes no host.
 
 ## Discos utilizados nesta fase
 
@@ -37,9 +37,17 @@ Isso separa o caminho lógico usado pela infraestrutura da localização física
 
 ### `/srv/k3s/local-path`
 
-Destino planejado para volumes provisionados pelo `local-path-provisioner`.
+Área dedicada aos volumes provisionados dinamicamente pelo `local-path-provisioner` do K3s.
 
-Nesta etapa o StorageClass atual do K3s **não é alterado**. A mudança será feita somente depois de validar o layout e testar criação/remoção de PVCs.
+O K3s passa a receber no seu `config.yaml`:
+
+```yaml
+default-local-storage-path: /mnt/store1/k3s/local-path
+```
+
+O caminho físico é usado diretamente pelo K3s para evitar depender da resolução de symlink dentro do fluxo de provisionamento. O link `/srv/k3s/local-path` continua sendo o nome lógico para administração humana e automações do host.
+
+A alteração vale para novos volumes. Não existe migração automática de PVs antigos para o novo caminho.
 
 ### `/srv/k3s/persistent`
 
@@ -64,19 +72,64 @@ O role `storage` é deliberadamente conservador:
 - não altera `/etc/fstab`;
 - não move dados existentes;
 - não remove arquivos;
-- não altera o StorageClass atual;
 - não migra volumes existentes.
+
+## Teste de persistência
+
+Foi adicionado um workload de validação em:
+
+```text
+kubernetes/storage/persistence-test.yaml
+```
+
+Ele cria:
+
+- um PVC `ReadWriteOnce` de 16 MiB usando `storageClassName: local-path`;
+- um Deployment com BusyBox;
+- um arquivo `/data/marker.txt` criado somente quando ainda não existe.
+
+Fluxo de validação:
+
+```bash
+make k3s
+make storage-test
+make storage-test-recreate
+```
+
+O primeiro comando aplica o novo `default-local-storage-path` e reinicia o K3s se a configuração mudou. O segundo cria o PVC/Deployment e mostra o marker. O terceiro apaga o Pod; o Deployment cria outro Pod e o mesmo marker deve continuar disponível.
+
+Para inspecionar o volume:
+
+```bash
+make storage-test-status
+kubectl get pv
+```
+
+Depois da validação, o workload de teste pode ser removido com:
+
+```bash
+make storage-test-delete
+```
+
+Como o StorageClass `local-path` possui política de reclaim `Delete`, remover o PVC também remove o PV e o diretório provisionado para esse volume. Portanto, esse target é adequado apenas ao PVC descartável de teste.
+
+## Limitação importante
+
+`local-path` é armazenamento local ao nó. Um Pod que usa esse PV fica associado ao nó que contém os dados. Isso funciona bem no cluster single-node atual, mas não fornece replicação nem alta disponibilidade quando um segundo nó for adicionado.
 
 ## Próximas etapas
 
-Depois da validação do role no host:
+Depois da validação real do PVC no host:
 
-1. testar o layout e capacidade observada;
-2. configurar o `local-path-provisioner` para usar `/srv/k3s/local-path`;
-3. criar um PVC de teste;
-4. escrever e ler dados no PVC;
-5. remover/recriar o Pod e confirmar persistência;
-6. definir política para bancos de dados;
-7. implementar backup local automatizado;
-8. adicionar destino off-host;
-9. executar restore real.
+1. confirmar que o PV foi criado fisicamente sob `/mnt/store1/k3s/local-path`;
+2. remover/recriar o Pod e confirmar persistência;
+3. definir política para bancos de dados;
+4. implementar backup local automatizado;
+5. adicionar destino off-host;
+6. executar restore real.
+
+## Fontes
+
+- K3s — Volumes and Storage: https://docs.k3s.io/add-ons/storage
+- Rancher local-path-provisioner: https://github.com/rancher/local-path-provisioner
+- Manifest padrão do local storage no K3s: https://github.com/k3s-io/k3s/blob/main/manifests/local-storage.yaml
