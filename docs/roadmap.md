@@ -90,7 +90,7 @@ Para cada workload futuro:
 - [x] PVCs Prometheus 10 GiB e Grafana 2 GiB em `local-path`;
 - [x] provisionar automaticamente datasources Prometheus, Tempo e Loki no Grafana;
 - [x] validar reload/provisioning dos datasources Grafana;
-- [ ] executar/revisar `make observability-validate` para todos os scrape targets e datasources;
+- [x] executar/revisar `make observability-validate`: 13/13 scrape targets `up`, query `up` com 13 séries, datasources Prometheus/Tempo/Loki com health `OK`, Pods Ready e PVCs Bound;
 - [ ] revisar dashboards Grafana padrão;
 - [ ] revisar alertas ruidosos/incompatíveis com K3s.
 
@@ -126,7 +126,8 @@ Para cada workload futuro:
 
 ### Capacidade
 
-- [ ] revisar CPU/memória/storage da stack completa após estabilização;
+- [x] registrar baseline inicial de recursos com a stack completa: node em ~782m CPU (13%) e ~8331 MiB RAM (52%); maiores consumidores observados foram Grafana ~440 MiB e Prometheus ~337 MiB;
+- [ ] revisar consumo novamente após período maior de retenção/carga;
 - [ ] adicionar dashboards/alertas customizados essenciais;
 - [ ] adicionar exemplars/span metrics quando houver benefício real.
 
