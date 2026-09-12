@@ -44,7 +44,7 @@ A infraestrutura Cloudflare está declarada em Terraform usando o provider v5. O
 
 SOPS + age estão instalados via Ansible. A identidade age é criada de forma idempotente somente quando ausente, a configuração pública do recipient está versionada em `.sops.yaml`, e o fluxo de encrypt/decrypt e de Kubernetes Secrets cifrados foi validado.
 
-A base de backup do K3s também foi iniciada. O repositório inclui um script conservador para criar um backup local verificável do datastore SQLite e do server token em `/srv/k3s/backups/k3s`. O próximo passo é validar a criação no host e depois testar restore antes de habilitar agendamento e retenção automáticos.
+O backup do K3s já foi validado manualmente e por restore rehearsal não destrutivo. O repositório agora também possui role Ansible para instalar `k3s-backup.service` + `k3s-backup.timer`, com backup diário configurável e retenção local conservadora dos 14 archives mais recentes. Backup off-host e restore completo em cenário de disaster recovery continuam pendentes.
 
 ## Divisão de responsabilidades
 
@@ -61,6 +61,7 @@ Ansible
 ├── instalação/configuração do K3s
 ├── diretórios e storage do host
 ├── ferramentas de IaC e secrets
+├── automação de backup local
 ├── firewall
 └── bootstrap do cluster
 
@@ -109,7 +110,9 @@ make cluster-status
 make firewall-audit
 make secrets-test
 make backup-create
-make backup-list
+make backup-verify
+make backup-install
+make backup-status
 make tf-cloudflare-init
 make tf-cloudflare-validate
 make tf-cloudflare-plan
@@ -123,7 +126,7 @@ Secrets declarativos podem ser cifrados com SOPS + age. A chave privada age perm
 
 Para Cloudflare, o fluxo também é deliberadamente conservador: configurar variáveis locais, exportar `CLOUDFLARE_API_TOKEN`, importar os recursos existentes para o state e revisar `terraform plan`. A adoção inicial foi concluída com zero drift e nenhum `apply` foi necessário.
 
-O backup atual do K3s é local e intencionalmente simples. `make backup-create` cria um arquivo com o datastore SQLite e o server token e verifica tar + SHA-256. Esse arquivo contém material sensível e não deve ser versionado. Backup off-host e restore real ainda são obrigatórios antes de considerar a estratégia completa.
+O backup do K3s continua sendo staging local. `make backup-create` gera o archive SQLite + server token, `make backup-verify` faz uma reidratação não destrutiva e valida a integridade do SQLite, e `make backup-install` configura o timer e a retenção via Ansible. Os archives contêm material sensível e nunca devem ser versionados.
 
 ## Primeira etapa: discovery
 
@@ -201,10 +204,11 @@ A evolução atual foi baseada em:
 
 - discovery read-only executado no host Debian;
 - estado observado dos mounts `/mnt/store1`, `/mnt/store2` e `/mnt/dev`;
-- validações reais do cluster K3s, Traefik, Cloudflare Tunnel, `kubectl`, PVC/local-path e SOPS + age executadas no próprio servidor;
+- validações reais do cluster K3s, Traefik, Cloudflare Tunnel, `kubectl`, PVC/local-path, SOPS + age e backup/restore rehearsal executadas no próprio servidor;
 - documentação oficial do K3s para `default-local-storage-path`, datastore SQLite e backup/restore;
 - documentação do Rancher `local-path-provisioner` para comportamento de PVs locais;
 - documentação oficial do SOPS e age para recipients e gestão de secrets;
+- documentação oficial do systemd para timers persistentes;
 - documentação oficial do Cloudflare Terraform Provider v5 para `cloudflare_dns_record`, `cloudflare_zero_trust_tunnel_cloudflared` e `cloudflare_zero_trust_tunnel_cloudflared_config`;
 - documentação oficial da Cloudflare para importação de recursos existentes em Terraform;
 - documentação versionada em `docs/current-state.md`, `docs/networking.md`, `docs/firewall.md`, `docs/storage.md`, `docs/secrets.md`, `docs/backup.md` e `terraform/cloudflare/README.md`.
