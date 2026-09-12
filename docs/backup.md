@@ -9,7 +9,8 @@ O cluster atual é single-node e usa o datastore SQLite padrão do K3s. A estrat
 - agendamento via systemd;
 - retenção local;
 - cópia off-host cifrada com Restic para Cloudflare R2;
-- retenção remota gerenciada pelo próprio Restic.
+- retenção remota gerenciada pelo próprio Restic;
+- inventário read-only de PVCs/PVs para preparar a estratégia de dados de aplicações.
 
 O staging local usa:
 
@@ -102,7 +103,7 @@ O round-trip real Restic -> R2 -> restore foi validado com comparação SHA-256 
 
 `scripts/restic-r2-sync.sh` é chamado pelo mesmo `k3s-backup.service` depois do backup local e do prune local.
 
-Sequência:
+Sequência validada no host:
 
 ```text
 k3s-backup.timer
@@ -133,25 +134,17 @@ O prune remoto é feito pelo Restic, não por lifecycle arbitrário do bucket R2
 Targets operacionais:
 
 ```bash
-make restic-r2-sync
+make backup-run
+make backup-status
 make restic-r2-status
 make restic-r2-check
 ```
 
-O target `make backup-install` agora exige que a configuração runtime do Restic R2 já esteja instalada quando `restic_r2_enabled: true`. Isso impede habilitar silenciosamente um timer que não conseguiria produzir backup off-host.
+`make backup-run` executa a mesma unit usada pelo timer e, ao final, mostra a listagem dos backups locais, o journal recente do serviço e o snapshot remoto mais recente. Assim a operação manual já deixa evidência local e off-host na mesma execução.
 
-## Validação pendente desta etapa
+O target `make backup-install` exige que a configuração runtime do Restic R2 já esteja instalada quando `restic_r2_enabled: true`. Isso impede habilitar silenciosamente um timer que não conseguiria produzir backup off-host.
 
-A implementação já está pronta. Falta validar no host o fluxo completo usando exatamente o serviço agendado:
-
-```bash
-make backup-install
-make backup-run
-make restic-r2-status
-make backup-status
-```
-
-Essa validação deve comprovar que uma única execução do `k3s-backup.service` cria o backup local e também produz o snapshot R2.
+A execução completa local -> Restic -> R2 e o `restic check` remoto já foram validados no host.
 
 ## Restore real do K3s
 
@@ -169,7 +162,29 @@ O backup atual cobre o control plane K3s. Ele não substitui backups próprios d
 - repositórios;
 - outros dados persistentes de workloads.
 
-Para bancos de dados, a preferência continua sendo backup nativo/lógico consistente com cada engine.
+A primeira etapa para dados de aplicações é deliberadamente read-only:
+
+```bash
+make backup-inventory
+```
+
+O script `scripts/k3s-persistence-inventory.sh` lista:
+
+- PVCs de todos os namespaces;
+- PVs e política de reclaim;
+- caminhos `hostPath`/`local` usados pelos PVs quando disponíveis;
+- Pods que montam cada PVC.
+
+Nenhum dado é copiado ou alterado nessa etapa.
+
+Cada persistência deverá ser classificada em uma destas categorias:
+
+1. **stateless/reproducible** — Git/IaC é suficiente;
+2. **file-oriented** — backup de filesystem pode ser adequado, preferencialmente com workload quiescido ou mecanismo consistente da aplicação;
+3. **database** — usar primeiro o mecanismo nativo da engine, como dump lógico ou backup físico suportado;
+4. **external** — documentar o procedimento de export/backup do provedor externo.
+
+Para bancos de dados, não vamos tratar cópia crua dos arquivos de um banco em execução como estratégia principal de backup.
 
 ## Futuro multi-node
 
