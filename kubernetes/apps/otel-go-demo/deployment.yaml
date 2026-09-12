@@ -3,6 +3,8 @@ kind: Deployment
 metadata:
   name: otel-go-demo
   namespace: lab
+  labels:
+    app: otel-go-demo
 spec:
   replicas: 1
   selector:
