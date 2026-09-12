@@ -60,7 +60,7 @@ Objetivo: entender o estado atual, eliminar dependências desnecessárias e prep
 - [x] apontar o wildcard DNS `*.guiosoft.info` para o Cloudflare Tunnel em vez do origin IP legado;
 - [x] validar caminho Cloudflare -> Tunnel -> Traefik -> Ingress -> Service -> Pod com HTTP 200;
 - [x] definir padrão de Ingress para aplicações;
-- [ ] definir e validar comportamento para hostnames sem Ingress conhecido;
+- [x] definir e validar comportamento para hostnames sem Ingress conhecido (HTTP 404);
 - [ ] colocar gradualmente DNS/Tunnel sob Terraform;
 - [ ] migrar `cloudflared` para Kubernetes apenas depois do fluxo estar validado.
 
