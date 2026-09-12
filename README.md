@@ -56,7 +56,7 @@ A frente ativa agora é observabilidade. O `kube-prometheus-stack` está instala
 
 O workload Go instrumentado com OpenTelemetry foi validado ponta a ponta: uma requisição gera `trace_id`, o trace atravessa aplicação -> Collector -> Tempo e o teste automatizado consegue recuperá-lo diretamente pela API do Tempo.
 
-A fundação de logs agora também está versionada. O plano usa Loki community chart `18.5.0` em modo `Monolithic`, filesystem/TSDB com PVC `local-path` de 5 GiB e retenção inicial de 7 dias. Grafana Alloy chart `1.12.1` coleta logs dos Pods pela Kubernetes API e envia ao Loki, evitando Promtail, que atingiu EOL em março de 2026. O demo Go passou a registrar o `trace_id` em cada requisição para permitir correlação logs -> trace no Grafana.
+A fundação de logs também está operacional. Loki community chart `18.5.0` roda em modo `Monolithic`, Grafana Alloy chart `1.12.1` coleta logs dos Pods pela Kubernetes API e envia ao Loki, e `make observability-logging-test` já confirmou uma linha de log contendo exatamente o mesmo `trace_id` da requisição. A correlação de backend logs <-> traces está, portanto, validada; resta revisar a navegação visual no Grafana.
 
 ## Divisão de responsabilidades
 
@@ -142,7 +142,7 @@ Detalhes em [`docs/remote-kubectl.md`](docs/remote-kubectl.md).
 
 ## Observabilidade
 
-A arquitetura alvo cobre os três sinais principais:
+A arquitetura atual cobre os três sinais principais:
 
 ```text
 Metrics -> Prometheus
@@ -151,23 +151,39 @@ Traces  -> OpenTelemetry Collector -> Tempo
 UI      -> Grafana
 ```
 
-O tracing já foi validado ponta a ponta com o demo Go. A próxima etapa operacional é instalar a fundação de logs:
+Tracing e logging já foram validados em runtime com o demo Go. O fluxo de logs/traces comprovado é:
 
-```bash
-make observability-logging-install
-make observability-logging-status
+```text
+request
+  ├── trace -> OpenTelemetry Collector -> Tempo
+  └── log   -> Grafana Alloy -> Loki
+                 ^
+                 |
+            mesmo trace_id
 ```
 
-Depois de atualizar/reinstalar o demo para emitir logs correlacionados:
+O teste automatizado:
 
 ```bash
-make otel-go-demo-install
 make observability-logging-test
 ```
 
-O teste gera uma requisição, obtém o `trace_id` e consulta o Loki até localizar uma linha de log contendo exatamente o mesmo ID. O Grafana recebe um datasource Loki com derived field `TraceID` ligado ao datasource Tempo, e o Tempo recebe configuração `tracesToLogsV2` apontando de volta ao Loki.
+gera uma requisição, obtém o `trace_id` e consulta o Loki até localizar uma linha contendo exatamente o mesmo ID. O teste passou no cluster atual.
 
-O perfil atual de logs foi escolhido para o host single-node: Loki monolítico, filesystem local, um único PVC de 5 GiB e retenção de 168h. Esse storage é adequado ao laboratório e não é considerado armazenamento de produção ou dado crítico de negócio.
+O Grafana recebe um datasource Loki com derived field `TraceID` ligado ao datasource Tempo, e o Tempo recebe `tracesToLogsV2` apontando de volta ao Loki. Falta apenas validar visualmente essa navegação no Explore.
+
+O próximo bloco operacional é revisar métricas e saúde da stack completa:
+
+```bash
+make observability-validate
+```
+
+Depois, revisar no Grafana:
+
+```text
+Loki log -> TraceID -> Tempo trace
+Tempo trace -> tracesToLogs -> Loki logs
+```
 
 Grafana continua sem Ingress nesta fase. Para acesso local:
 
@@ -219,12 +235,13 @@ A evolução atual foi baseada em:
 - validação real do kubeconfig remoto a partir de outra máquina da LAN;
 - validação real do `kube-prometheus-stack`, Tempo e OpenTelemetry Collector no cluster atual;
 - validação real de um trace OpenTelemetry ponta a ponta aplicação -> Collector -> Tempo;
+- validação real de logs `otel-go-demo -> Alloy -> Loki` e correlação pelo mesmo `trace_id`;
 - documentação oficial do K3s para cluster access, storage, datastore e backup/restore;
 - documentação oficial do Kubernetes sobre kubeconfig e `kubectl`;
 - documentação oficial do Grafana Loki para Helm, modo Monolithic, TSDB, filesystem e retenção;
 - Artifact Hub do chart community `grafana-community/loki`;
 - documentação oficial do Grafana Alloy para Kubernetes e coleta de Pod logs;
-- documentação oficial do Grafana sobre datasource Loki e derived fields;
+- documentação oficial do Grafana sobre datasource Loki, derived fields e trace-to-logs;
 - documentação oficial do Promtail registrando EOL em 2 de março de 2026;
 - documentação oficial do Grafana Tempo e OpenTelemetry Collector;
 - documentação oficial do Restic, Cloudflare R2, SOPS, age, Helm e systemd.
