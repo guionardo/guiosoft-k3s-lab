@@ -87,10 +87,12 @@ Esse teste **não modifica** `/var/lib/rancher/k3s`, não para o serviço K3s e 
 
 ## Agendamento via systemd
 
-Após a validação manual de criação e reidratação, o agendamento pode ser instalado com:
+O agendamento foi instalado e validado no host com:
 
 ```bash
 make backup-install
+make backup-status
+make backup-run
 ```
 
 O playbook `ansible/playbooks/backup.yml` instala o role `backup`, que:
@@ -113,18 +115,6 @@ k3s_backup_randomized_delay: 15m
 
 O horário segue o timezone local do servidor. `Persistent=true` faz o systemd executar uma ocorrência perdida após o host voltar a ficar disponível. O atraso aleatório reduz a necessidade de um horário rígido e evita concentrar futuras rotinas exatamente no mesmo minuto.
 
-Para validar a instalação:
-
-```bash
-make backup-status
-```
-
-Para disparar manualmente exatamente o mesmo serviço utilizado pelo timer:
-
-```bash
-make backup-run
-```
-
 ## Retenção local
 
 O script `scripts/k3s-backup-prune.sh` mantém, por padrão, os 14 archives mais recentes.
@@ -137,13 +127,33 @@ A retenção possui proteções intencionais:
 - remove archive e checksum como um par;
 - **não remove** um archive antigo que esteja sem seu `.sha256`, deixando-o para inspeção manual.
 
-O prune pode ser testado manualmente com:
+A existência de retenção local não transforma `/srv/k3s/backups` em backup definitivo: o disco continua no mesmo servidor físico.
+
+## Preparação para backup off-host com restic
+
+O próximo nível de proteção usa `restic` como camada de transporte, criptografia e retenção no destino externo. O role Ansible `restic` instala a ferramenta junto com `make tools`.
+
+Antes de configurar qualquer destino externo, existe um smoke test totalmente local:
 
 ```bash
-make backup-prune
+make tools
+make restic-test
 ```
 
-A existência de retenção local não transforma `/srv/k3s/backups` em backup definitivo: o disco continua no mesmo servidor físico.
+O `scripts/restic-smoke-test.sh` cria um repositório temporário, gera uma senha aleatória descartável, envia o backup K3s mais recente para esse repositório, executa `restic check`, restaura o snapshot e compara o archive restaurado byte a byte com o original. Todo o repositório temporário e a senha são removidos ao final.
+
+Esse teste não é backup off-host. Ele apenas valida que a cadeia restic funciona corretamente no servidor antes de introduzir credenciais ou um destino externo.
+
+O restic suporta, entre outros backends, repositórios SFTP. Para automação, a documentação recomenda fornecer o repositório por `RESTIC_REPOSITORY`/`RESTIC_REPOSITORY_FILE` e a senha por `RESTIC_PASSWORD_FILE` ou mecanismo equivalente, evitando colocar a senha diretamente na linha de comando.
+
+O destino off-host ainda precisa ser escolhido. Critérios mínimos:
+
+- estar fisicamente fora deste servidor;
+- usar criptografia do próprio restic;
+- credenciais fora do Git e com permissões restritas;
+- permitir restore independente do disco local de `/mnt/store2`;
+- ter retenção e `restic check` periódicos;
+- ser validado com um restore real de pelo menos um archive K3s.
 
 ## Restore real do K3s
 
@@ -159,8 +169,9 @@ PVCs, bancos de dados, uploads e outros dados persistentes precisam de política
 
 Também permanecem pendentes:
 
-- cópia off-host;
-- proteção/criptografia do destino off-host;
+- destino off-host real;
+- credenciais do backend protegidas com SOPS/age ou arquivos root-only;
+- retenção remota;
 - restore completo do K3s em ambiente reconstruído;
 - restore de dados de aplicações;
 - testes periódicos de restore completo.
@@ -178,7 +189,9 @@ agendamento systemd
     ↓
 retenção local
     ↓
-off-host
+restic local round-trip
+    ↓
+restic off-host
     ↓
 restore completo em ambiente reconstruído
     ↓
@@ -194,4 +207,6 @@ O script atual aborta quando encontra embedded etcd. Quando o laboratório evolu
 - K3s — Backup and Restore: https://docs.k3s.io/datastore/backup-restore
 - K3s — Cluster Datastore: https://docs.k3s.io/datastore
 - K3s — High Availability Embedded etcd: https://docs.k3s.io/datastore/ha-embedded
+- restic — Preparing a new repository: https://restic.readthedocs.io/en/latest/030_preparing_a_new_repo.html
+- restic — Installation: https://restic.readthedocs.io/en/latest/020_installation.html
 - systemd.timer — https://www.freedesktop.org/software/systemd/man/latest/systemd.timer.html
