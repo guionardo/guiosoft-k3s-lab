@@ -177,13 +177,16 @@ metrics_test() {
     sleep 1
   done
 
+  # CounterVec/HistogramVec series are created lazily by client_golang when a
+  # concrete label set is first observed. Validate that /metrics is alive first,
+  # then generate traffic before requiring the custom vector families to appear.
   metrics="$(curl --fail --silent "http://127.0.0.1:${APP_PORT}/metrics")" || {
     echo "error: application metrics endpoint did not become ready" >&2
     cat "$app_log" >&2
     return 1
   }
-  grep -q '^# HELP otel_demo_http_requests_total ' <<<"$metrics" || {
-    echo "error: custom HTTP metric is not exposed by /metrics" >&2
+  grep -q '^# HELP go_' <<<"$metrics" || {
+    echo "error: /metrics responded but does not look like a Prometheus client endpoint" >&2
     return 1
   }
 
@@ -191,6 +194,20 @@ metrics_test() {
   for _ in $(seq 1 8); do
     curl --fail --silent "http://127.0.0.1:${APP_PORT}/work" >/dev/null
   done
+
+  metrics="$(curl --fail --silent "http://127.0.0.1:${APP_PORT}/metrics")"
+  grep -q '^# HELP otel_demo_http_requests_total ' <<<"$metrics" || {
+    echo "error: custom HTTP metric did not appear after generating traffic" >&2
+    return 1
+  }
+  grep -q '^# HELP otel_demo_http_request_duration_seconds ' <<<"$metrics" || {
+    echo "error: custom HTTP duration histogram did not appear after generating traffic" >&2
+    return 1
+  }
+  grep -q '^# HELP otel_demo_downstream_requests_total ' <<<"$metrics" || {
+    echo "error: custom downstream metric did not appear after generating traffic" >&2
+    return 1
+  }
 
   prom_query_value() {
     local q="$1"
