@@ -11,7 +11,7 @@ Componentes observados no Compose atual:
 | API | `ghcr.io/firecrawl/firecrawl` | stateless de aplicação | nenhuma | publica a porta 3002 no host |
 | Playwright | `ghcr.io/firecrawl/playwright-service:latest` | stateless | tmpfs/cache efêmero | CPU/memória relativamente altos |
 | Redis | `redis:alpine` | stateful | volume `redis-data` | filas/cache/estado runtime |
-| RabbitMQ | `rabbitmq:3-management` | stateful operacional | sem volume explícito no Compose atual | pode conter mensagens em trânsito, mas não é tratado como armazenamento durável |
+| RabbitMQ | `rabbitmq:3-management` | stateful operacional | volume Docker anônimo montado em `/var/lib/rabbitmq` | persiste estado entre recriações do container atual |
 | PostgreSQL | `ghcr.io/firecrawl/nuq-postgres:latest` | stateful crítico | volume `nuq-postgres-data` | banco persistente principal |
 
 O stack utiliza uma rede Docker privada `backend`. Somente a API é publicada no host; PostgreSQL, Redis, RabbitMQ e Playwright ficam internos.
@@ -34,11 +34,39 @@ Os limites efetivos observados foram:
 - Playwright: `2 CPU / 3 GiB`;
 - PostgreSQL, Redis e RabbitMQ: sem hard CPU/memory limit no Docker Compose atual.
 
-Volumes observados:
+### Identidade imutável das imagens observadas
 
-- `firecrawl_nuq-postgres-data`;
-- `firecrawl_redis-data`;
-- um volume Docker anônimo adicional, que ainda precisa ser associado explicitamente ao container/destination antes de qualquer limpeza futura.
+O audit capturou os `repo_digest` efetivamente em execução e o scaffold K3s foi pinado para reproduzir exatamente esses artefatos durante o staging inicial:
+
+```text
+API        ghcr.io/firecrawl/firecrawl@sha256:a88c2c1b546560b77206cf88da87600cb69ac65358eed1a0f8bb06dde691b065
+PostgreSQL ghcr.io/firecrawl/nuq-postgres@sha256:aed86f62858f29bd971abddcdeb301c12888098d2cf5d33c1ba42b053bc460f6
+Redis      redis@sha256:978f0e01593e65eed801f2402944efcd936d43b5027e4908a7897baf88ed6241
+RabbitMQ   rabbitmq@sha256:e582c0bc7766f3342496d8485efb5a1df782b5ce3886ad017e2eaae442311f69
+Playwright ghcr.io/firecrawl/playwright-service@sha256:468009bae00911d40d7120d58489a1d529362c22c45585cb9076094fe61b0025
+```
+
+Isso evita que `latest`, `alpine` ou tags implícitas mudem silenciosamente entre o Docker atual e o staging K3s.
+
+### Volumes observados
+
+O volume anteriormente anônimo foi identificado sem ambiguidade:
+
+```text
+firecrawl-nuq-postgres-1
+  /var/lib/docker/volumes/firecrawl_nuq-postgres-data/_data
+  -> /var/lib/postgresql/data
+
+firecrawl-redis-1
+  /var/lib/docker/volumes/firecrawl_redis-data/_data
+  -> /data
+
+firecrawl-rabbitmq-1
+  /var/lib/docker/volumes/ada1e8aec9043050844168d92f6f2d63b4ebfac26a20aacd4dfe45e48fa454fe/_data
+  -> /var/lib/rabbitmq
+```
+
+Portanto, embora o `docker-compose.yml` não declare um volume nomeado para RabbitMQ, a imagem criou/usa armazenamento Docker persistente em `/var/lib/rabbitmq`. Isso muda a classificação do componente: o conteúdo continua sendo operacional/in-flight, mas a implantação K3s deve preservar seu filesystem entre reinícios de Pod. O scaffold agora possui PVC `rabbitmq-data` dedicado.
 
 Nenhum dado ou environment secret foi alterado ou impresso pela auditoria.
 
@@ -82,9 +110,11 @@ A documentação atual do Firecrawl confirma que o NuQ/PostgreSQL é a fonte de 
 
 ### RabbitMQ
 
-O Compose atual não declara volume persistente para RabbitMQ. Portanto, o objetivo da migração não é preservar seu filesystem atual; o ponto importante é drenar/evitar jobs em trânsito durante o cutover.
+A auditoria mostrou que RabbitMQ **possui estado persistido no Docker atual**, apesar de o Compose não declarar um volume explicitamente. O volume anônimo está montado em `/var/lib/rabbitmq`.
 
-A documentação recente do Firecrawl também descreve RabbitMQ como transporte de notificação para o backend NuQ, enquanto o estado autoritativo permanece no PostgreSQL. Mesmo assim, a decisão operacional para o nosso ambiente continua sendo evitar cutover com jobs em trânsito.
+Isso não muda a interpretação de negócio: RabbitMQ continua sendo transporte operacional e jobs em trânsito devem ser drenados/evitados no cutover. Porém, para equivalência operacional e para não perder fila/configuração em uma simples recriação de Pod, o scaffold K3s agora usa PVC `rabbitmq-data` de 2 GiB e `strategy: Recreate`.
+
+Não vamos copiar o diretório físico do volume Docker para o PVC Kubernetes. Antes do cutover será decidido se a fila deve ser drenada e recriada vazia ou se algum procedimento de migração/export é necessário.
 
 ## Arquitetura Kubernetes proposta
 
@@ -100,7 +130,7 @@ Traefik Ingress       <- somente após validação/autenticação
 firecrawl-api Service
         |
         +--> Redis Service + PVC
-        +--> RabbitMQ Service
+        +--> RabbitMQ Service + PVC
         +--> PostgreSQL Service + PVC
         +--> Playwright Service
 ```
@@ -130,14 +160,14 @@ O scaffold contém:
 - ConfigMap apenas com configuração não sensível;
 - PVC PostgreSQL de 10 GiB em `local-path`;
 - PVC Redis de 2 GiB em `local-path`;
+- PVC RabbitMQ de 2 GiB em `local-path`;
 - Services `ClusterIP` para API, PostgreSQL, Redis, RabbitMQ e Playwright;
 - Deployments de cada componente;
 - probes conservadoras usando `pg_isready`, `redis-cli`, `rabbitmq-diagnostics` e TCP para API/Playwright enquanto não definimos um health endpoint HTTP estável;
 - `strategy: Recreate` nos componentes que usam PVC local;
 - requests conservadores e limites de memória; hard CPU limits foram evitados inicialmente para não introduzir throttling artificial sem evidência;
+- imagens pinadas pelos digests exatamente observados no Docker atual;
 - nenhum Ingress na base.
-
-O scaffold ainda usa as mesmas referências flutuantes observadas no Compose (`latest`, tag implícita e `alpine`). Isso é aceitável apenas para o primeiro dry-run. **Antes do cutover, API, Playwright e NuQ PostgreSQL devem ser pinados de forma compatível por release/tag ou digest.**
 
 ## Validação do scaffold
 
@@ -170,11 +200,11 @@ Não faremos cutover direto do Docker Compose para Kubernetes.
 Sequência prevista:
 
 1. executar auditoria read-only do stack Docker atual; **concluído**;
-2. confirmar imagens efetivas, volumes, limites, portas e consumo; **parcialmente concluído** — ainda falta digest e associação do volume anônimo;
+2. confirmar imagens efetivas, volumes, limites, portas e consumo; **quase concluído** — identidade imutável e mounts já confirmados, falta medir uso dos volumes;
 3. identificar health endpoint da API e dependências de startup;
 4. validar sintaxe/renderização do scaffold Kubernetes sem aplicar recursos;
 5. criar Secret SOPS real a partir do `.env`, sem expor valores;
-6. pin das imagens Firecrawl compatíveis;
+6. pin das imagens Firecrawl compatíveis; **concluído para o staging inicial usando os digests em execução**;
 7. iniciar stack Kubernetes com dados descartáveis primeiro;
 8. validar comunicação interna e health checks;
 9. definir autenticação e só então publicar hostname temporário via Traefik/Cloudflare wildcard;
@@ -212,10 +242,10 @@ bash scripts/firecrawl-migration-audit.sh
 Ele é read-only e coleta somente metadados não secretos:
 
 - containers do projeto Compose `firecrawl`;
-- imagens efetivas;
+- imagens efetivas e identidade imutável (`image_id` / `repo_digest`);
 - estado e portas;
 - CPU/memória/restart policy;
-- named volumes e mountpoints;
+- volumes, mountpoints e destination dentro de cada container;
 - redes;
 - portas publicadas no host.
 
@@ -226,12 +256,13 @@ Ele não imprime environment variables nem altera Docker/Kubernetes.
 Antes de criar uma instância de staging real precisamos confirmar:
 
 - o `kubectl kustomize` e dry-run do scaffold passam;
-- imagens/digests compatíveis são escolhidos para API, Playwright e NuQ PostgreSQL;
+- digests das imagens de staging estão pinados; **concluído**;
 - Secret SOPS real existe sem plaintext no Git;
 - endpoint/semântica de health da API são conhecidos ou a probe TCP inicial foi explicitamente aceita;
 - tamanho/uso atual dos volumes cabe nos PVCs propostos;
-- volume Docker anônimo é associado ao container/destination correto;
+- volume Docker anônimo é associado ao container/destination correto; **concluído: RabbitMQ -> `/var/lib/rabbitmq`**;
 - política para Redis durante migração é decidida;
+- política de fila RabbitMQ no cutover é decidida;
 - procedimento de dump/restore do `nuq-postgres` é ensaiado.
 
 ## Decisões atuais
@@ -240,7 +271,8 @@ Antes de criar uma instância de staging real precisamos confirmar:
 - não mover volumes físicos às cegas;
 - PostgreSQL é estado crítico e terá migração explícita por backup/restore;
 - Redis precisa ser classificado antes do cutover;
-- RabbitMQ será tratado como estado operacional/in-flight, não como armazenamento durável no desenho atual;
+- RabbitMQ possui persistência operacional no runtime atual e terá PVC no K3s, mas não será tratado como fonte autoritativa de negócio;
+- staging usa exatamente os digests observados no Docker atual;
 - secrets serão SOPS + age;
 - Cloudflare Tunnel permanece no host neste passo;
 - nenhum Ingress público será aplicado antes de uma decisão explícita de autenticação/acesso;
