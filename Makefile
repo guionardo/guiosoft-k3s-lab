@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: help discovery ansible-deps preflight bootstrap tools k3s storage storage-test storage-test-status storage-test-recreate storage-test-delete backup-create backup-list backup-verify backup-install backup-status backup-run backup-prune restic-test restic-r2-secret restic-r2-install restic-r2-test restic-r2-sync restic-r2-status restic-r2-check firewall-audit cluster-status lab-deploy lab-status lab-test lab-delete secrets-test secret-edit secret-view secret-validate secret-apply tf-cloudflare-discovery tf-cloudflare-init tf-cloudflare-fmt tf-cloudflare-validate tf-cloudflare-import tf-cloudflare-plan tf-r2-init tf-r2-fmt tf-r2-validate tf-r2-plan tf-r2-apply
+.PHONY: help discovery ansible-deps preflight bootstrap tools k3s storage storage-test storage-test-status storage-test-recreate storage-test-delete backup-create backup-list backup-verify backup-install backup-status backup-run backup-prune backup-inventory restic-test restic-r2-secret restic-r2-install restic-r2-test restic-r2-sync restic-r2-status restic-r2-check firewall-audit cluster-status lab-deploy lab-status lab-test lab-delete secrets-test secret-edit secret-view secret-validate secret-apply tf-cloudflare-discovery tf-cloudflare-init tf-cloudflare-fmt tf-cloudflare-validate tf-cloudflare-import tf-cloudflare-plan tf-r2-init tf-r2-fmt tf-r2-validate tf-r2-plan tf-r2-apply
 
 help:
 	@echo "guiosoft-k3s-lab"
@@ -22,8 +22,9 @@ help:
 	@echo "  make backup-verify         Reidrata e valida o backup mais recente sem tocar no K3s ativo"
 	@echo "  make backup-install        Instala timer systemd, retenção local e sync R2 via Ansible"
 	@echo "  make backup-status         Mostra timer e últimas execuções do backup"
-	@echo "  make backup-run            Dispara agora o mesmo serviço usado pelo timer"
+	@echo "  make backup-run            Executa a cadeia completa e mostra evidência local/remota"
 	@echo "  make backup-prune          Executa manualmente a retenção local configurada"
+	@echo "  make backup-inventory      Inventaria PVCs/PVs e caminhos persistentes sem alterar dados"
 	@echo "  make restic-test           Valida backup/restore restic em repositório temporário local"
 	@echo "  make restic-r2-secret      Cria/atualiza credenciais R2 cifradas com SOPS"
 	@echo "  make restic-r2-install     Instala credenciais R2 runtime em /etc/k3s-backup"
@@ -126,10 +127,21 @@ backup-status:
 
 backup-run:
 	sudo systemctl start k3s-backup.service
+	@echo
+	@echo "== Backups locais =="
 	$(MAKE) backup-list
+	@echo
+	@echo "== Última execução do serviço =="
+	@sudo journalctl -u k3s-backup.service -n 40 --no-pager
+	@echo
+	@echo "== Snapshot off-host mais recente =="
+	@$(MAKE) --no-print-directory restic-r2-status
 
 backup-prune:
 	sudo K3S_BACKUP_KEEP=$${K3S_BACKUP_KEEP:-14} bash scripts/k3s-backup-prune.sh
+
+backup-inventory:
+	bash scripts/k3s-persistence-inventory.sh
 
 restic-test:
 	sudo bash scripts/restic-smoke-test.sh
