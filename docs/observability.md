@@ -33,9 +33,14 @@ Já foram validados no cluster atual:
 - Tempo e OpenTelemetry Collector em `Running`;
 - PVC Tempo de 5 GiB em `local-path`;
 - trace ponta a ponta `otel-go-demo -> Collector -> Tempo`, incluindo lookup automatizado pelo `trace_id`;
+- Loki + Grafana Alloy instalados no cluster;
+- gateway Loki acessível pela API;
+- coleta de logs do Pod `otel-go-demo` pelo Alloy;
+- ingestão `Alloy -> Loki` validada com LogQL;
+- correlação real entre log e trace usando o mesmo `trace_id`;
 - kubeconfig externo e acesso `kubectl` a partir de outra máquina da LAN.
 
-Loki e Alloy estão agora declarados no repositório, mas ainda precisam da validação runtime no host.
+A validação de logs gerou o trace `44955206ae5e874899a7147290607951` e localizou no Loki uma linha do demo contendo exatamente esse mesmo ID.
 
 ## Métricas
 
@@ -134,7 +139,7 @@ Destino interno:
 http://loki-gateway.monitoring.svc.cluster.local/loki/api/v1/push
 ```
 
-### Instalação
+### Instalação e status
 
 ```bash
 make observability-logging-install
@@ -145,28 +150,35 @@ O primeiro target instala Loki e Alloy e depois reaplica o `kube-prometheus-stac
 
 ### Validação automática
 
-O demo Go agora registra a linha:
+O demo Go registra a linha:
 
 ```text
 request completed service=otel-go-demo method=GET path=/work trace_id=<32 hex chars>
 ```
 
-Após atualizar o demo:
+O target:
 
 ```bash
-make otel-go-demo-install
 make observability-logging-test
 ```
 
-O teste:
+executa:
 
-1. abre port-forward temporário para Loki e para o demo;
-2. chama `/work`;
-3. captura o `trace_id` retornado;
-4. consulta Loki com LogQL pelo mesmo `trace_id`;
-5. só passa quando encontra uma linha de log correspondente.
+1. port-forward temporário para Loki e para o demo;
+2. chamada `/work`;
+3. captura do `trace_id` retornado;
+4. consulta LogQL ao Loki pelo mesmo `trace_id`;
+5. sucesso apenas quando existe uma linha de log correspondente.
 
-Isso comprova:
+Esse fluxo foi validado no cluster atual:
+
+```text
+Trace generated for log correlation: 44955206ae5e874899a7147290607951
+Loki log lookup: OK
+Trace ID found in logs: 44955206ae5e874899a7147290607951
+```
+
+Logo, temos evidência real de:
 
 ```text
 request
@@ -201,6 +213,8 @@ Loki log -> TraceID -> Tempo trace
 Tempo trace -> tracesToLogs -> Loki logs
 ```
 
+A correlação no backend está validada; falta somente validar visualmente os links no Grafana Explore.
+
 ## Acesso ao Grafana
 
 Grafana continua privado, sem Ingress:
@@ -217,16 +231,15 @@ http://127.0.0.1:3000
 
 ## Próximas etapas
 
-1. executar `make observability-logging-install`;
-2. validar Loki/Alloy em `Running` e PVC Loki `Bound`;
-3. executar `make otel-go-demo-install` para atualizar o log correlacionado;
-4. executar `make observability-logging-test`;
-5. validar visualmente logs e links TraceID no Grafana Explore;
-6. executar/revisar `make observability-validate` para os scrape targets Prometheus;
-7. revisar consumo de CPU/memória/storage e alertas ruidosos;
-8. evoluir o demo para dois serviços com propagação distribuída;
-9. adicionar exemplars/span metrics quando fizer sentido;
-10. somente depois avaliar publicação protegida do Grafana.
+1. executar/revisar `make observability-validate` para os scrape targets Prometheus;
+2. abrir Grafana e validar visualmente Loki -> TraceID -> Tempo;
+3. validar também Tempo -> tracesToLogs -> Loki;
+4. revisar dashboards padrão e alertas ruidosos/incompatíveis com K3s;
+5. revisar consumo de CPU/memória/storage da stack completa;
+6. evoluir o demo para dois serviços com propagação distribuída;
+7. adicionar exemplars/span metrics quando fizer sentido;
+8. adicionar dashboards/alertas customizados essenciais;
+9. somente depois avaliar publicação protegida do Grafana.
 
 ## Fontes
 
