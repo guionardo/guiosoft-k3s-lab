@@ -40,11 +40,11 @@ Objetivo: entender o estado atual, eliminar dependências desnecessárias e prep
 ## Fase 2 — K3s
 
 - [x] automatizar validação inicial de requisitos e conflitos de 80/443;
-- [ ] executar preflight no host já limpo;
-- [ ] executar bootstrap do Debian;
-- [ ] instalar `v1.36.4+k3s1` via Ansible;
+- [x] executar preflight no host já limpo;
+- [x] executar bootstrap do Debian;
+- [x] instalar `v1.36.4+k3s1` via Ansible;
 - [ ] configurar kubectl para uso administrativo sem `sudo k3s kubectl`;
-- [ ] validar node/CoreDNS/Traefik/local-path;
+- [ ] validar node/CoreDNS/Traefik/local-path após estabilização inicial;
 - [ ] criar namespaces base;
 - [ ] deploy de workload de teste;
 - [ ] documentar troubleshooting básico.
