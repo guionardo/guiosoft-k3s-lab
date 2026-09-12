@@ -8,3 +8,4 @@
     - role: terraform
     - role: secrets
     - role: restic
+    - role: helm
