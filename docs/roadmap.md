@@ -94,8 +94,8 @@ Para qualquer workload escolhido futuramente:
 - [x] adicionar workload automatizado para teste de PVC/persistência;
 - [x] validar persistência após recriação do Pod;
 - [x] inventariar PVC/PV atual e identificar que o único PVC é o workload descartável `lab/persistence-test`;
-- [x] identificar que o PV atual do teste foi provisionado no path legado `/var/lib/rancher/k3s/storage` e não representa dados de aplicação;
-- [ ] reprovisionar o PVC descartável e confirmar criação abaixo de `/mnt/store1/k3s/local-path`;
+- [x] identificar que o PV inicial do teste foi provisionado no path legado `/var/lib/rancher/k3s/storage` e não representa dados de aplicação;
+- [x] reprovisionar o PVC descartável e confirmar criação abaixo de `/mnt/store1/k3s/local-path`;
 - [ ] estratégia para bancos de dados;
 - [x] implementar backup local manual verificável do datastore SQLite + server token;
 - [x] validar criação do backup no host;
@@ -144,11 +144,15 @@ Para qualquer workload escolhido futuramente:
 
 Objetivo: reconstruir um servidor a partir de Debian limpo + Git + backups.
 
-- [ ] documentar pré-requisitos externos;
-- [ ] automatizar bootstrap;
-- [ ] restaurar K3s;
+- [x] documentar pré-requisitos externos e sequência de rehearsal em `docs/disaster-recovery.md`;
+- [x] adicionar readiness check somente leitura para Git, SOPS/age, Restic/R2 e backup local;
+- [ ] validar `make dr-readiness` no host atual;
+- [ ] garantir cópia off-host independente da identidade privada age;
+- [ ] automatizar bootstrap do ambiente de DR;
+- [ ] implementar restore destrutivo somente para alvo explicitamente marcado como DR;
+- [ ] restaurar K3s em ambiente separado;
 - [ ] restaurar infraestrutura Kubernetes;
-- [ ] restaurar dados;
+- [ ] restaurar dados de aplicações quando existirem;
 - [ ] executar teste completo de reconstrução;
 - [ ] registrar RTO/RPO observados.
 
