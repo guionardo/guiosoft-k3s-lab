@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: help discovery ansible-deps preflight bootstrap tools k3s storage storage-test storage-test-status storage-test-recreate storage-test-delete firewall-audit cluster-status lab-deploy lab-status lab-test lab-delete secrets-test tf-cloudflare-discovery tf-cloudflare-init tf-cloudflare-fmt tf-cloudflare-validate tf-cloudflare-import tf-cloudflare-plan
+.PHONY: help discovery ansible-deps preflight bootstrap tools k3s storage storage-test storage-test-status storage-test-recreate storage-test-delete firewall-audit cluster-status lab-deploy lab-status lab-test lab-delete secrets-test secret-edit secret-view secret-validate secret-apply tf-cloudflare-discovery tf-cloudflare-init tf-cloudflare-fmt tf-cloudflare-validate tf-cloudflare-import tf-cloudflare-plan
 
 help:
 	@echo "guiosoft-k3s-lab"
@@ -24,6 +24,10 @@ help:
 	@echo "  make lab-test              Testa o Ingress localmente via Traefik"
 	@echo "  make lab-delete            Remove o workload de teste"
 	@echo "  make secrets-test          Valida round-trip SOPS + age sem persistir segredo"
+	@echo "  make secret-edit FILE=...  Cria/edita Secret Kubernetes cifrado com SOPS"
+	@echo "  make secret-view FILE=...  Mostra Secret descriptografado sem gravar plaintext"
+	@echo "  make secret-validate FILE=... Valida manifest cifrado via kubectl dry-run"
+	@echo "  make secret-apply FILE=... Aplica manifest cifrado sem gravar plaintext"
 	@echo "  make tf-cloudflare-discovery Descobre IDs existentes sem imprimir tokens"
 	@echo "  make tf-cloudflare-init    Inicializa provider Terraform da Cloudflare"
 	@echo "  make tf-cloudflare-fmt     Valida formatação Terraform"
@@ -117,6 +121,22 @@ secrets-test:
 	sops --decrypt "$$ENC" > "$$DEC"; \
 	diff -u "$$PLAIN" "$$DEC"; \
 	echo "SOPS + age round-trip OK"
+
+secret-edit:
+	@test -n "$(FILE)" || (echo "Use: make secret-edit FILE=kubernetes/secrets/name.sops.yaml" >&2; exit 2)
+	bash scripts/sops-k8s-secret.sh edit "$(FILE)"
+
+secret-view:
+	@test -n "$(FILE)" || (echo "Use: make secret-view FILE=kubernetes/secrets/name.sops.yaml" >&2; exit 2)
+	bash scripts/sops-k8s-secret.sh view "$(FILE)"
+
+secret-validate:
+	@test -n "$(FILE)" || (echo "Use: make secret-validate FILE=kubernetes/secrets/name.sops.yaml" >&2; exit 2)
+	bash scripts/sops-k8s-secret.sh validate "$(FILE)"
+
+secret-apply:
+	@test -n "$(FILE)" || (echo "Use: make secret-apply FILE=kubernetes/secrets/name.sops.yaml" >&2; exit 2)
+	bash scripts/sops-k8s-secret.sh apply "$(FILE)"
 
 tf-cloudflare-discovery:
 	bash scripts/cloudflare-discovery.sh
