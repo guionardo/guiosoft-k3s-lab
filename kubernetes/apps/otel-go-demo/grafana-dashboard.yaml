@@ -1,0 +1,139 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: otel-go-demo-grafana-dashboard
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  otel-go-demo.json: |
+    {
+      "annotations": {
+        "list": []
+      },
+      "editable": true,
+      "graphTooltip": 1,
+      "panels": [
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "fieldConfig": {"defaults": {"unit": "reqps"}, "overrides": []},
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+          "id": 1,
+          "options": {"legend": {"displayMode": "list", "placement": "bottom", "showLegend": true}},
+          "targets": [
+            {
+              "expr": "sum by (service) (rate(otel_demo_http_requests_total[2m]))",
+              "legendFormat": "{{service}}",
+              "refId": "A"
+            }
+          ],
+          "title": "Request rate",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []},
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+          "id": 2,
+          "options": {"legend": {"displayMode": "list", "placement": "bottom", "showLegend": true}},
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.95, sum by (le, service, path) (rate(otel_demo_http_request_duration_seconds_bucket[5m])))",
+              "legendFormat": "{{service}} {{path}}",
+              "refId": "A"
+            }
+          ],
+          "title": "HTTP latency p95",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "fieldConfig": {"defaults": {"unit": "reqps"}, "overrides": []},
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+          "id": 3,
+          "options": {"legend": {"displayMode": "table", "placement": "bottom", "showLegend": true}},
+          "targets": [
+            {
+              "expr": "sum by (service, status) (rate(otel_demo_http_requests_total[2m]))",
+              "legendFormat": "{{service}} status={{status}}",
+              "refId": "A"
+            }
+          ],
+          "title": "HTTP status rate",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "fieldConfig": {"defaults": {}, "overrides": []},
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+          "id": 4,
+          "options": {"legend": {"displayMode": "list", "placement": "bottom", "showLegend": true}},
+          "targets": [
+            {
+              "expr": "sum by (service, path) (otel_demo_requests_in_flight)",
+              "legendFormat": "{{service}} {{path}}",
+              "refId": "A"
+            }
+          ],
+          "title": "Requests in flight",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "fieldConfig": {"defaults": {"unit": "reqps"}, "overrides": []},
+          "gridPos": {"h": 8, "w": 8, "x": 0, "y": 16},
+          "id": 5,
+          "options": {"legend": {"displayMode": "list", "placement": "bottom", "showLegend": true}},
+          "targets": [
+            {
+              "expr": "sum by (status) (rate(otel_demo_downstream_requests_total[2m]))",
+              "legendFormat": "{{status}}",
+              "refId": "A"
+            }
+          ],
+          "title": "Downstream request rate",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []},
+          "gridPos": {"h": 8, "w": 8, "x": 8, "y": 16},
+          "id": 6,
+          "options": {"legend": {"displayMode": "list", "placement": "bottom", "showLegend": true}},
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.95, sum by (le, service) (rate(otel_demo_downstream_request_duration_seconds_bucket[5m])))",
+              "legendFormat": "{{service}}",
+              "refId": "A"
+            }
+          ],
+          "title": "Downstream latency p95",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "fieldConfig": {"defaults": {"unit": "reqps"}, "overrides": []},
+          "gridPos": {"h": 8, "w": 8, "x": 16, "y": 16},
+          "id": 7,
+          "options": {"legend": {"displayMode": "list", "placement": "bottom", "showLegend": true}},
+          "targets": [
+            {
+              "expr": "sum by (service) (rate(otel_demo_downstream_errors_total[5m]))",
+              "legendFormat": "{{service}}",
+              "refId": "A"
+            }
+          ],
+          "title": "Downstream errors",
+          "type": "timeseries"
+        }
+      ],
+      "refresh": "10s",
+      "schemaVersion": 41,
+      "tags": ["homelab", "otel", "prometheus", "go"],
+      "templating": {"list": []},
+      "time": {"from": "now-30m", "to": "now"},
+      "timezone": "browser",
+      "title": "OTel Go Demo - Application Metrics",
+      "uid": "otel-go-demo-metrics",
+      "version": 1
+    }
