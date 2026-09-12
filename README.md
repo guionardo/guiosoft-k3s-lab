@@ -59,7 +59,9 @@ A fundação de observabilidade está operacional. O `kube-prometheus-stack`, Te
 
 O demo OpenTelemetry também foi validado em modo distribuído: `otel-go-demo` propaga W3C `traceparent` para `otel-go-downstream`, e o teste confirma os dois `service.name` dentro do mesmo trace no Tempo. A navegação visual Loki -> Tempo e Tempo -> Loki também foi validada no Grafana.
 
-O mesmo demo agora expõe métricas Prometheus customizadas de requests, latência, requests em andamento, chamadas downstream e erros. Um `ServiceMonitor` seleciona os dois Services do namespace `lab`, e o target `make otel-go-demo-metrics-test` gera tráfego e confirma a ingestão dessas métricas pela API do Prometheus.
+O mesmo demo expõe métricas Prometheus customizadas de requests, latência, requests em andamento, chamadas downstream e erros. Um `ServiceMonitor` seleciona os dois Services do namespace `lab`, e as séries `otel_demo_*` já foram identificadas no Prometheus em runtime.
+
+Foi adicionada uma camada didática sobre essas métricas: dashboard Grafana declarativo `OTel Go Demo - Application Metrics` e um `PrometheusRule` com alertas para taxa de erro HTTP, p95 elevado e erros downstream. O mesmo `make otel-go-demo-metrics-test` passa a validar também se essas regras foram carregadas pelo Prometheus e se a definição do dashboard está presente.
 
 ## Divisão de responsabilidades
 
@@ -187,7 +189,7 @@ make otel-go-demo-install
 make otel-go-demo-test
 ```
 
-As métricas de aplicação ficam em `/metrics` e são coletadas por `ServiceMonitor`. Para validar o caminho aplicação -> Prometheus:
+As métricas de aplicação ficam em `/metrics` e são coletadas por `ServiceMonitor`. Para validar o caminho aplicação -> Prometheus e os artefatos de dashboard/alerta:
 
 ```bash
 make otel-go-demo-metrics-test
@@ -209,6 +211,8 @@ Exemplo de PromQL:
 ```promql
 rate(otel_demo_http_requests_total[5m])
 ```
+
+O dashboard customizado usa essas séries para request rate, status, in-flight e latências p95. As regras iniciais de alerta cobrem taxa de erro 5xx, p95 de `/work` acima de 500 ms e erros downstream contínuos.
 
 Grafana continua sem Ingress nesta fase. Para acesso local:
 
@@ -281,8 +285,10 @@ A evolução atual foi baseada em:
 - validação real de 13/13 targets Prometheus `up` e health dos datasources Prometheus/Tempo/Loki;
 - validação real de tracing distribuído `otel-go-demo -> otel-go-downstream` com W3C Trace Context;
 - validação real de logs `otel-go-demo -> Alloy -> Loki`, correlação pelo mesmo `trace_id` e navegação visual no Grafana;
+- validação real das métricas customizadas `otel_demo_*` no Prometheus;
 - Prometheus Go client `v1.24.1` para métricas customizadas;
-- documentação oficial do Prometheus Operator sobre `ServiceMonitor`;
+- documentação oficial do Prometheus Operator sobre `ServiceMonitor` e `PrometheusRule`;
+- documentação oficial do Grafana sobre dashboards;
 - documentação oficial do OpenTelemetry sobre propagação de contexto e W3C Trace Context;
 - documentação oficial do K3s para cluster access, storage, datastore e backup/restore;
 - documentação oficial do Kubernetes sobre kubeconfig e `kubectl`;
@@ -293,6 +299,8 @@ Referências relevantes:
 
 - https://github.com/prometheus/client_golang/releases
 - https://prometheus-operator.dev/docs/developer/getting-started/
+- https://prometheus-operator.dev/docs/getting-started/design/
+- https://grafana.com/docs/grafana/latest/dashboards/build-dashboards/
 - https://opentelemetry.io/docs/concepts/context-propagation/
 - https://www.w3.org/TR/trace-context/
 - https://grafana.com/docs/grafana/latest/administration/provisioning/#data-sources
