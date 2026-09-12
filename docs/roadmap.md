@@ -44,7 +44,7 @@ Objetivo: entender o estado atual, eliminar dependências desnecessárias e prep
 - [x] executar bootstrap do Debian;
 - [x] instalar `v1.36.4+k3s1` via Ansible;
 - [x] automatizar configuração de `kubectl` e kubeconfig para o usuário administrativo local;
-- [ ] validar `kubectl` sem `sudo` no host;
+- [x] validar `kubectl` sem `sudo` no host;
 - [x] validar node/CoreDNS/Traefik/local-path após estabilização inicial;
 - [x] criar namespace `lab`;
 - [x] deploy de workload de teste;
