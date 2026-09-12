@@ -1,20 +1,28 @@
 # Roadmap
 
-## Fase 0 — Discovery
+## Fase 0 — Discovery e limpeza pré-K3s
 
-Objetivo: entender completamente o estado atual antes de modificar o servidor.
+Objetivo: entender o estado atual, eliminar dependências desnecessárias e preparar o host sem afetar workloads que permanecerão.
 
 - [x] criar script de discovery read-only;
-- [ ] executar discovery no Debian 13;
-- [ ] analisar hardware, discos, mounts e capacidade;
-- [ ] mapear portas e processos;
-- [ ] mapear serviços systemd;
-- [ ] mapear Docker/Podman/containerd;
-- [ ] mapear bancos e dados persistentes;
-- [ ] mapear proxies web;
-- [ ] mapear Cloudflare Tunnel atual;
-- [ ] mapear firewall;
-- [ ] produzir matriz de migração dos serviços.
+- [x] executar discovery no Debian 13;
+- [x] analisar hardware, discos, mounts e capacidade;
+- [x] mapear portas e processos;
+- [x] mapear serviços systemd;
+- [x] mapear Docker/containerd;
+- [x] mapear Cloudflare Tunnel atual;
+- [x] identificar serviços relevantes para preservação;
+- [x] excluir `escoteirando-suite` do escopo de migração;
+- [x] excluir `gitea` do escopo de migração;
+- [ ] confirmar situação do OpenShip;
+- [ ] confirmar que nenhum acesso administrativo depende do Tailscale;
+- [ ] remover Tailscale e validar DNS/rede do host;
+- [ ] remover do Cloudflare `traefik.guiosoft.info`;
+- [ ] remover do Cloudflare `git.guiosoft.info`;
+- [ ] remover do Cloudflare `git-ssh.guiosoft.info`;
+- [ ] preservar configuração do OpenShip até decisão explícita;
+- [ ] validar firewall após limpeza;
+- [ ] consolidar estado atual em documentação versionada.
 
 ## Fase 1 — Infrastructure as Code
 
@@ -40,17 +48,19 @@ Objetivo: entender completamente o estado atual antes de modificar o servidor.
 
 ## Fase 3 — Networking e Cloudflare
 
-- [ ] validar Traefik;
-- [ ] criar `cloudflared` Deployment;
-- [ ] criar secret do Tunnel de forma segura;
-- [ ] publicar hostname de teste em `guiosoft.info`;
-- [ ] validar acesso externo;
+- [ ] validar Traefik internamente;
+- [ ] manter inicialmente o `cloudflared` atual no host;
+- [ ] publicar hostname de teste dedicado, como `k3s-test.guiosoft.info`;
+- [ ] validar caminho Cloudflare -> Traefik -> Ingress -> Service -> Pod;
 - [ ] definir padrão de Ingress para aplicações;
-- [ ] colocar gradualmente DNS/Tunnel sob Terraform.
+- [ ] colocar gradualmente DNS/Tunnel sob Terraform;
+- [ ] migrar `cloudflared` para Kubernetes apenas depois do fluxo estar validado.
 
-## Fase 4 — Migração
+## Fase 4 — Workloads
 
-Para cada serviço:
+Não existe mais obrigação de migrar os stacks `escoteirando-suite` ou `gitea`.
+
+Para qualquer workload escolhido futuramente:
 
 1. identificar runtime e dependências;
 2. identificar dados persistentes;
@@ -60,7 +70,7 @@ Para cada serviço:
 6. mudar rota Cloudflare;
 7. observar;
 8. manter rollback simples;
-9. somente depois remover instalação antiga.
+9. somente depois remover instalação antiga, se aplicável.
 
 ## Fase 5 — Storage e backup
 
