@@ -130,9 +130,11 @@ Para qualquer workload escolhido futuramente:
 - [x] adicionar namespace `monitoring` e values conservadores para o homelab;
 - [x] adicionar instalação Helm idempotente via `make observability-install`;
 - [x] manter Grafana sem Ingress na primeira etapa;
-- [ ] executar `make tools` e validar Helm no host;
-- [ ] instalar a stack de observabilidade no cluster;
-- [ ] validar métricas do cluster e targets Prometheus;
+- [x] executar `make tools` e validar Helm indiretamente pela instalação/upgrade bem-sucedida do chart;
+- [x] instalar a stack de observabilidade no cluster (`kube-prometheus-stack` 89.2.0);
+- [x] validar Pods de Prometheus, Alertmanager, Grafana, Operator, kube-state-metrics e node-exporter em `Running`;
+- [x] validar PVCs Bound para Prometheus (10 GiB) e Grafana (2 GiB) em `local-path`;
+- [ ] validar métricas do cluster e targets Prometheus com `make observability-validate`;
 - [ ] validar Grafana e dashboards padrão;
 - [ ] revisar consumo de CPU, memória e storage após estabilização;
 - [ ] revisar alertas incompatíveis/ruidosos no K3s;
