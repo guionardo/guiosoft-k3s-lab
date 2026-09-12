@@ -1,0 +1,90 @@
+# Homelab-oriented values for a single-node K3s cluster.
+# Keep the first iteration private: Grafana has no Ingress and is accessed via port-forward.
+
+crds:
+  enabled: true
+  upgradeJob:
+    enabled: true
+
+# K3s currently uses SQLite rather than etcd and does not expose these control-plane
+# components as standalone scrape targets in the same way as kubeadm clusters.
+kubeEtcd:
+  enabled: false
+kubeControllerManager:
+  enabled: false
+kubeScheduler:
+  enabled: false
+
+alertmanager:
+  enabled: true
+  alertmanagerSpec:
+    replicas: 1
+    retention: 120h
+    resources:
+      requests:
+        cpu: 20m
+        memory: 64Mi
+      limits:
+        cpu: 200m
+        memory: 256Mi
+
+prometheus:
+  prometheusSpec:
+    replicas: 1
+    retention: 7d
+    retentionSize: 6GB
+    resources:
+      requests:
+        cpu: 150m
+        memory: 512Mi
+      limits:
+        cpu: 1000m
+        memory: 2Gi
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: local-path
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: 10Gi
+
+grafana:
+  enabled: true
+  ingress:
+    enabled: false
+  persistence:
+    enabled: true
+    type: sts
+    storageClassName: local-path
+    accessModes:
+      - ReadWriteOnce
+    size: 2Gi
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  defaultDashboardsEnabled: true
+  defaultDashboardsTimezone: browser
+
+prometheus-node-exporter:
+  resources:
+    requests:
+      cpu: 20m
+      memory: 32Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+kube-state-metrics:
+  resources:
+    requests:
+      cpu: 20m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
