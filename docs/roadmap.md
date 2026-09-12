@@ -103,9 +103,14 @@ Para qualquer workload escolhido futuramente:
 - [x] validar timer, execução agendada e retenção no host;
 - [x] adicionar restic ao tooling Ansible para preparar backup off-host;
 - [ ] validar round-trip local do restic;
-- [ ] escolher/configurar destino restic realmente off-host;
+- [x] escolher Cloudflare R2 como destino off-host via API S3-compatible;
+- [x] criar stack Terraform separada para o bucket R2 com `prevent_destroy`;
+- [ ] criar bucket R2 e validar acesso;
+- [ ] criar credencial R2 Object Read & Write restrita ao bucket;
+- [ ] armazenar credenciais R2 + senha Restic com SOPS + age;
+- [ ] inicializar repositório Restic no R2;
 - [ ] automatizar cópia off-host e retenção remota;
-- [ ] validar restore a partir do destino off-host;
+- [ ] validar restore a partir do R2;
 - [ ] executar restore completo do K3s a partir de backup em ambiente de disaster recovery;
 - [ ] testes periódicos de restore.
 
