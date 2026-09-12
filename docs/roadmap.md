@@ -37,8 +37,8 @@ Objetivo: entender o estado atual, eliminar dependências desnecessárias e prep
 - [x] playbook `storage.yml`;
 - [x] audit read-only pós-K3s de firewall e serviços preservados;
 - [x] scaffold Terraform Cloudflare com provider v5 e proteção contra destroy;
-- [ ] importar Tunnel existente, configuração remota e wildcard DNS para o state;
-- [ ] validar `terraform plan` sem mudanças inesperadas;
+- [x] importar Tunnel existente, configuração remota e wildcard DNS para o state;
+- [x] validar `terraform plan` sem mudanças inesperadas (`No changes`);
 - [ ] estratégia SOPS + age;
 - [x] Makefile para operações comuns.
 
@@ -66,7 +66,7 @@ Objetivo: entender o estado atual, eliminar dependências desnecessárias e prep
 - [x] validar caminho Cloudflare -> Tunnel -> Traefik -> Ingress -> Service -> Pod com HTTP 200;
 - [x] definir padrão de Ingress para aplicações;
 - [x] definir e validar comportamento para hostnames sem Ingress conhecido (HTTP 404);
-- [ ] colocar gradualmente DNS/Tunnel sob Terraform — scaffold concluído, imports pendentes;
+- [x] colocar Tunnel, configuração remota e wildcard DNS existentes sob Terraform, com import e `plan` sem drift;
 - [ ] migrar `cloudflared` para Kubernetes apenas depois do fluxo estar validado.
 
 ## Fase 4 — Workloads
