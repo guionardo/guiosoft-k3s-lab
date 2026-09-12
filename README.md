@@ -38,7 +38,7 @@ O cluster single-node K3s está operacional. Traefik, CoreDNS, metrics-server e 
 
 Hostnames desconhecidos sob o wildcard `*.guiosoft.info` chegam ao Traefik, mas recebem HTTP 404 quando não existe um Ingress explícito.
 
-O layout persistente em `/srv/k3s` foi validado no host. A configuração atual direciona novos volumes `local-path` para `/mnt/store1/k3s/local-path`. O inventário read-only mais recente mostrou que o único PVC existente é o workload descartável `lab/persistence-test`; seu PV ainda aponta para o path legado `/var/lib/rancher/k3s/storage`, o que indica que foi provisionado antes da mudança do `default-local-storage-path`. Nenhum PVC real de aplicação existe atualmente.
+O layout persistente em `/srv/k3s` foi validado no host. Novos volumes `local-path` foram reprovisionados e confirmados fisicamente abaixo de `/mnt/store1/k3s/local-path`. O inventário read-only atual mostra apenas o PVC descartável `lab/persistence-test`; ainda não existe PVC real de aplicação.
 
 A infraestrutura Cloudflare está declarada em Terraform usando o provider v5. O Tunnel existente, sua configuração remota e o wildcard DNS foram importados para o state local e o `terraform plan` foi validado com `No changes`.
 
@@ -46,9 +46,9 @@ SOPS + age estão instalados via Ansible. A identidade age é criada de forma id
 
 O backup do K3s foi validado manualmente, por restore rehearsal não destrutivo e pelo mesmo serviço usado no timer systemd. O timer diário, a retenção local e a cadeia automática de envio off-host estão operacionais.
 
-A camada off-host usa Restic sobre Cloudflare R2. O bucket `guiosoft-k3s-backups` é gerenciado por uma stack Terraform separada, as credenciais runtime ficam cifradas com SOPS + age, o round-trip real Restic -> R2 -> restore já foi validado por SHA-256 e o `k3s-backup.service` foi validado executando a cadeia completa local -> Restic -> R2 com `restic check` remoto.
+A camada off-host usa Restic sobre Cloudflare R2. O bucket `guiosoft-k3s-backups` é gerenciado por uma stack Terraform separada, as credenciais runtime ficam cifradas com SOPS + age, o round-trip real Restic -> R2 -> restore foi validado por SHA-256 e o `k3s-backup.service` foi validado executando a cadeia completa local -> Restic -> R2 com `restic check` remoto.
 
-A próxima frente é o backup de dados de aplicações. Como ainda não existem PVCs reais de aplicação, a estratégia será aplicada quando workloads stateful forem introduzidos: bancos de dados usarão mecanismos nativos da engine e PVCs file-oriented terão política própria de filesystem/snapshot/export.
+A próxima frente ativa é Disaster Recovery. O plano de reconstrução em ambiente separado está documentado em `docs/disaster-recovery.md`, e existe um readiness check somente leitura para confirmar que Git, SOPS/age, Restic/R2 e os backups necessários estão acessíveis antes de qualquer restore destrutivo.
 
 ## Divisão de responsabilidades
 
@@ -104,7 +104,7 @@ make storage
 make k3s
 make storage-test
 make storage-test-recreate
-make storage-test-reprovision
+make storage-test-placement
 make cluster-status
 make firewall-audit
 make secrets-test
@@ -120,6 +120,7 @@ make restic-r2-test
 make restic-r2-sync
 make restic-r2-status
 make restic-r2-check
+make dr-readiness
 make tf-cloudflare-plan
 make tf-r2-plan
 ```
@@ -128,7 +129,7 @@ O `Makefile` é a interface operacional preferida. Os scripts continuam sendo a 
 
 O target `make storage` é conservador: valida que os discos esperados já estão montados, cria somente diretórios e links sob `/srv/k3s`, e não formata, reparticiona, move ou remove dados existentes.
 
-O target `make k3s` garante que novos volumes locais usem `/mnt/store1/k3s/local-path`. Para validar persistência, `make storage-test` cria um PVC descartável e `make storage-test-recreate` recria apenas o Pod mantendo o mesmo volume. Quando é necessário validar a localização física de um novo PV, `make storage-test-reprovision` remove e recria **somente** o PVC descartável `lab/persistence-test`, perdendo intencionalmente apenas o marker de teste, e exige que o novo PV fique abaixo de `/mnt/store1/k3s/local-path`.
+O target `make k3s` garante que novos volumes locais usem `/mnt/store1/k3s/local-path`. Para validar persistência, `make storage-test` cria um PVC descartável e `make storage-test-recreate` recria apenas o Pod mantendo o mesmo volume. `make storage-test-placement` valida sem alterações que o PV atual está no disco esperado.
 
 Secrets declarativos podem ser cifrados com SOPS + age. A chave privada age permanece fora do Git; somente o recipient público é versionado. Credenciais de infraestrutura, como as do Restic/R2, também são mantidas somente em arquivos `.sops.yaml` cifrados.
 
@@ -150,7 +151,37 @@ Cloudflare R2
 retenção daily/weekly/monthly pelo Restic
 ```
 
-Para dados de aplicações, `make backup-inventory` é somente leitura e serve para identificar PVCs, PVs, caminhos físicos e Pods consumidores antes de definir backups. O inventário agora também destaca qualquer `local-path` provisionado fora de `/mnt/store1/k3s/local-path`, sem mover ou alterar volumes existentes.
+Para dados de aplicações, `make backup-inventory` é somente leitura e serve para identificar PVCs, PVs, caminhos físicos e Pods consumidores antes de definir backups. Como ainda não existem PVCs reais de aplicação, backups de bancos/PVCs serão implementados quando workloads stateful reais forem introduzidos.
+
+## Disaster Recovery
+
+O objetivo operacional é reconstruir o ambiente em outro host sem depender do disco raiz original:
+
+```text
+Debian limpo
+   ↓
+Git + Ansible
+   ↓
+restaurar identidade privada age
+   ↓
+SOPS recupera credenciais Restic/R2
+   ↓
+Restic recupera backup K3s do R2
+   ↓
+restaurar SQLite + server token
+   ↓
+K3s restaurado
+```
+
+Antes de qualquer rehearsal destrutivo, execute:
+
+```bash
+make dr-readiness
+```
+
+Esse target é somente leitura e verifica ferramentas, artefatos IaC, descriptografia SOPS, acesso ao R2, existência de snapshot remoto e integridade do backup local. O restore destrutivo será implementado somente para um ambiente explicitamente separado de DR.
+
+Detalhes em [`docs/disaster-recovery.md`](docs/disaster-recovery.md).
 
 ## Primeira etapa: discovery
 
@@ -179,28 +210,6 @@ O resultado será gravado em `discovery-output/` e deve ser revisado antes de se
 
 Detalhes em [`docs/roadmap.md`](docs/roadmap.md).
 
-## Princípio de disaster recovery
-
-O objetivo operacional é que, em caso de perda do disco do sistema, seja possível reinstalar Debian e reconstruir o ambiente sem depender de configuração manual lembrada de cabeça.
-
-Fluxo desejado:
-
-```text
-Debian limpo
-   ↓
-Ansible
-   ↓
-K3s
-   ↓
-bootstrap da infraestrutura do cluster
-   ↓
-GitOps
-   ↓
-aplicações
-```
-
-Dados persistentes como bancos de dados, uploads e repositórios não são reconstruíveis a partir do Git e deverão ter estratégia própria de backup/restore.
-
 ## Segurança
 
 Este repositório é público. Nunca versionar:
@@ -228,12 +237,12 @@ A evolução atual foi baseada em:
 
 - discovery read-only executado no host Debian;
 - validações reais do cluster K3s, Traefik, Cloudflare Tunnel, `kubectl`, PVC/local-path, SOPS + age e backup/restore executadas no próprio servidor;
-- inventário read-only de PVC/PV executado no cluster, que identificou apenas o PVC descartável `lab/persistence-test` e seu path legado;
+- reprovisionamento controlado do PVC descartável e validação do novo path em `/mnt/store1/k3s/local-path`;
 - documentação oficial do K3s para `default-local-storage-path`, datastore SQLite e backup/restore;
 - documentação do Rancher `local-path-provisioner`;
 - documentação oficial do SOPS e age;
 - documentação oficial do systemd para timers persistentes;
-- documentação oficial do Restic para repositórios, S3-compatible backends, retenção com `forget`/`prune`, checks e restore;
+- documentação oficial do Restic para repositórios, S3-compatible backends, retenção, checks e restore;
 - documentação oficial do Cloudflare R2 para API S3-compatible e API tokens;
 - documentação oficial do Cloudflare Terraform Provider v5;
 - documentação versionada em `docs/` e nas stacks `terraform/cloudflare/` e `terraform/r2/`.
