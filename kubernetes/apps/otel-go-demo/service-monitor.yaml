@@ -1,0 +1,25 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: otel-go-demo
+  namespace: monitoring
+  labels:
+    release: kube-prometheus-stack
+spec:
+  namespaceSelector:
+    matchNames:
+      - lab
+  selector:
+    matchExpressions:
+      - key: app
+        operator: In
+        values:
+          - otel-go-demo
+          - otel-go-downstream
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 30s
+      scrapeTimeout: 10s
+  targetLabels:
+    - app
