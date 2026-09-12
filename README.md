@@ -38,7 +38,9 @@ O cluster single-node K3s está operacional. Traefik, CoreDNS, metrics-server e 
 
 Hostnames desconhecidos sob o wildcard `*.guiosoft.info` chegam ao Traefik, mas recebem HTTP 404 quando não existe um Ingress explícito.
 
-O layout persistente em `/srv/k3s` foi validado no host. Novos volumes `local-path` foram reprovisionados e confirmados fisicamente abaixo de `/mnt/store1/k3s/local-path`. O inventário read-only atual mostra apenas o PVC descartável `lab/persistence-test`; ainda não existe PVC real de aplicação.
+O acesso `kubectl` a partir de outra máquina da LAN também foi validado usando `make kubeconfig-external`, que renderiza o kubeconfig administrativo com o `InternalIP` do servidor em vez de loopback. A API continua destinada somente à rede administrativa.
+
+O layout persistente em `/srv/k3s` foi validado no host. Novos volumes `local-path` foram reprovisionados e confirmados fisicamente abaixo de `/mnt/store1/k3s/local-path`.
 
 A infraestrutura Cloudflare está declarada em Terraform usando o provider v5. O Tunnel existente, sua configuração remota e o wildcard DNS foram importados para o state local e o `terraform plan` foi validado com `No changes`.
 
@@ -52,9 +54,9 @@ O Disaster Recovery já possui readiness check, restore rehearsal isolado via R2
 
 A frente ativa agora é observabilidade. O `kube-prometheus-stack` está instalado e saudável com Prometheus, Alertmanager, Grafana, kube-state-metrics e node-exporter. Tempo `2.2.3` e OpenTelemetry Collector chart `0.172.1` também foram instalados e validados em `Running`, com PVC Tempo de 5 GiB em `local-path`. Grafana, Tempo e Collector permanecem sem Ingress público.
 
-O workload Go instrumentado com OpenTelemetry também foi validado ponta a ponta: uma requisição gera `trace_id`, o trace atravessa aplicação -> Collector -> Tempo e o teste automatizado consegue recuperá-lo diretamente pela API do Tempo. O próximo passo visual é abrir esse trace no Grafana Explore.
+O workload Go instrumentado com OpenTelemetry foi validado ponta a ponta: uma requisição gera `trace_id`, o trace atravessa aplicação -> Collector -> Tempo e o teste automatizado consegue recuperá-lo diretamente pela API do Tempo.
 
-Também existe um target para gerar um kubeconfig administrativo destinado a outra máquina da LAN. Ele preserva as credenciais e troca apenas o endpoint da API para o `InternalIP` do servidor, evitando `127.0.0.1`/`localhost`.
+A fundação de logs agora também está versionada. O plano usa Loki community chart `18.5.0` em modo `Monolithic`, filesystem/TSDB com PVC `local-path` de 5 GiB e retenção inicial de 7 dias. Grafana Alloy chart `1.12.1` coleta logs dos Pods pela Kubernetes API e envia ao Loki, evitando Promtail, que atingiu EOL em março de 2026. O demo Go passou a registrar o `trace_id` em cada requisição para permitir correlação logs -> trace no Grafana.
 
 ## Divisão de responsabilidades
 
@@ -82,24 +84,8 @@ Kubernetes / Helm / GitOps
 ├── namespaces
 ├── Prometheus / Alertmanager / Grafana
 ├── OpenTelemetry Collector / Tempo
-├── Loki
+├── Loki / Grafana Alloy
 └── aplicações
-```
-
-## Estrutura planejada
-
-```text
-.
-├── README.md
-├── Makefile
-├── docs/
-├── ansible/
-├── terraform/
-│   ├── cloudflare/
-│   └── r2/
-├── kubernetes/
-├── secrets/
-└── scripts/
 ```
 
 ## Operações principais
@@ -111,45 +97,27 @@ make tools
 make storage
 make k3s
 make kubeconfig-external
-make storage-test
-make storage-test-recreate
-make storage-test-placement
 make cluster-status
 make firewall-audit
 make secrets-test
-make backup-create
-make backup-verify
-make backup-install
-make backup-status
 make backup-run
-make backup-inventory
-make restic-r2-secret
-make restic-r2-install
-make restic-r2-test
-make restic-r2-sync
-make restic-r2-status
-make restic-r2-check
 make dr-readiness
 make dr-r2-rehearsal
 make observability-install
-make observability-status
 make observability-validate
 make observability-tracing-install
 make observability-tracing-status
+make observability-logging-install
+make observability-logging-status
+make observability-logging-test
 make observability-grafana
 make otel-go-demo-install
-make otel-go-demo-status
 make otel-go-demo-test
-make otel-go-demo-delete
 make tf-cloudflare-plan
 make tf-r2-plan
 ```
 
 O `Makefile` é a interface operacional preferida. Os scripts continuam sendo a implementação de baixo nível, mas operações normais do laboratório devem ser expostas por targets `make`.
-
-O target `make storage` é conservador: valida que os discos esperados já estão montados, cria somente diretórios e links sob `/srv/k3s`, e não formata, reparticiona, move ou remove dados existentes.
-
-O target `make k3s` garante que novos volumes locais usem `/mnt/store1/k3s/local-path`. Para validar persistência, `make storage-test` cria um PVC descartável e `make storage-test-recreate` recria apenas o Pod mantendo o mesmo volume. `make storage-test-placement` valida sem alterações que o PV atual está no disco esperado.
 
 ## Acesso remoto com kubectl
 
@@ -159,45 +127,18 @@ Para exibir um kubeconfig administrativo adequado a outra máquina da mesma LAN:
 make kubeconfig-external
 ```
 
-O target descobre o `InternalIP` do node e substitui apenas o `server:` do kubeconfig, preservando CA, certificados e chaves. Para gravar o resultado com permissões restritas:
+O target descobre o `InternalIP` do node e substitui apenas o `server:` do kubeconfig, preservando CA, certificados e chaves. O fluxo foi validado com `kubectl` executado a partir de outra máquina da LAN.
+
+Para gravar o resultado com permissões restritas:
 
 ```bash
 umask 077
 make kubeconfig-external > k3s-guiosoft.yaml
 ```
 
-É possível sobrescrever o endereço ou a porta explicitamente:
-
-```bash
-make kubeconfig-external ADDRESS=192.168.88.9
-make kubeconfig-external ADDRESS=192.168.88.9 PORT=6443
-```
-
-Esse kubeconfig contém credenciais administrativas e nunca deve ser versionado. A API Kubernetes deve continuar acessível somente pela LAN administrativa; não publicar a porta `6443` na Internet nem pelo Cloudflare Tunnel.
+Esse kubeconfig contém credenciais administrativas e nunca deve ser versionado. A porta `6443` não deve ser publicada na Internet nem pelo Cloudflare Tunnel.
 
 Detalhes em [`docs/remote-kubectl.md`](docs/remote-kubectl.md).
-
-Secrets declarativos podem ser cifrados com SOPS + age. A chave privada age permanece fora do Git; somente o recipient público é versionado. Credenciais de infraestrutura, como as do Restic/R2, também são mantidas somente em arquivos `.sops.yaml` cifrados.
-
-Para Cloudflare, o fluxo continua conservador: configurar variáveis locais, exportar tokens somente no ambiente, revisar `terraform plan` e aplicar explicitamente. DNS/Tunnel e R2 possuem stacks Terraform separadas por diferença de responsabilidade e permissões.
-
-O backup completo do control plane segue:
-
-```text
-K3s SQLite + server token
-        ↓
-backup local + SHA-256
-        ↓
-retenção local
-        ↓
-Restic cifrado
-        ↓
-Cloudflare R2
-        ↓
-retenção daily/weekly/monthly pelo Restic
-```
-
-Para dados de aplicações, `make backup-inventory` é somente leitura e serve para identificar PVCs, PVs, caminhos físicos e Pods consumidores antes de definir backups. Como ainda não existem PVCs reais de aplicação, backups de bancos/PVCs serão implementados quando workloads stateful reais forem introduzidos.
 
 ## Observabilidade
 
@@ -205,39 +146,36 @@ A arquitetura alvo cobre os três sinais principais:
 
 ```text
 Metrics -> Prometheus
-Logs    -> Loki
+Logs    -> Grafana Alloy -> Loki
 Traces  -> OpenTelemetry Collector -> Tempo
 UI      -> Grafana
 ```
 
-A base de métricas usa `kube-prometheus-stack`. O tracing usa Tempo single-binary com PVC `local-path` de 5 GiB, retenção inicial de 72h e OpenTelemetry Collector como endpoint OTLP central. O Grafana recebe um datasource Tempo declarativo.
-
-Fluxo da infraestrutura:
+O tracing já foi validado ponta a ponta com o demo Go. A próxima etapa operacional é instalar a fundação de logs:
 
 ```bash
-make tools
-make observability-install
-make observability-validate
-make observability-tracing-install
-make observability-tracing-status
+make observability-logging-install
+make observability-logging-status
 ```
 
-Fluxo do primeiro trace real:
+Depois de atualizar/reinstalar o demo para emitir logs correlacionados:
 
 ```bash
 make otel-go-demo-install
-make otel-go-demo-test
+make observability-logging-test
 ```
 
-O demo é construído localmente com Docker, importado no containerd do K3s com `k3s ctr images import` e executado com `imagePullPolicy: Never`, evitando a dependência de um registry apenas para esse workload didático. O teste usa port-forward temporário em loopback, gera uma requisição, captura o `trace_id` retornado e valida que o mesmo trace pode ser recuperado pela API do Tempo. Esse fluxo já foi validado no cluster atual.
+O teste gera uma requisição, obtém o `trace_id` e consulta o Loki até localizar uma linha de log contendo exatamente o mesmo ID. O Grafana recebe um datasource Loki com derived field `TraceID` ligado ao datasource Tempo, e o Tempo recebe configuração `tracesToLogsV2` apontando de volta ao Loki.
 
-Grafana usa PVC de 2 GiB e não recebe Ingress nesta fase. Para acesso local:
+O perfil atual de logs foi escolhido para o host single-node: Loki monolítico, filesystem local, um único PVC de 5 GiB e retenção de 168h. Esse storage é adequado ao laboratório e não é considerado armazenamento de produção ou dado crítico de negócio.
+
+Grafana continua sem Ingress nesta fase. Para acesso local:
 
 ```bash
 make observability-grafana
 ```
 
-Detalhes em [`docs/observability.md`](docs/observability.md) e [`docs/otel-go-demo.md`](docs/otel-go-demo.md).
+Detalhes em [`docs/observability.md`](docs/observability.md).
 
 ## Disaster Recovery
 
@@ -248,36 +186,9 @@ make dr-readiness
 make dr-r2-rehearsal
 ```
 
-Também existem os targets `dr-r2-export`, `dr-target-init` e `dr-restore` para o futuro teste completo. Esse teste permanece deliberadamente adiado até existir uma VM ou segundo host isolado disponível.
+O teste destrutivo completo permanece deliberadamente adiado até existir uma VM ou segundo host isolado disponível.
 
 Detalhes em [`docs/disaster-recovery.md`](docs/disaster-recovery.md).
-
-## Primeira etapa: discovery
-
-Antes de instalar K3s, o estado atual do servidor foi inventariado. O script `scripts/discovery.sh` é somente leitura e coleta informações de sistema, rede, portas, serviços, containers, storage, firewall, bancos de dados e Cloudflare Tunnel, evitando deliberadamente coletar valores de secrets.
-
-Execute no servidor:
-
-```bash
-sudo bash scripts/discovery.sh
-```
-
-O resultado será gravado em `discovery-output/` e deve ser revisado antes de ser versionado.
-
-## Roadmap resumido
-
-1. Discovery do Debian e serviços atuais
-2. Estrutura de Infrastructure as Code
-3. Instalação do K3s
-4. Networking, Traefik e Cloudflare Tunnel
-5. Migração gradual dos serviços
-6. Persistência e backups
-7. Observabilidade
-8. GitOps
-9. Disaster recovery testado
-10. Segundo nó para cenários multi-node
-
-Detalhes em [`docs/roadmap.md`](docs/roadmap.md).
 
 ## Segurança
 
@@ -304,25 +215,30 @@ Domínio principal do laboratório: `guiosoft.info`.
 
 A evolução atual foi baseada em:
 
-- discovery read-only executado no host Debian;
 - validações reais do cluster K3s, Traefik, Cloudflare Tunnel, `kubectl`, PVC/local-path, SOPS + age e backup/restore executadas no próprio servidor;
-- reprovisionamento controlado do PVC descartável e validação do novo path em `/mnt/store1/k3s/local-path`;
-- validação de `dr-readiness` e do restore isolado diretamente do R2;
+- validação real do kubeconfig remoto a partir de outra máquina da LAN;
 - validação real do `kube-prometheus-stack`, Tempo e OpenTelemetry Collector no cluster atual;
 - validação real de um trace OpenTelemetry ponta a ponta aplicação -> Collector -> Tempo;
-- documentação oficial do K3s para cluster access, `default-local-storage-path`, datastore SQLite, backup/restore e containerd integrado;
-- documentação oficial do Kubernetes sobre kubeconfig e `kubectl config`;
-- documentação do Rancher `local-path-provisioner`;
-- documentação oficial do SOPS e age;
-- documentação oficial do systemd para timers persistentes;
-- documentação oficial do Restic para repositórios, S3-compatible backends, retenção, checks e restore;
-- documentação oficial do Cloudflare R2 para API S3-compatible e API tokens;
-- documentação oficial do Cloudflare Terraform Provider v5;
-- documentação oficial do Helm para instalação e releases;
-- chart e documentação oficial do `prometheus-community/kube-prometheus-stack`;
-- documentação oficial do Grafana Tempo e sua API;
-- documentação oficial do OpenTelemetry Collector, OpenTelemetry Go e seu exporter OTLP gRPC;
-- release history oficial do Go para `1.27.1`;
-- documentação versionada em `docs/` e nas stacks `terraform/cloudflare/` e `terraform/r2/`.
+- documentação oficial do K3s para cluster access, storage, datastore e backup/restore;
+- documentação oficial do Kubernetes sobre kubeconfig e `kubectl`;
+- documentação oficial do Grafana Loki para Helm, modo Monolithic, TSDB, filesystem e retenção;
+- Artifact Hub do chart community `grafana-community/loki`;
+- documentação oficial do Grafana Alloy para Kubernetes e coleta de Pod logs;
+- documentação oficial do Grafana sobre datasource Loki e derived fields;
+- documentação oficial do Promtail registrando EOL em 2 de março de 2026;
+- documentação oficial do Grafana Tempo e OpenTelemetry Collector;
+- documentação oficial do Restic, Cloudflare R2, SOPS, age, Helm e systemd.
 
-Nenhum dado persistente existente foi movido como parte da etapa de storage e nenhum secret plaintext deve ser mantido no Git.
+Referências relevantes:
+
+- https://grafana.com/docs/loki/latest/setup/install/helm/
+- https://grafana.com/docs/loki/latest/setup/install/helm/install-monolithic/
+- https://grafana.com/docs/loki/latest/operations/storage/filesystem/
+- https://artifacthub.io/packages/helm/grafana-community/loki
+- https://grafana.com/docs/alloy/latest/set-up/install/kubernetes/
+- https://grafana.com/docs/alloy/latest/collect/logs-in-kubernetes/
+- https://artifacthub.io/packages/helm/grafana/alloy
+- https://grafana.com/docs/loki/latest/send-data/promtail/
+- https://grafana.com/docs/grafana/latest/datasources/loki/
+
+Nenhum dado persistente existente foi movido e nenhum secret plaintext deve ser mantido no Git.
