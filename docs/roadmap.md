@@ -103,7 +103,7 @@ Para cada workload futuro:
 - [x] auditar alertas padrão e eliminar o falso positivo `KubeProxyDown` para o perfil K3s;
 - [x] classificar `Watchdog` e `InfoInhibitor` como alertas esperados por desenho;
 - [x] investigar `CPUThrottlingHigh` no node-exporter, identificar throttling artificial causado por `limits.cpu: 200m`, remover apenas o CPU limit e validar ausência de throttling/alerta após estabilização;
-- [ ] revisar dashboards Grafana padrão.
+- [x] revisar dashboards Grafana padrão: 26 dashboards descobertos, todos carregáveis via API, dashboards centrais de Kubernetes/Node Exporter/demonstrativo presentes, nenhum dashboard incompatível de etcd/scheduler/controller-manager/kube-proxy e apenas AIX/MacOS classificados como não aplicáveis ao host Linux.
 
 ### Traces
 
