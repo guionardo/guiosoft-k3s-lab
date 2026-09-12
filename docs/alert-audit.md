@@ -41,7 +41,7 @@ Não deve ser removido apenas por aparecer como firing.
 
 ### KubeProxyDown — falso positivo para o perfil K3s atual
 
-Classificação: **ruído incompatível com o perfil atual / remover da configuração**.
+Classificação: **ruído incompatível com o perfil atual / removido da configuração**.
 
 O chart `kube-prometheus-stack` habilita por padrão tanto o monitoramento de kube-proxy quanto as regras associadas. Esse modelo assume que existe um target convencional de kube-proxy disponível para discovery/scrape.
 
@@ -60,24 +60,54 @@ defaultRules:
 
 A decisão é melhor do que silenciar apenas `KubeProxyDown`, porque deixa claro que este perfil não pretende monitorar esse componente por meio do mecanismo convencional do chart.
 
-Caso futuramente kube-proxy passe a ser exposto de forma suportada e útil no K3s, essa decisão pode ser revertida e um endpoint real deve ser configurado antes de reabilitar as regras.
+### Validação após o ajuste
 
-### CPUThrottlingHigh — investigar antes de alterar
-
-Classificação: **informativo / observar**.
-
-O alerta apareceu para:
+Depois de reaplicar o chart e executar novamente `make observability-validate`, o cluster continuou com:
 
 ```text
-pod=kube-prometheus-stack-prometheus-node-exporter-...
-severity=info
+Prometheus active targets: 15 total, 15 up, 0 not-up
+Prometheus query 'up': 15 series
 ```
 
-No mesmo instante, `kubectl top` mostrava uso atual do node-exporter muito baixo, enquanto o container possui um limite explícito de CPU de `200m`.
+E os alertas passaram a ser:
 
-Isso pode representar throttling episódico causado por bursts curtos e pelo limite de CPU, não necessariamente saturação real do host. Como a evidência atual não mostra degradação operacional, a decisão é **não desabilitar a regra nem remover o limite ainda**.
+```text
+InfoInhibitor       firing
+Watchdog            firing
+CPUThrottlingHigh   pending
+```
 
-Próximo passo: observar se o alerta persiste após algum tempo e, se necessário, consultar as métricas de throttling antes de decidir entre aumentar/remover o CPU limit ou manter o alerta como sinal útil.
+`KubeProxyDown` desapareceu como esperado. Isso confirma que o ajuste removeu somente o falso positivo específico do perfil K3s, sem degradar os targets existentes.
+
+### CPUThrottlingHigh — investigação direcionada
+
+Classificação atual: **informativo / investigar antes de alterar**.
+
+Após o ajuste de kube-proxy, o alerta permaneceu `pending` para o container `node-exporter`. Na mesma amostra:
+
+```text
+node CPU total: ~1130m / 18%
+node memory:    ~7265 MiB / 45%
+node-exporter:  ~7m CPU / 11 MiB
+```
+
+O container possui um limite explícito de CPU de `200m`. Uso médio baixo não exclui throttling: bursts curtos podem atingir a quota CFS mesmo quando a média de CPU observada pelo `kubectl top` é pequena.
+
+Para evitar alterar limites ou regras por suposição, foi adicionado um diagnóstico read-only:
+
+```bash
+make observability-cpu-throttling-audit
+```
+
+Ele mostra:
+
+- expressão efetiva da regra `CPUThrottlingHigh` carregada no Prometheus;
+- razão de períodos throttled nos últimos 5 minutos;
+- uso médio de CPU no mesmo período;
+- requests e limits de CPU configurados;
+- estado atual do alerta.
+
+A decisão sobre aumentar/remover o CPU limit do node-exporter só será tomada depois dessa evidência.
 
 ## Critério adotado
 
