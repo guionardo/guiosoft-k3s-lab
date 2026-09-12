@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: help discovery ansible-deps preflight bootstrap tools k3s storage storage-test storage-test-status storage-test-recreate storage-test-placement storage-test-reprovision storage-test-delete backup-create backup-list backup-verify backup-install backup-status backup-run backup-prune backup-inventory restic-test restic-r2-secret restic-r2-install restic-r2-test restic-r2-sync restic-r2-status restic-r2-check dr-readiness dr-r2-rehearsal dr-r2-export dr-target-init dr-restore observability-install observability-status observability-validate observability-tracing-install observability-tracing-status observability-grafana firewall-audit cluster-status lab-deploy lab-status lab-test lab-delete secrets-test secret-edit secret-view secret-validate secret-apply tf-cloudflare-discovery tf-cloudflare-init tf-cloudflare-fmt tf-cloudflare-validate tf-cloudflare-import tf-cloudflare-plan tf-r2-init tf-r2-fmt tf-r2-validate tf-r2-plan tf-r2-apply
+.PHONY: help discovery ansible-deps preflight bootstrap tools k3s storage storage-test storage-test-status storage-test-recreate storage-test-placement storage-test-reprovision storage-test-delete backup-create backup-list backup-verify backup-install backup-status backup-run backup-prune backup-inventory restic-test restic-r2-secret restic-r2-install restic-r2-test restic-r2-sync restic-r2-status restic-r2-check dr-readiness dr-r2-rehearsal dr-r2-export dr-target-init dr-restore observability-install observability-status observability-validate observability-tracing-install observability-tracing-status observability-grafana otel-go-demo-build otel-go-demo-deploy otel-go-demo-install otel-go-demo-status otel-go-demo-test otel-go-demo-delete firewall-audit cluster-status lab-deploy lab-status lab-test lab-delete secrets-test secret-edit secret-view secret-validate secret-apply tf-cloudflare-discovery tf-cloudflare-init tf-cloudflare-fmt tf-cloudflare-validate tf-cloudflare-import tf-cloudflare-plan tf-r2-init tf-r2-fmt tf-r2-validate tf-r2-plan tf-r2-apply
 
 help:
 	@echo "guiosoft-k3s-lab"
@@ -45,6 +45,10 @@ help:
 	@echo "  make observability-tracing-install Instala Tempo e OpenTelemetry Collector"
 	@echo "  make observability-tracing-status Mostra releases/pods/services/PVCs de tracing"
 	@echo "  make observability-grafana Mostra senha admin e abre port-forward local na porta 3000"
+	@echo "  make otel-go-demo-install  Builda, importa no K3s e publica o demo Go instrumentado"
+	@echo "  make otel-go-demo-test     Gera trace e confirma sua recuperação diretamente no Tempo"
+	@echo "  make otel-go-demo-status   Mostra Deployment, Pod e Service do demo Go"
+	@echo "  make otel-go-demo-delete   Remove o demo Go do namespace lab"
 	@echo "  make firewall-audit        Audita firewall/listeners após K3s sem alterar regras"
 	@echo "  make cluster-status        Mostra nodes, pods e services do cluster"
 	@echo "  make lab-deploy            Cria namespace e workload de teste"
@@ -251,6 +255,24 @@ observability-grafana:
 	@kubectl get secret -n monitoring kube-prometheus-stack-grafana -o jsonpath='{.data.admin-password}' | base64 -d; echo
 	@echo "Open http://127.0.0.1:3000 (Ctrl-C to stop port-forward)"
 	kubectl port-forward -n monitoring svc/kube-prometheus-stack-grafana 3000:80
+
+otel-go-demo-build:
+	bash scripts/otel-go-demo.sh build
+
+otel-go-demo-deploy:
+	bash scripts/otel-go-demo.sh deploy
+
+otel-go-demo-install:
+	bash scripts/otel-go-demo.sh install
+
+otel-go-demo-status:
+	bash scripts/otel-go-demo.sh status
+
+otel-go-demo-test:
+	bash scripts/otel-go-demo.sh test
+
+otel-go-demo-delete:
+	bash scripts/otel-go-demo.sh delete
 
 firewall-audit:
 	cd ansible && ansible-playbook -K playbooks/firewall-audit.yml
