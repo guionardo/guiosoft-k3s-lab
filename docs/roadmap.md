@@ -28,12 +28,13 @@ Objetivo: entender o estado atual, eliminar dependências desnecessárias e prep
 
 - [x] inventário Ansible;
 - [x] role `base`;
-- [ ] role `storage`;
+- [x] role `storage` não destrutivo;
 - [x] role `k3s`;
 - [ ] role `firewall` — implementar somente após classificar serviços LAN/cluster/loopback;
 - [x] playbook `preflight.yml`;
 - [x] playbook `bootstrap.yml`;
 - [x] playbook `k3s.yml`;
+- [x] playbook `storage.yml`;
 - [x] audit read-only pós-K3s de firewall e serviços preservados;
 - [ ] Terraform Cloudflare;
 - [ ] estratégia SOPS + age;
@@ -84,8 +85,11 @@ Para qualquer workload escolhido futuramente:
 
 ## Fase 5 — Storage e backup
 
-- [ ] definir layout definitivo de `/srv`;
-- [ ] PVCs/local-path;
+- [x] definir layout lógico de `/srv/k3s` e mapeamento para os discos existentes;
+- [x] automatizar criação não destrutiva do layout com Ansible;
+- [ ] validar o role `storage` no host;
+- [ ] configurar `local-path-provisioner` para o novo diretório;
+- [ ] criar e validar PVC de teste;
 - [ ] estratégia para bancos de dados;
 - [ ] backup automatizado;
 - [ ] backup externo/off-host;
