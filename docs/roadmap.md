@@ -92,8 +92,10 @@ Para qualquer workload escolhido futuramente:
 - [x] validar o role `storage` no host;
 - [x] configurar novos volumes `local-path` para `/mnt/store1/k3s/local-path`;
 - [x] adicionar workload automatizado para teste de PVC/persistência;
-- [x] validar no host criação do PVC e localização física do PV;
 - [x] validar persistência após recriação do Pod;
+- [x] inventariar PVC/PV atual e identificar que o único PVC é o workload descartável `lab/persistence-test`;
+- [x] identificar que o PV atual do teste foi provisionado no path legado `/var/lib/rancher/k3s/storage` e não representa dados de aplicação;
+- [ ] reprovisionar o PVC descartável e confirmar criação abaixo de `/mnt/store1/k3s/local-path`;
 - [ ] estratégia para bancos de dados;
 - [x] implementar backup local manual verificável do datastore SQLite + server token;
 - [x] validar criação do backup no host;
@@ -114,7 +116,8 @@ Para qualquer workload escolhido futuramente:
 - [x] validar execução completa local + R2 pelo `k3s-backup.service`;
 - [x] validar `restic check` no repositório R2;
 - [x] adicionar inventário read-only de PVC/PV para planejar backup de dados de aplicações;
-- [ ] classificar cada PVC de aplicação como stateless, file-oriented, database ou external;
+- [x] confirmar que ainda não existem PVCs de aplicação reais para classificar ou proteger;
+- [ ] classificar futuros PVCs de aplicação como stateless, file-oriented, database ou external;
 - [ ] definir e implementar backup nativo para cada banco de dados persistente;
 - [ ] definir backup de PVCs file-oriented;
 - [ ] executar restore completo do K3s a partir de backup em ambiente de disaster recovery;
