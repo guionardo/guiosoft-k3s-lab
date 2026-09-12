@@ -88,7 +88,9 @@ Para cada workload futuro:
 - [x] definir e instalar `kube-prometheus-stack` `89.2.0`;
 - [x] Prometheus, Alertmanager, Grafana, Operator, kube-state-metrics e node-exporter em `Running`;
 - [x] PVCs Prometheus 10 GiB e Grafana 2 GiB em `local-path`;
-- [ ] executar/revisar `make observability-validate` para todos os scrape targets;
+- [x] provisionar automaticamente datasources Prometheus, Tempo e Loki no Grafana;
+- [x] validar reload/provisioning dos datasources Grafana;
+- [ ] executar/revisar `make observability-validate` para todos os scrape targets e datasources;
 - [ ] revisar dashboards Grafana padrão;
 - [ ] revisar alertas ruidosos/incompatíveis com K3s.
 
