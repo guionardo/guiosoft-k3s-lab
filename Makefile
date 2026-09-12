@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: help discovery ansible-deps preflight bootstrap tools k3s storage storage-test storage-test-status storage-test-recreate storage-test-delete backup-create backup-list backup-verify backup-install backup-status backup-run backup-prune backup-inventory restic-test restic-r2-secret restic-r2-install restic-r2-test restic-r2-sync restic-r2-status restic-r2-check firewall-audit cluster-status lab-deploy lab-status lab-test lab-delete secrets-test secret-edit secret-view secret-validate secret-apply tf-cloudflare-discovery tf-cloudflare-init tf-cloudflare-fmt tf-cloudflare-validate tf-cloudflare-import tf-cloudflare-plan tf-r2-init tf-r2-fmt tf-r2-validate tf-r2-plan tf-r2-apply
+.PHONY: help discovery ansible-deps preflight bootstrap tools k3s storage storage-test storage-test-status storage-test-recreate storage-test-reprovision storage-test-delete backup-create backup-list backup-verify backup-install backup-status backup-run backup-prune backup-inventory restic-test restic-r2-secret restic-r2-install restic-r2-test restic-r2-sync restic-r2-status restic-r2-check firewall-audit cluster-status lab-deploy lab-status lab-test lab-delete secrets-test secret-edit secret-view secret-validate secret-apply tf-cloudflare-discovery tf-cloudflare-init tf-cloudflare-fmt tf-cloudflare-validate tf-cloudflare-import tf-cloudflare-plan tf-r2-init tf-r2-fmt tf-r2-validate tf-r2-plan tf-r2-apply
 
 help:
 	@echo "guiosoft-k3s-lab"
@@ -16,6 +16,7 @@ help:
 	@echo "  make storage-test          Cria PVC + Deployment para testar persistência"
 	@echo "  make storage-test-status   Mostra PVC/PV/Pod e o marker persistente"
 	@echo "  make storage-test-recreate Remove o Pod e valida persistência após recriação"
+	@echo "  make storage-test-reprovision Recria o PVC descartável e valida o path atual"
 	@echo "  make storage-test-delete   Remove workload e PVC de teste"
 	@echo "  make backup-create         Cria backup local do datastore SQLite + token do K3s"
 	@echo "  make backup-list           Lista backups locais e checksums do K3s"
@@ -102,6 +103,21 @@ storage-test-recreate:
 	  NEW_POD=$$(kubectl get pod -n lab -l app=persistence-test -o jsonpath='{.items[0].metadata.name}'); \
 	  echo "Recreated as $$NEW_POD"; \
 	  kubectl exec -n lab "$$NEW_POD" -- cat /data/marker.txt
+
+# Destructive only to the disposable lab/persistence-test PVC and its marker.
+storage-test-reprovision:
+	@echo "Reprovisioning disposable lab/persistence-test PVC; its test marker will be deleted."
+	kubectl delete -f kubernetes/storage/persistence-test.yaml --ignore-not-found --wait=true
+	kubectl apply -f kubernetes/storage/persistence-test.yaml
+	kubectl rollout status deployment/persistence-test -n lab --timeout=120s
+	@PV=$$(kubectl get pvc persistence-test -n lab -o jsonpath='{.spec.volumeName}'); \
+	  PATH_VALUE=$$(kubectl get pv "$$PV" -o jsonpath='{.spec.hostPath.path}'); \
+	  echo "Provisioned $$PV at $$PATH_VALUE"; \
+	  case "$$PATH_VALUE" in \
+	    /mnt/store1/k3s/local-path/*) echo "local-path placement OK" ;; \
+	    *) echo "ERROR: expected path below /mnt/store1/k3s/local-path" >&2; exit 1 ;; \
+	  esac
+	$(MAKE) storage-test-status
 
 storage-test-delete:
 	kubectl delete -f kubernetes/storage/persistence-test.yaml --ignore-not-found
