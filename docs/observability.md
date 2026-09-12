@@ -33,11 +33,14 @@ Já foram validados no cluster atual:
 - Tempo e OpenTelemetry Collector em `Running`;
 - PVC Tempo de 5 GiB em `local-path`;
 - trace ponta a ponta `otel-go-demo -> Collector -> Tempo`, incluindo lookup automatizado pelo `trace_id`;
+- trace distribuído real `otel-go-demo -> otel-go-downstream` com propagação W3C `traceparent` e os dois `service.name` no mesmo trace no Tempo;
 - Loki + Grafana Alloy instalados no cluster;
 - gateway Loki acessível pela API;
 - coleta de logs do Pod `otel-go-demo` pelo Alloy;
 - ingestão `Alloy -> Loki` validada com LogQL;
 - correlação real entre log e trace usando o mesmo `trace_id`;
+- provisioning e health dos datasources Prometheus, Tempo e Loki no Grafana;
+- `make observability-validate` com 13/13 targets Prometheus `up`, query `up` com 13 séries, todos os Pods de monitoring Ready e todos os PVCs Bound;
 - kubeconfig externo e acesso `kubectl` a partir de outra máquina da LAN.
 
 A validação de logs gerou o trace `44955206ae5e874899a7147290607951` e localizou no Loki uma linha do demo contendo exatamente esse mesmo ID.
@@ -50,6 +53,42 @@ make observability-validate
 ```
 
 Prometheus usa retenção de 7 dias e PVC de 10 GiB. Grafana usa PVC de 2 GiB. O perfil mantém `kubeEtcd`, `kubeControllerManager` e `kubeScheduler` desabilitados porque o K3s atual usa SQLite e não expõe esses componentes como um cluster kubeadm tradicional.
+
+A validação consolidada mais recente retornou:
+
+```text
+Prometheus active targets: 13 total, 13 up, 0 not-up
+Prometheus query 'up': 13 series
+prometheus health: OK
+tempo health: OK
+loki health: OK
+Observability validation: OK
+```
+
+## Baseline de recursos
+
+Com Prometheus, Alertmanager, Grafana, Loki, Alloy, Tempo e OpenTelemetry Collector ativos, `make observability-validate` registrou no node:
+
+```text
+CPU:    ~782m / 13%
+Memory: ~8331 MiB / 52%
+```
+
+Maiores consumidores de memória observados nessa amostra:
+
+```text
+Grafana        ~440 MiB
+Prometheus     ~337 MiB
+Loki            ~94 MiB
+Tempo           ~86 MiB
+Loki rules SC   ~79 MiB
+Grafana dashboard sidecar ~74 MiB
+Grafana datasource sidecar ~73 MiB
+Alloy           ~47 MiB
+OTel Collector  ~30 MiB
+```
+
+Essa é apenas uma amostra pontual, útil como baseline inicial. A revisão de capacidade deve ser repetida depois de alguns dias de retenção e carga normal para observar crescimento de storage, cardinalidade e uso de memória.
 
 ## Tracing
 
@@ -77,7 +116,7 @@ make otel-go-demo-test
 
 Tempo usa single-binary, PVC `local-path` de 5 GiB e retenção inicial de 72 horas. Collector usa somente pipeline de traces nessa primeira etapa.
 
-O demo Go gera um span raiz e spans internos, retorna o `trace_id` e já teve o caminho real até o Tempo validado.
+O demo Go gera um span raiz e spans internos, retorna o `trace_id` e já teve o caminho real até o Tempo validado. O demo também foi expandido para dois processos e a propagação distribuída `otel-go-demo -> otel-go-downstream` foi validada em runtime no mesmo trace.
 
 ## Logs: Loki + Grafana Alloy
 
@@ -214,7 +253,7 @@ Loki log -> TraceID -> Tempo trace
 Tempo trace -> tracesToLogs -> Loki logs
 ```
 
-Como datasources provisionados podem exigir reload/restart do Grafana após uma mudança na configuração, existem agora targets explícitos:
+Como datasources provisionados podem exigir reload/restart do Grafana após uma mudança na configuração, existem targets explícitos:
 
 ```bash
 make observability-grafana-reload
@@ -223,7 +262,7 @@ make observability-grafana-datasources
 
 `observability-grafana-reload` reinicia o StatefulSet/Deployment do Grafana e depois valida os datasources. `observability-grafana-datasources` consulta a API do Grafana via port-forward local e exige a presença dos UIDs `prometheus`, `tempo` e `loki`.
 
-A correlação no backend está validada; falta somente validar visualmente os links no Grafana Explore.
+A correlação no backend e o health dos três datasources estão validados; falta somente validar visualmente os links no Grafana Explore.
 
 ## Acesso ao Grafana
 
@@ -253,16 +292,14 @@ make observability-grafana ADDRESS=192.168.88.9 PORT=3000
 
 ## Próximas etapas
 
-1. validar/recarregar datasources Grafana, em especial Loki;
-2. executar/revisar `make observability-validate` para os scrape targets Prometheus;
-3. abrir Grafana e validar visualmente Loki -> TraceID -> Tempo;
-4. validar também Tempo -> tracesToLogs -> Loki;
-5. revisar dashboards padrão e alertas ruidosos/incompatíveis com K3s;
-6. revisar consumo de CPU/memória/storage da stack completa;
-7. evoluir o demo para dois serviços com propagação distribuída;
-8. adicionar exemplars/span metrics quando fizer sentido;
-9. adicionar dashboards/alertas customizados essenciais;
-10. somente depois avaliar publicação protegida do Grafana.
+1. abrir Grafana e validar visualmente Loki -> TraceID -> Tempo;
+2. validar também Tempo -> tracesToLogs -> Loki;
+3. revisar dashboards padrão;
+4. revisar alertas ruidosos/incompatíveis com K3s;
+5. repetir a medição de capacidade após alguns dias de retenção e uso normal;
+6. adicionar dashboards/alertas customizados essenciais;
+7. avaliar exemplars/span metrics quando fizer sentido;
+8. somente depois avaliar publicação protegida do Grafana.
 
 ## Fontes
 
