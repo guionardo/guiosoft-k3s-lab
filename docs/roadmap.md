@@ -134,11 +134,18 @@ Para qualquer workload escolhido futuramente:
 - [x] instalar a stack de observabilidade no cluster (`kube-prometheus-stack` 89.2.0);
 - [x] validar Pods de Prometheus, Alertmanager, Grafana, Operator, kube-state-metrics e node-exporter em `Running`;
 - [x] validar PVCs Bound para Prometheus (10 GiB) e Grafana (2 GiB) em `local-path`;
+- [x] definir tracing com Tempo single-binary + OpenTelemetry Collector;
+- [x] adicionar values pinados para Tempo e OpenTelemetry Collector;
+- [x] adicionar pipeline OTLP Collector -> Tempo e datasource Tempo no Grafana;
+- [x] expor instalação/status de tracing pelo Makefile;
 - [ ] validar métricas do cluster e targets Prometheus com `make observability-validate`;
 - [ ] validar Grafana e dashboards padrão;
+- [ ] instalar e validar Tempo + OpenTelemetry Collector com `make observability-tracing-install`;
+- [ ] instrumentar workload Go de laboratório e validar trace end-to-end;
 - [ ] revisar consumo de CPU, memória e storage após estabilização;
 - [ ] revisar alertas incompatíveis/ruidosos no K3s;
 - [ ] logs com Loki;
+- [ ] configurar correlação metrics -> traces -> logs;
 - [ ] dashboards adicionais de recursos/workloads;
 - [ ] alertas essenciais customizados.
 
