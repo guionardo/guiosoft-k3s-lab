@@ -12,6 +12,17 @@ k3s_node_name: guiosoft-info
 k3s_data_dir: /var/lib/rancher/k3s
 k3s_write_kubeconfig_mode: "0640"
 
+# Storage layout. Existing filesystems are reused in place; this role does not format,
+# repartition, mount, move, or delete existing data.
+storage_primary_mount: /mnt/store1
+storage_backup_mount: /mnt/store2
+storage_root: /srv/k3s
+storage_primary_root: /mnt/store1/k3s
+storage_backup_root: /mnt/store2/k3s
+storage_local_path_dir: /mnt/store1/k3s/local-path
+storage_persistent_dir: /mnt/store1/k3s/persistent
+storage_backup_dir: /mnt/store2/k3s/backups
+
 # Existing workloads/services that must not be modified by the bootstrap.
 preserve_docker: true
 preserve_cloudflared: true
