@@ -105,7 +105,7 @@ Para cada workload futuro:
 - [x] validar trace real aplicação -> Collector -> Tempo por `trace_id`;
 - [x] implementar segundo serviço Go e propagação W3C `traceparent` entre processos;
 - [x] adaptar `make otel-go-demo-test` para exigir os dois `service.name` no mesmo trace;
-- [ ] validar em runtime o trace distribuído `otel-go-demo -> otel-go-downstream`;
+- [x] validar em runtime o trace distribuído `otel-go-demo -> otel-go-downstream`;
 - [ ] validar trace visualmente no Grafana Explore.
 
 ### Logs
