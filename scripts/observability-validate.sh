@@ -4,6 +4,7 @@ set -euo pipefail
 NAMESPACE="${OBSERVABILITY_NAMESPACE:-monitoring}"
 RELEASE="${OBSERVABILITY_RELEASE:-kube-prometheus-stack}"
 PROM_SERVICE="${OBSERVABILITY_PROM_SERVICE:-kube-prometheus-stack-prometheus}"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 command -v kubectl >/dev/null || { echo "error: kubectl not found" >&2; exit 1; }
 command -v jq >/dev/null || { echo "error: jq not found" >&2; exit 1; }
@@ -60,6 +61,10 @@ fi
 printf "Prometheus query 'up': %s series\n" "$UP_SERIES"
 
 echo
+echo 'Grafana datasource validation:'
+bash "$REPO_ROOT/scripts/grafana-datasources.sh" validate
+
+echo
 kubectl get pods -n "$NAMESPACE" -o wide
 
 echo
@@ -78,4 +83,4 @@ fi
 
 echo
 echo 'Observability validation: OK'
-echo 'Prometheus has active healthy scrape targets; monitoring Pods are Ready and PVCs are Bound.'
+echo 'Prometheus targets are healthy, Grafana datasources are provisioned, monitoring Pods are Ready and PVCs are Bound.'
