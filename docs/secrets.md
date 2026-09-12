@@ -51,33 +51,62 @@ If deliberate key rotation is required, it must be an explicit maintenance opera
 
 ## Repository configuration
 
-After the initial recipient exists, add `.sops.yaml` at the repository root with a creation rule for files such as `*.sops.yaml`:
+The repository root contains `.sops.yaml` with the public age recipient used for new encrypted YAML files matching `*.sops.yaml`.
 
-```yaml
-creation_rules:
-  - path_regex: .*\.sops\.ya?ml$
-    age:
-      - age1REPLACE_WITH_PUBLIC_RECIPIENT
-```
+The recipient is public metadata. The private age identity is never stored in Git.
 
-Do not commit the placeholder. Commit `.sops.yaml` only after replacing it with the real **public** recipient.
+## Round-trip validation
 
-## Typical workflow
-
-Create or edit an encrypted secret:
+Validate local SOPS + age operation without persisting plaintext:
 
 ```bash
-sops kubernetes/secrets/example.sops.yaml
+make secrets-test
 ```
 
-Inspect decrypted content without creating a plaintext file:
+The test creates temporary plaintext, encrypts it using `.sops.yaml`, decrypts it with the local age identity, compares both contents, and removes the temporary files.
+
+## Kubernetes workflow
+
+Encrypted Kubernetes Secret manifests live under:
+
+```text
+kubernetes/secrets/*.sops.yaml
+```
+
+The Git ignore rules allow only encrypted `*.sops.yaml` files and `README.md` in that directory.
+
+Create or edit a secret directly through the SOPS editor:
 
 ```bash
-sops decrypt kubernetes/secrets/example.sops.yaml
+make secret-edit FILE=kubernetes/secrets/example.sops.yaml
 ```
+
+SOPS can create a new encrypted file from the configured creation rule, so there is no need to create a persistent plaintext precursor.
+
+Inspect decrypted content on stdout:
+
+```bash
+make secret-view FILE=kubernetes/secrets/example.sops.yaml
+```
+
+Validate the decrypted Kubernetes manifest without changing the cluster:
+
+```bash
+make secret-validate FILE=kubernetes/secrets/example.sops.yaml
+```
+
+Apply it directly to Kubernetes without writing a decrypted file:
+
+```bash
+make secret-apply FILE=kubernetes/secrets/example.sops.yaml
+```
+
+The helper refuses files outside `kubernetes/secrets/*.sops.yaml` to reduce the chance of accidentally handling unrelated plaintext as a secret.
+
+Until GitOps is implemented, `secret-apply` is the explicit bridge between encrypted Git state and the live cluster. Later, the chosen GitOps controller will own in-cluster decryption/reconciliation.
+
+## Key changes and rotation
 
 When recipients change, update encrypted files with `sops updatekeys` and rotate the data key when appropriate.
 
-## Kubernetes
-
-SOPS is initially the encryption format and source-of-truth mechanism only. We will choose the in-cluster/GitOps decryption integration when the GitOps phase is implemented. Until then, avoid committing plaintext Kubernetes Secret manifests.
+Do not retire an old private identity until all affected files have been rewrapped for the new recipient and decryption has been tested.
