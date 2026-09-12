@@ -248,10 +248,24 @@ spec:
                 configMapKeyRef:
                   name: firecrawl-config
                   key: CRAWL_CONCURRENT_REQUESTS
-          envFrom:
-            - secretRef:
-                name: firecrawl-secrets
-                optional: true
+            - name: PROXY_SERVER
+              valueFrom:
+                secretKeyRef:
+                  name: firecrawl-secrets
+                  key: PROXY_SERVER
+                  optional: true
+            - name: PROXY_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: firecrawl-secrets
+                  key: PROXY_USERNAME
+                  optional: true
+            - name: PROXY_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: firecrawl-secrets
+                  key: PROXY_PASSWORD
+                  optional: true
           ports:
             - name: http
               containerPort: 3000
