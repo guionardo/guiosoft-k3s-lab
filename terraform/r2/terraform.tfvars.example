@@ -1,0 +1,3 @@
+cloudflare_account_id = "REPLACE_WITH_ACCOUNT_ID"
+r2_bucket_name        = "guiosoft-k3s-backups"
+# r2_location         = "enam"
