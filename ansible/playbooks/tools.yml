@@ -7,3 +7,4 @@
   roles:
     - role: terraform
     - role: secrets
+    - role: restic
