@@ -18,10 +18,10 @@ if [[ ! -f "$ENV_FILE" ]]; then
   exit 1
 fi
 
+# A previous failed redirect may have left an empty file behind. Remove only
+# zero-byte output automatically; never overwrite a real encrypted secret.
 if [[ -e "$OUTPUT_FILE" ]]; then
   if [[ ! -s "$OUTPUT_FILE" ]]; then
-    # A failed command using shell redirection may leave an empty output file.
-    # Empty files contain no secret data and are safe to discard before retrying.
     rm -f "$OUTPUT_FILE"
   else
     echo "error: output already exists: $OUTPUT_FILE" >&2
@@ -94,7 +94,6 @@ if missing:
     raise SystemExit("required Firecrawl values missing: " + ", ".join(missing))
 
 def yaml_quote(value: str) -> str:
-    # JSON string syntax is valid YAML and safely preserves special characters.
     import json
     return json.dumps(value, ensure_ascii=False)
 
@@ -114,19 +113,17 @@ for key in allowed:
 out_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 PY
 
-# .sops.yaml matches files ending in .sops.yaml. Because the plaintext lives in a
-# temporary file with a different name, tell SOPS which final filename should be
-# used when evaluating creation_rules.
-sops --encrypt \
-  --config .sops.yaml \
-  --filename-override "$OUTPUT_FILE" \
-  "$PLAIN" > "$ENCRYPTED"
+# The temporary plaintext filename does not end in .sops.yaml, so tell SOPS
+# which final path should be used when evaluating creation_rules.
+sops --encrypt --config .sops.yaml --filename-override "$OUTPUT_FILE" "$PLAIN" > "$ENCRYPTED"
 
-# Validate before moving the encrypted artifact into the repository tree.
+# Validate decryptability before moving the encrypted artifact into the repo tree.
 sops --decrypt "$ENCRYPTED" >/dev/null
 install -m 0600 "$ENCRYPTED" "$OUTPUT_FILE"
 
 echo "Encrypted Firecrawl Secret created: $OUTPUT_FILE"
 echo "Values were not printed and plaintext was only held in a temporary directory."
 echo "Next: make secret-validate FILE=$OUTPUT_FILE"
+echo "Before applying the Secret, ensure the namespace exists:"
+echo "  kubectl apply -f kubernetes/apps/firecrawl/namespace.yaml"
 echo "Then: make secret-apply FILE=$OUTPUT_FILE"
