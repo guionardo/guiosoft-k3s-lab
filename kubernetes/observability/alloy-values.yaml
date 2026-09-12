@@ -16,6 +16,13 @@ alloy:
     enabled: false
   mounts:
     varlog: false
+  resources:
+    requests:
+      cpu: 30m
+      memory: 64Mi
+    limits:
+      cpu: 300m
+      memory: 256Mi
   configMap:
     create: true
     content: |
@@ -72,11 +79,3 @@ alloy:
           url = "http://loki-gateway.monitoring.svc.cluster.local/loki/api/v1/push"
         }
       }
-
-resources:
-  requests:
-    cpu: 30m
-    memory: 64Mi
-  limits:
-    cpu: 300m
-    memory: 256Mi
