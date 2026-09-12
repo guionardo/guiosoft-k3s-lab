@@ -119,7 +119,10 @@ prometheus-node-exporter:
       cpu: 20m
       memory: 32Mi
     limits:
-      cpu: 200m
+      # CPU limit intentionally omitted. The node-exporter averages only a few
+      # millicores but showed >40% CFS throttling with a 200m hard CPU limit,
+      # indicating short bursts were being clipped despite ample node capacity.
+      # Keep the CPU request for scheduling/QoS and retain only the memory limit.
       memory: 128Mi
 
 kube-state-metrics:
