@@ -44,7 +44,9 @@ A infraestrutura Cloudflare está declarada em Terraform usando o provider v5. O
 
 SOPS + age estão instalados via Ansible. A identidade age é criada de forma idempotente somente quando ausente, a configuração pública do recipient está versionada em `.sops.yaml`, e o fluxo de encrypt/decrypt e de Kubernetes Secrets cifrados foi validado.
 
-O backup do K3s foi validado manualmente, por restore rehearsal não destrutivo e pelo mesmo serviço usado no timer systemd. O timer diário e a retenção local conservadora estão operacionais. A próxima camada é o backup realmente off-host; restic foi adicionado ao tooling Ansible e existe um smoke test local de backup/check/restore antes de configurarmos o destino externo.
+O backup do K3s foi validado manualmente, por restore rehearsal não destrutivo e pelo mesmo serviço usado no timer systemd. O timer diário e a retenção local estão operacionais.
+
+A camada off-host usa Restic sobre Cloudflare R2. O bucket `guiosoft-k3s-backups` é gerenciado por uma stack Terraform separada, as credenciais runtime ficam cifradas com SOPS + age, e o round-trip real Restic -> R2 -> restore já foi validado por SHA-256. A automação do `k3s-backup.service` agora também envia o backup mais recente para o R2 e aplica retenção remota pelo próprio Restic; falta apenas validar essa execução completa pelo serviço agendado.
 
 ## Divisão de responsabilidades
 
@@ -53,7 +55,8 @@ Terraform
 ├── Cloudflare
 │   ├── DNS
 │   ├── Tunnel
-│   └── rotas/public hostnames
+│   ├── rotas/public hostnames
+│   └── bucket R2 de backup
 └── infraestrutura externa futura
 
 Ansible
@@ -61,7 +64,7 @@ Ansible
 ├── instalação/configuração do K3s
 ├── diretórios e storage do host
 ├── ferramentas de IaC, secrets e backup
-├── automação de backup local
+├── automação de backup local + off-host
 ├── firewall
 └── bootstrap do cluster
 
@@ -80,20 +83,12 @@ Kubernetes / Helm / GitOps
 ├── README.md
 ├── Makefile
 ├── docs/
-│   ├── architecture.md
-│   ├── backup.md
-│   ├── current-state.md
-│   ├── firewall.md
-│   ├── migration.md
-│   ├── networking.md
-│   ├── roadmap.md
-│   ├── secrets.md
-│   ├── storage.md
-│   └── troubleshooting.md
 ├── ansible/
 ├── terraform/
-│   └── cloudflare/
+│   ├── cloudflare/
+│   └── r2/
 ├── kubernetes/
+├── secrets/
 └── scripts/
 ```
 
@@ -114,21 +109,42 @@ make backup-create
 make backup-verify
 make backup-install
 make backup-status
-make restic-test
-make tf-cloudflare-init
-make tf-cloudflare-validate
+make backup-run
+make restic-r2-secret
+make restic-r2-install
+make restic-r2-test
+make restic-r2-sync
+make restic-r2-status
+make restic-r2-check
 make tf-cloudflare-plan
+make tf-r2-plan
 ```
+
+O `Makefile` é a interface operacional preferida. Os scripts continuam sendo a implementação de baixo nível, mas operações normais do laboratório devem ser expostas por targets `make`.
 
 O target `make storage` é conservador: valida que os discos esperados já estão montados, cria somente diretórios e links sob `/srv/k3s`, e não formata, reparticiona, move ou remove dados existentes.
 
-O target `make k3s` também garante que novos volumes locais usem `/mnt/store1/k3s/local-path`. Para validar a persistência, `make storage-test` cria um PVC descartável e `make storage-test-recreate` recria o Pod mantendo o mesmo volume.
+O target `make k3s` garante que novos volumes locais usem `/mnt/store1/k3s/local-path`. Para validar persistência, `make storage-test` cria um PVC descartável e `make storage-test-recreate` recria o Pod mantendo o mesmo volume.
 
-Secrets declarativos podem ser cifrados com SOPS + age. A chave privada age permanece fora do Git; somente o recipient público é versionado. O fluxo `secret-edit` / `secret-validate` / `secret-apply` permite manter Kubernetes Secrets cifrados em Git sem criar arquivos plaintext persistentes durante a aplicação.
+Secrets declarativos podem ser cifrados com SOPS + age. A chave privada age permanece fora do Git; somente o recipient público é versionado. Credenciais de infraestrutura, como as do Restic/R2, também são mantidas somente em arquivos `.sops.yaml` cifrados.
 
-Para Cloudflare, o fluxo também é deliberadamente conservador: configurar variáveis locais, exportar `CLOUDFLARE_API_TOKEN`, importar os recursos existentes para o state e revisar `terraform plan`. A adoção inicial foi concluída com zero drift e nenhum `apply` foi necessário.
+Para Cloudflare, o fluxo continua conservador: configurar variáveis locais, exportar tokens somente no ambiente, revisar `terraform plan` e aplicar explicitamente. DNS/Tunnel e R2 possuem stacks Terraform separadas por diferença de responsabilidade e permissões.
 
-O backup local do K3s usa `make backup-create`, `make backup-verify` e um timer systemd instalado por `make backup-install`. Os archives contêm material sensível e nunca devem ser versionados. `make restic-test` valida localmente que um desses archives pode ser enviado a um repositório restic criptografado, verificado e restaurado byte a byte antes da configuração de um backend externo.
+O backup completo do control plane segue:
+
+```text
+K3s SQLite + server token
+        ↓
+backup local + SHA-256
+        ↓
+retenção local
+        ↓
+Restic cifrado
+        ↓
+Cloudflare R2
+        ↓
+retenção daily/weekly/monthly pelo Restic
+```
 
 ## Primeira etapa: discovery
 
@@ -140,7 +156,7 @@ Execute no servidor:
 sudo bash scripts/discovery.sh
 ```
 
-O resultado será gravado em `discovery-output/` e deve ser revisado antes de ser versionado. Mesmo com redaction automática, não faça commit de um relatório sem inspeção manual.
+O resultado será gravado em `discovery-output/` e deve ser revisado antes de ser versionado.
 
 ## Roadmap resumido
 
@@ -184,6 +200,8 @@ Dados persistentes como bancos de dados, uploads e repositórios não são recon
 Este repositório é público. Nunca versionar:
 
 - tokens do Cloudflare;
+- credenciais R2 em plaintext;
+- senha do repositório Restic;
 - kubeconfig real;
 - chaves SSH ou identidade privada age;
 - senhas;
@@ -198,22 +216,19 @@ SOPS + age são usados para secrets declarativos que precisam permanecer no Git.
 
 Domínio principal do laboratório: `guiosoft.info`.
 
-Os hostnames serão migrados progressivamente, mantendo rollback simples para os serviços antigos enquanto necessário.
-
 ## Fontes e evidências desta etapa
 
 A evolução atual foi baseada em:
 
 - discovery read-only executado no host Debian;
-- estado observado dos mounts `/mnt/store1`, `/mnt/store2` e `/mnt/dev`;
-- validações reais do cluster K3s, Traefik, Cloudflare Tunnel, `kubectl`, PVC/local-path, SOPS + age e backup/restore rehearsal executadas no próprio servidor;
+- validações reais do cluster K3s, Traefik, Cloudflare Tunnel, `kubectl`, PVC/local-path, SOPS + age e backup/restore executadas no próprio servidor;
 - documentação oficial do K3s para `default-local-storage-path`, datastore SQLite e backup/restore;
-- documentação do Rancher `local-path-provisioner` para comportamento de PVs locais;
-- documentação oficial do SOPS e age para recipients e gestão de secrets;
+- documentação do Rancher `local-path-provisioner`;
+- documentação oficial do SOPS e age;
 - documentação oficial do systemd para timers persistentes;
-- documentação oficial do restic para instalação, repositórios, SFTP e automação com `RESTIC_REPOSITORY`/`RESTIC_PASSWORD_FILE`;
-- documentação oficial do Cloudflare Terraform Provider v5 para `cloudflare_dns_record`, `cloudflare_zero_trust_tunnel_cloudflared` e `cloudflare_zero_trust_tunnel_cloudflared_config`;
-- documentação oficial da Cloudflare para importação de recursos existentes em Terraform;
-- documentação versionada em `docs/current-state.md`, `docs/networking.md`, `docs/firewall.md`, `docs/storage.md`, `docs/secrets.md`, `docs/backup.md` e `terraform/cloudflare/README.md`.
+- documentação oficial do Restic para repositórios, S3-compatible backends, retenção com `forget`/`prune`, checks e restore;
+- documentação oficial do Cloudflare R2 para API S3-compatible e API tokens;
+- documentação oficial do Cloudflare Terraform Provider v5;
+- documentação versionada em `docs/` e nas stacks `terraform/cloudflare/` e `terraform/r2/`.
 
-Nenhum dado persistente existente foi movido como parte da etapa de storage, nenhum recurso Cloudflare foi recriado durante a adoção inicial de Terraform e nenhum secret plaintext deve ser mantido no Git.
+Nenhum dado persistente existente foi movido como parte da etapa de storage e nenhum secret plaintext deve ser mantido no Git.
