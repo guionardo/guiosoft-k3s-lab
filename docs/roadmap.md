@@ -97,10 +97,11 @@ Para qualquer workload escolhido futuramente:
 - [ ] estratégia para bancos de dados;
 - [x] implementar backup local manual verificável do datastore SQLite + server token;
 - [x] validar criação do backup no host;
-- [ ] validar restore rehearsal não destrutivo do backup;
+- [x] validar restore rehearsal não destrutivo do backup;
+- [x] implementar agendamento systemd via Ansible;
+- [x] implementar retenção local conservadora por quantidade de archives;
+- [ ] validar timer, execução agendada e retenção no host;
 - [ ] executar restore completo do K3s a partir de backup em ambiente de disaster recovery;
-- [ ] automatizar/agendar backup após validação do restore rehearsal;
-- [ ] definir retenção;
 - [ ] backup externo/off-host;
 - [ ] testes periódicos de restore.
 
