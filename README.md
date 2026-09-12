@@ -32,6 +32,14 @@ K3s
 
 Durante a migração, os serviços atuais continuarão rodando no host Debian. Cada serviço será movido individualmente para o K3s e o hostname correspondente será redirecionado apenas após validação.
 
+## Estado atual
+
+O cluster single-node K3s está operacional. Traefik, CoreDNS, metrics-server e local-path-provisioner estão funcionando, o acesso administrativo com `kubectl` já funciona sem `sudo`, e o caminho externo Cloudflare -> Tunnel -> Traefik -> Ingress -> Service -> Pod foi validado.
+
+Hostnames desconhecidos sob o wildcard `*.guiosoft.info` chegam ao Traefik, mas recebem HTTP 404 quando não existe um Ingress explícito.
+
+A etapa atual prepara o storage de forma não destrutiva. O layout lógico usa `/srv/k3s`, mantendo os dados físicos nos mounts existentes e sem alterar ainda o StorageClass do K3s.
+
 ## Divisão de responsabilidades
 
 ```text
@@ -65,17 +73,35 @@ Kubernetes / Helm / GitOps
 ├── Makefile
 ├── docs/
 │   ├── architecture.md
+│   ├── current-state.md
+│   ├── firewall.md
+│   ├── migration.md
+│   ├── networking.md
 │   ├── roadmap.md
-│   └── migration.md
+│   ├── storage.md
+│   └── troubleshooting.md
 ├── ansible/
 ├── terraform/
 ├── kubernetes/
 └── scripts/
 ```
 
+## Operações principais
+
+```bash
+make preflight
+make bootstrap
+make k3s
+make storage
+make cluster-status
+make firewall-audit
+```
+
+O target `make storage` é conservador: valida que os discos esperados já estão montados, cria somente diretórios e links sob `/srv/k3s`, e não formata, reparticiona, move ou remove dados existentes.
+
 ## Primeira etapa: discovery
 
-Antes de instalar K3s, o estado atual do servidor será inventariado. O script `scripts/discovery.sh` é somente leitura e coleta informações de sistema, rede, portas, serviços, containers, storage, firewall, bancos de dados e Cloudflare Tunnel, evitando deliberadamente coletar valores de secrets.
+Antes de instalar K3s, o estado atual do servidor foi inventariado. O script `scripts/discovery.sh` é somente leitura e coleta informações de sistema, rede, portas, serviços, containers, storage, firewall, bancos de dados e Cloudflare Tunnel, evitando deliberadamente coletar valores de secrets.
 
 Execute no servidor:
 
@@ -142,3 +168,14 @@ A estratégia prevista é começar simples e evoluir para SOPS + age para secret
 Domínio principal do laboratório: `guiosoft.info`.
 
 Os hostnames serão migrados progressivamente, mantendo rollback simples para os serviços antigos enquanto necessário.
+
+## Fontes e evidências desta etapa
+
+A evolução atual foi baseada em:
+
+- discovery read-only executado no host Debian;
+- estado observado dos mounts `/mnt/store1`, `/mnt/store2` e `/mnt/dev`;
+- validações reais do cluster K3s, Traefik, Cloudflare Tunnel e `kubectl` executadas no próprio servidor;
+- documentação versionada em `docs/current-state.md`, `docs/networking.md`, `docs/firewall.md` e `docs/storage.md`.
+
+Nenhum dado persistente foi movido como parte desta etapa de storage.
