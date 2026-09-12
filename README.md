@@ -58,6 +58,8 @@ O workload Go instrumentado com OpenTelemetry foi validado ponta a ponta: uma re
 
 A fundação de logs também está operacional. Loki community chart `18.5.0` roda em modo `Monolithic`, Grafana Alloy chart `1.12.1` coleta logs dos Pods pela Kubernetes API e envia ao Loki, e `make observability-logging-test` já confirmou uma linha de log contendo exatamente o mesmo `trace_id` da requisição. A correlação de backend logs <-> traces está, portanto, validada; resta revisar a navegação visual no Grafana.
 
+O Grafana agora tem provisioning validado para os três datasources principais: Prometheus, Tempo e Loki. O fluxo de reload + validação consulta a API do Grafana sem expor credenciais e confirma os UIDs esperados. O `make observability-validate` também passa a incluir essa checagem de datasources além dos scrape targets Prometheus.
+
 ## Divisão de responsabilidades
 
 ```text
@@ -110,6 +112,8 @@ make observability-tracing-status
 make observability-logging-install
 make observability-logging-status
 make observability-logging-test
+make observability-grafana-datasources
+make observability-grafana-reload
 make observability-grafana
 make otel-go-demo-install
 make otel-go-demo-test
@@ -170,7 +174,19 @@ make observability-logging-test
 
 gera uma requisição, obtém o `trace_id` e consulta o Loki até localizar uma linha contendo exatamente o mesmo ID. O teste passou no cluster atual.
 
-O Grafana recebe um datasource Loki com derived field `TraceID` ligado ao datasource Tempo, e o Tempo recebe `tracesToLogsV2` apontando de volta ao Loki. Falta apenas validar visualmente essa navegação no Explore.
+O Grafana recebe Prometheus, Tempo e Loki por provisioning declarativo. Os datasources Tempo e Loki também carregam a correlação bidirecional `TraceID`/`tracesToLogsV2`. O reload/provisioning dos três datasources já foi validado em runtime.
+
+Para validar apenas os datasources:
+
+```bash
+make observability-grafana-datasources
+```
+
+Para forçar reload do provisioning e validar novamente:
+
+```bash
+make observability-grafana-reload
+```
 
 O próximo bloco operacional é revisar métricas e saúde da stack completa:
 
@@ -178,7 +194,9 @@ O próximo bloco operacional é revisar métricas e saúde da stack completa:
 make observability-validate
 ```
 
-Depois, revisar no Grafana:
+Esse target agora verifica Pods/PVCs, scrape targets e query `up` do Prometheus, provisioning dos datasources Grafana e uso atual de recursos quando `metrics-server` estiver disponível.
+
+Depois, revisar visualmente no Grafana:
 
 ```text
 Loki log -> TraceID -> Tempo trace
@@ -189,6 +207,12 @@ Grafana continua sem Ingress nesta fase. Para acesso local:
 
 ```bash
 make observability-grafana
+```
+
+Para acesso temporário pela LAN administrativa:
+
+```bash
+make observability-grafana ADDRESS=192.168.88.9
 ```
 
 Detalhes em [`docs/observability.md`](docs/observability.md).
@@ -236,18 +260,20 @@ A evolução atual foi baseada em:
 - validação real do `kube-prometheus-stack`, Tempo e OpenTelemetry Collector no cluster atual;
 - validação real de um trace OpenTelemetry ponta a ponta aplicação -> Collector -> Tempo;
 - validação real de logs `otel-go-demo -> Alloy -> Loki` e correlação pelo mesmo `trace_id`;
+- validação real do provisioning Prometheus/Tempo/Loki pela API do Grafana;
 - documentação oficial do K3s para cluster access, storage, datastore e backup/restore;
 - documentação oficial do Kubernetes sobre kubeconfig e `kubectl`;
 - documentação oficial do Grafana Loki para Helm, modo Monolithic, TSDB, filesystem e retenção;
 - Artifact Hub do chart community `grafana-community/loki`;
 - documentação oficial do Grafana Alloy para Kubernetes e coleta de Pod logs;
-- documentação oficial do Grafana sobre datasource Loki, derived fields e trace-to-logs;
+- documentação oficial do Grafana sobre provisioning de datasources, datasource Loki, derived fields e trace-to-logs;
 - documentação oficial do Promtail registrando EOL em 2 de março de 2026;
 - documentação oficial do Grafana Tempo e OpenTelemetry Collector;
 - documentação oficial do Restic, Cloudflare R2, SOPS, age, Helm e systemd.
 
 Referências relevantes:
 
+- https://grafana.com/docs/grafana/latest/administration/provisioning/#data-sources
 - https://grafana.com/docs/loki/latest/setup/install/helm/
 - https://grafana.com/docs/loki/latest/setup/install/helm/install-monolithic/
 - https://grafana.com/docs/loki/latest/operations/storage/filesystem/
