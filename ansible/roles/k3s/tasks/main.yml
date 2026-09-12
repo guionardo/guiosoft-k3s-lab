@@ -72,12 +72,25 @@
       Could not determine the non-root administrative user. Set k3s_admin_user
       explicitly in ansible/inventory/group_vars/all.yml.
 
-- name: Ensure kubectl multicall symlink exists
+- name: Inspect existing kubectl path
+  ansible.builtin.stat:
+    path: /usr/local/bin/kubectl
+  register: kubectl_path
+
+- name: Remove K3s kubectl multicall symlink
   ansible.builtin.file:
-    src: /usr/local/bin/k3s
+    path: /usr/local/bin/kubectl
+    state: absent
+  when: kubectl_path.stat.islnk | default(false)
+
+- name: Install standalone kubectl
+  ansible.builtin.get_url:
+    url: "https://dl.k8s.io/release/{{ kubectl_version }}/bin/linux/{{ kubectl_arch }}/kubectl"
     dest: /usr/local/bin/kubectl
-    state: link
-    force: true
+    owner: root
+    group: root
+    mode: "0755"
+    checksum: "sha256:https://dl.k8s.io/release/{{ kubectl_version }}/bin/linux/{{ kubectl_arch }}/kubectl.sha256"
 
 - name: Ensure administrator kubeconfig directory exists
   ansible.builtin.file:
