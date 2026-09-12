@@ -61,7 +61,9 @@ O demo OpenTelemetry também foi validado em modo distribuído: `otel-go-demo` p
 
 O mesmo demo expõe métricas Prometheus customizadas de requests, latência, requests em andamento, chamadas downstream e erros. Um `ServiceMonitor` seleciona os dois Services do namespace `lab`, e as séries `otel_demo_*` já foram identificadas no Prometheus em runtime.
 
-Foi adicionada uma camada didática sobre essas métricas: dashboard Grafana declarativo `OTel Go Demo - Application Metrics` e um `PrometheusRule` com alertas para taxa de erro HTTP, p95 elevado e erros downstream. O mesmo `make otel-go-demo-metrics-test` passa a validar também se essas regras foram carregadas pelo Prometheus e se a definição do dashboard está presente.
+O dashboard declarativo `OTel Go Demo - Application Metrics` e as regras `OtelGoDemoHighErrorRate`, `OtelGoDemoHighP95Latency` e `OtelGoDemoDownstreamErrors` também foram carregados e validados no Prometheus/Grafana.
+
+Foi implementado ainda um controlled incident drill para estudar uma falha ponta a ponta. O frontend agora preserva `trace_id` também em respostas HTTP 502 causadas por falha downstream, registra o mesmo ID no log e marca os spans como erro. O target `make otel-go-demo-incident-test` escala temporariamente apenas o downstream descartável para zero, gera falhas, valida métrica/alerta/log/trace e restaura automaticamente a escala original. A validação runtime desse drill é o próximo passo.
 
 ## Divisão de responsabilidades
 
@@ -121,6 +123,7 @@ make observability-grafana
 make otel-go-demo-install
 make otel-go-demo-test
 make otel-go-demo-metrics-test
+make otel-go-demo-incident-test
 make tf-cloudflare-plan
 make tf-r2-plan
 ```
@@ -212,7 +215,13 @@ Exemplo de PromQL:
 rate(otel_demo_http_requests_total[5m])
 ```
 
-O dashboard customizado usa essas séries para request rate, status, in-flight e latências p95. As regras iniciais de alerta cobrem taxa de erro 5xx, p95 de `/work` acima de 500 ms e erros downstream contínuos.
+Para testar investigação de incidente de forma controlada:
+
+```bash
+make otel-go-demo-incident-test
+```
+
+O experimento afeta somente os workloads descartáveis do demo. Ele reduz `otel-go-downstream` temporariamente para zero replicas, exige falhas HTTP 502 no frontend, valida métricas no Prometheus, estado `pending`/`firing` do alerta downstream, o mesmo `trace_id` no Loki e Tempo, restaura a escala original e confirma a recuperação. Como as regras reais usam `for: 5m`, o estado `pending` já é considerado evidência de detecção no teste rápido.
 
 Grafana continua sem Ingress nesta fase. Para acesso local:
 
@@ -285,9 +294,10 @@ A evolução atual foi baseada em:
 - validação real de 13/13 targets Prometheus `up` e health dos datasources Prometheus/Tempo/Loki;
 - validação real de tracing distribuído `otel-go-demo -> otel-go-downstream` com W3C Trace Context;
 - validação real de logs `otel-go-demo -> Alloy -> Loki`, correlação pelo mesmo `trace_id` e navegação visual no Grafana;
-- validação real das métricas customizadas `otel_demo_*` no Prometheus;
+- validação real das métricas customizadas `otel_demo_*` e das regras customizadas no Prometheus;
 - Prometheus Go client `v1.24.1` para métricas customizadas;
 - documentação oficial do Prometheus Operator sobre `ServiceMonitor` e `PrometheusRule`;
+- documentação oficial do Prometheus sobre alerting rules;
 - documentação oficial do Grafana sobre dashboards;
 - documentação oficial do OpenTelemetry sobre propagação de contexto e W3C Trace Context;
 - documentação oficial do K3s para cluster access, storage, datastore e backup/restore;
@@ -299,7 +309,7 @@ Referências relevantes:
 
 - https://github.com/prometheus/client_golang/releases
 - https://prometheus-operator.dev/docs/developer/getting-started/
-- https://prometheus-operator.dev/docs/getting-started/design/
+- https://prometheus.io/docs/prometheus/latest/configuration/alerting_rules/
 - https://grafana.com/docs/grafana/latest/dashboards/build-dashboards/
 - https://opentelemetry.io/docs/concepts/context-propagation/
 - https://www.w3.org/TR/trace-context/
