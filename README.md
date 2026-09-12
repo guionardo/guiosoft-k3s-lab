@@ -63,7 +63,7 @@ O mesmo demo expõe métricas Prometheus customizadas de requests, latência, re
 
 O dashboard declarativo `OTel Go Demo - Application Metrics` e as regras `OtelGoDemoHighErrorRate`, `OtelGoDemoHighP95Latency` e `OtelGoDemoDownstreamErrors` também foram carregados e validados no Prometheus/Grafana.
 
-Foi implementado ainda um controlled incident drill para estudar uma falha ponta a ponta. O frontend agora preserva `trace_id` também em respostas HTTP 502 causadas por falha downstream, registra o mesmo ID no log e marca os spans como erro. O target `make otel-go-demo-incident-test` escala temporariamente apenas o downstream descartável para zero, gera falhas, valida métrica/alerta/log/trace e restaura automaticamente a escala original. A validação runtime desse drill é o próximo passo.
+O controlled incident drill também foi validado em runtime. O target `make otel-go-demo-incident-test` reduziu temporariamente o downstream descartável para zero replicas, produziu HTTP 502 preservando o `trace_id`, confirmou a detecção nas métricas e no alerta, localizou o mesmo incidente no Loki e no Tempo, restaurou automaticamente a escala original e confirmou a recuperação da chamada frontend -> downstream.
 
 ## Divisão de responsabilidades
 
@@ -221,7 +221,7 @@ Para testar investigação de incidente de forma controlada:
 make otel-go-demo-incident-test
 ```
 
-O experimento afeta somente os workloads descartáveis do demo. Ele reduz `otel-go-downstream` temporariamente para zero replicas, exige falhas HTTP 502 no frontend, valida métricas no Prometheus, estado `pending`/`firing` do alerta downstream, o mesmo `trace_id` no Loki e Tempo, restaura a escala original e confirma a recuperação. Como as regras reais usam `for: 5m`, o estado `pending` já é considerado evidência de detecção no teste rápido.
+O experimento afeta somente os workloads descartáveis do demo. Ele reduz `otel-go-downstream` temporariamente para zero replicas, exige falhas HTTP 502 no frontend, valida métricas no Prometheus, estado `pending`/`firing` do alerta downstream, o mesmo `trace_id` no Loki e Tempo, restaura a escala original e confirma a recuperação. Como as regras reais usam `for: 5m`, o estado `pending` já é considerado evidência de detecção no teste rápido. Esse fluxo foi validado no cluster atual.
 
 Grafana continua sem Ingress nesta fase. Para acesso local:
 
@@ -295,6 +295,7 @@ A evolução atual foi baseada em:
 - validação real de tracing distribuído `otel-go-demo -> otel-go-downstream` com W3C Trace Context;
 - validação real de logs `otel-go-demo -> Alloy -> Loki`, correlação pelo mesmo `trace_id` e navegação visual no Grafana;
 - validação real das métricas customizadas `otel_demo_*` e das regras customizadas no Prometheus;
+- validação real do controlled incident drill cobrindo HTTP 502, métricas, alerta, Loki, Tempo e recuperação do downstream;
 - Prometheus Go client `v1.24.1` para métricas customizadas;
 - documentação oficial do Prometheus Operator sobre `ServiceMonitor` e `PrometheusRule`;
 - documentação oficial do Prometheus sobre alerting rules;
