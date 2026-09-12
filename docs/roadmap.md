@@ -14,12 +14,12 @@ Objetivo: entender o estado atual, eliminar dependências desnecessárias e prep
 - [x] identificar serviços relevantes para preservação;
 - [x] excluir `escoteirando-suite` do escopo de migração;
 - [x] excluir `gitea` do escopo de migração;
-- [ ] confirmar situação do OpenShip;
+- [ ] confirmar situação local do OpenShip;
 - [x] remover Tailscale e validar ausência da interface no preflight;
-- [ ] remover do Cloudflare `traefik.guiosoft.info`;
+- [x] remover do Cloudflare `traefik.guiosoft.info`;
 - [ ] remover do Cloudflare `git.guiosoft.info`;
 - [ ] remover do Cloudflare `git-ssh.guiosoft.info`;
-- [ ] preservar configuração do OpenShip até decisão explícita;
+- [x] remover publicação do OpenShip no Cloudflare;
 - [ ] validar firewall após bootstrap do cluster;
 - [x] consolidar estado atual em documentação versionada.
 
@@ -54,9 +54,12 @@ Objetivo: entender o estado atual, eliminar dependências desnecessárias e prep
 - [x] validar Traefik internamente;
 - [x] validar Ingress local com workload de teste;
 - [x] manter inicialmente o `cloudflared` atual no host;
-- [ ] publicar hostname de teste dedicado, como `k3s-test.guiosoft.info`;
-- [ ] validar caminho Cloudflare -> Traefik -> Ingress -> Service -> Pod;
+- [x] publicar hostname de teste dedicado `k3s-test.guiosoft.info`;
+- [x] corrigir origin do wildcard do Tunnel para `http://127.0.0.1:80`;
+- [x] apontar o wildcard DNS `*.guiosoft.info` para o Cloudflare Tunnel em vez do origin IP legado;
+- [x] validar caminho Cloudflare -> Tunnel -> Traefik -> Ingress -> Service -> Pod com HTTP 200;
 - [ ] definir padrão de Ingress para aplicações;
+- [ ] definir comportamento para hostnames sem Ingress conhecido;
 - [ ] colocar gradualmente DNS/Tunnel sob Terraform;
 - [ ] migrar `cloudflared` para Kubernetes apenas depois do fluxo estar validado.
 
