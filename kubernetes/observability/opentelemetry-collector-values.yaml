@@ -1,0 +1,57 @@
+# Central OTLP ingestion point for applications in the cluster.
+# The first iteration forwards traces only. Metrics stay with Prometheus and
+# cluster logs will be handled separately when Loki is introduced.
+
+mode: deployment
+
+image:
+  repository: otel/opentelemetry-collector-contrib
+
+replicaCount: 1
+
+resources:
+  requests:
+    cpu: 30m
+    memory: 64Mi
+  limits:
+    cpu: 300m
+    memory: 256Mi
+
+config:
+  receivers:
+    jaeger: null
+    prometheus: null
+    zipkin: null
+    otlp:
+      protocols:
+        grpc:
+          endpoint: ${env:MY_POD_IP}:4317
+        http:
+          endpoint: ${env:MY_POD_IP}:4318
+
+  exporters:
+    debug: null
+    otlp/tempo:
+      endpoint: tempo.monitoring.svc.cluster.local:4317
+      tls:
+        insecure: true
+
+  processors:
+    memory_limiter:
+      check_interval: 5s
+      limit_percentage: 80
+      spike_limit_percentage: 25
+    batch: {}
+
+  service:
+    pipelines:
+      logs: null
+      metrics: null
+      traces:
+        receivers:
+          - otlp
+        processors:
+          - memory_limiter
+          - batch
+        exporters:
+          - otlp/tempo
