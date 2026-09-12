@@ -15,32 +15,35 @@ Objetivo: entender o estado atual, eliminar dependências desnecessárias e prep
 - [x] excluir `escoteirando-suite` do escopo de migração;
 - [x] excluir `gitea` do escopo de migração;
 - [ ] confirmar situação do OpenShip;
-- [ ] confirmar que nenhum acesso administrativo depende do Tailscale;
-- [ ] remover Tailscale e validar DNS/rede do host;
+- [x] remover Tailscale e validar ausência da interface no preflight;
 - [ ] remover do Cloudflare `traefik.guiosoft.info`;
 - [ ] remover do Cloudflare `git.guiosoft.info`;
 - [ ] remover do Cloudflare `git-ssh.guiosoft.info`;
 - [ ] preservar configuração do OpenShip até decisão explícita;
-- [ ] validar firewall após limpeza;
-- [ ] consolidar estado atual em documentação versionada.
+- [ ] validar firewall após bootstrap do cluster;
+- [x] consolidar estado atual em documentação versionada.
 
 ## Fase 1 — Infrastructure as Code
 
-- [ ] inventário Ansible;
-- [ ] role `base`;
+- [x] inventário Ansible;
+- [x] role `base`;
 - [ ] role `storage`;
-- [ ] role `k3s`;
+- [x] role `k3s`;
 - [ ] role `firewall`;
-- [ ] playbook `bootstrap.yml`;
+- [x] playbook `preflight.yml`;
+- [x] playbook `bootstrap.yml`;
+- [x] playbook `k3s.yml`;
 - [ ] Terraform Cloudflare;
 - [ ] estratégia SOPS + age;
-- [ ] Makefile para operações comuns.
+- [x] Makefile para operações comuns.
 
 ## Fase 2 — K3s
 
-- [ ] validar requisitos e conflitos de portas;
-- [ ] instalar versão estável fixada do K3s via Ansible;
-- [ ] configurar kubectl;
+- [x] automatizar validação inicial de requisitos e conflitos de 80/443;
+- [ ] executar preflight no host já limpo;
+- [ ] executar bootstrap do Debian;
+- [ ] instalar `v1.36.4+k3s1` via Ansible;
+- [ ] configurar kubectl para uso administrativo sem `sudo k3s kubectl`;
 - [ ] validar node/CoreDNS/Traefik/local-path;
 - [ ] criar namespaces base;
 - [ ] deploy de workload de teste;
