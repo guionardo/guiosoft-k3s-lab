@@ -3,4 +3,3 @@
   ansible.builtin.systemd_service:
     name: k3s
     state: restarted
-  when: ansible_facts.services is not defined or 'k3s.service' in ansible_facts.services
