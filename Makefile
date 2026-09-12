@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: help discovery ansible-deps preflight bootstrap k3s storage storage-test storage-test-status storage-test-recreate storage-test-delete firewall-audit cluster-status lab-deploy lab-status lab-test lab-delete tf-cloudflare-discovery tf-cloudflare-init tf-cloudflare-fmt tf-cloudflare-validate tf-cloudflare-import tf-cloudflare-plan
+.PHONY: help discovery ansible-deps preflight bootstrap tools k3s storage storage-test storage-test-status storage-test-recreate storage-test-delete firewall-audit cluster-status lab-deploy lab-status lab-test lab-delete tf-cloudflare-discovery tf-cloudflare-init tf-cloudflare-fmt tf-cloudflare-validate tf-cloudflare-import tf-cloudflare-plan
 
 help:
 	@echo "guiosoft-k3s-lab"
@@ -9,7 +9,8 @@ help:
 	@echo "  make discovery             Executa discovery read-only deste host"
 	@echo "  make ansible-deps          Instala Ansible e collections necessárias"
 	@echo "  make preflight             Valida DNS, Tailscale, portas e serviços preservados"
-	@echo "  make bootstrap             Prepara o Debian para K3s (não instala o cluster)"
+	@echo "  make bootstrap             Prepara Debian e ferramentas de IaC para K3s"
+	@echo "  make tools                 Instala/valida ferramentas de IaC no host"
 	@echo "  make k3s                   Instala/valida K3s, kubectl e local-path dedicado"
 	@echo "  make storage               Prepara layout persistente sem mover ou apagar dados"
 	@echo "  make storage-test          Cria PVC + Deployment para testar persistência"
@@ -44,6 +45,9 @@ preflight:
 
 bootstrap:
 	cd ansible && ansible-playbook -K playbooks/bootstrap.yml
+
+tools:
+	cd ansible && ansible-playbook -K playbooks/tools.yml
 
 k3s:
 	cd ansible && ansible-playbook -K playbooks/k3s.yml
