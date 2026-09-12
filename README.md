@@ -48,7 +48,9 @@ O backup do K3s foi validado manualmente, por restore rehearsal não destrutivo 
 
 A camada off-host usa Restic sobre Cloudflare R2. O bucket `guiosoft-k3s-backups` é gerenciado por uma stack Terraform separada, as credenciais runtime ficam cifradas com SOPS + age, o round-trip real Restic -> R2 -> restore foi validado por SHA-256 e o `k3s-backup.service` foi validado executando a cadeia completa local -> Restic -> R2 com `restic check` remoto.
 
-A frente ativa é Disaster Recovery. `make dr-readiness` e `make dr-r2-rehearsal` já foram validados. Também existe agora um fluxo guardado para exportar o backup diretamente do R2, marcar um host isolado de rehearsal e restaurar nele `server/db` + `server/token` sem permitir execução acidental no hostname/IP de produção.
+O Disaster Recovery já possui readiness check, restore rehearsal isolado via R2 e um fluxo guardado para restore destrutivo em outro host. O teste completo em uma VM/segundo host ficou adiado até existir uma máquina disponível; o servidor atual não será usado como alvo destrutivo.
+
+A frente ativa agora é observabilidade. Helm passa a ser instalado pelo Ansible em versão pinada, e o repositório contém a primeira configuração do `kube-prometheus-stack` para Prometheus, Alertmanager e Grafana com perfil conservador para o host single-node atual. Grafana permanece sem Ingress nesta etapa.
 
 ## Divisão de responsabilidades
 
@@ -65,7 +67,7 @@ Ansible
 ├── preparação do Debian
 ├── instalação/configuração do K3s
 ├── diretórios e storage do host
-├── ferramentas de IaC, secrets e backup
+├── ferramentas de IaC, secrets, backup e Helm
 ├── automação de backup local + off-host
 ├── firewall
 └── bootstrap do cluster
@@ -74,7 +76,8 @@ Kubernetes / Helm / GitOps
 ├── cloudflared
 ├── Traefik
 ├── namespaces
-├── observabilidade
+├── Prometheus / Alertmanager / Grafana
+├── observabilidade futura com Loki
 └── aplicações
 ```
 
@@ -122,9 +125,9 @@ make restic-r2-status
 make restic-r2-check
 make dr-readiness
 make dr-r2-rehearsal
-make dr-r2-export DEST=/secure/dr-export
-make dr-target-init
-make dr-restore FILE=/secure/dr-export/k3s-....tar.gz
+make observability-install
+make observability-status
+make observability-grafana
 make tf-cloudflare-plan
 make tf-r2-plan
 ```
@@ -157,49 +160,40 @@ retenção daily/weekly/monthly pelo Restic
 
 Para dados de aplicações, `make backup-inventory` é somente leitura e serve para identificar PVCs, PVs, caminhos físicos e Pods consumidores antes de definir backups. Como ainda não existem PVCs reais de aplicação, backups de bancos/PVCs serão implementados quando workloads stateful reais forem introduzidos.
 
-## Disaster Recovery
+## Observabilidade
 
-O objetivo operacional é reconstruir o ambiente em outro host sem depender do disco raiz original:
+A primeira etapa usa `kube-prometheus-stack` com versão pinada e valores próprios do laboratório:
 
 ```text
-Debian limpo
-   ↓
-Git + Ansible
-   ↓
-restaurar identidade privada age
-   ↓
-SOPS recupera credenciais Restic/R2
-   ↓
-Restic recupera backup K3s do R2
-   ↓
-restaurar SQLite + server token
-   ↓
-K3s restaurado
+kubernetes/observability/kube-prometheus-stack-values.yaml
 ```
 
-As duas validações não destrutivas já estão concluídas:
+Fluxo:
+
+```bash
+make tools
+make observability-install
+make observability-status
+```
+
+Prometheus começa com retenção de 7 dias e PVC `local-path` de 10 GiB. Grafana usa PVC de 2 GiB e não recebe Ingress nesta fase. Para acesso local:
+
+```bash
+make observability-grafana
+```
+
+Detalhes em [`docs/observability.md`](docs/observability.md).
+
+## Disaster Recovery
+
+O objetivo operacional continua sendo reconstruir o ambiente em outro host sem depender do disco raiz original. As validações não destrutivas já estão concluídas:
 
 ```bash
 make dr-readiness
 make dr-r2-rehearsal
 ```
 
-Para o próximo passo, o projeto agora fornece:
-
-```bash
-make dr-r2-export DEST=/secure/dr-export
-```
-
-para obter do R2 um archive/checksum previamente verificado. No host/VM **isolado** de rehearsal:
-
-```bash
-make dr-target-init
-make dr-restore FILE=/secure/dr/k3s-guiosoft-info-TIMESTAMP.tar.gz
-```
-
-`dr-target-init` recusa o hostname e o IP de produção. `dr-restore` exige esse marker, uma confirmação explícita adicional, valida o archive, para o K3s do alvo, preserva uma safety copy do estado inicial da VM, restaura `server/db` e `server/token`, reinicia o K3s e aguarda `/readyz`.
-
-Existe um inventário de exemplo em `ansible/inventory/dr.example.yml`. O próximo marco é provisionar uma VM/host separado e executar esse restore completo.
+Também existem os targets `dr-r2-export`, `dr-target-init` e `dr-restore` para o futuro teste completo. Esse teste permanece deliberadamente adiado até existir uma VM ou segundo host isolado disponível.
 
 Detalhes em [`docs/disaster-recovery.md`](docs/disaster-recovery.md).
 
@@ -266,6 +260,8 @@ A evolução atual foi baseada em:
 - documentação oficial do Restic para repositórios, S3-compatible backends, retenção, checks e restore;
 - documentação oficial do Cloudflare R2 para API S3-compatible e API tokens;
 - documentação oficial do Cloudflare Terraform Provider v5;
+- documentação oficial do Helm para instalação e releases;
+- chart e documentação oficial do `prometheus-community/kube-prometheus-stack`;
 - documentação versionada em `docs/` e nas stacks `terraform/cloudflare/` e `terraform/r2/`.
 
 Nenhum dado persistente existente foi movido como parte da etapa de storage e nenhum secret plaintext deve ser mantido no Git.
