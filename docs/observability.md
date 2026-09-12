@@ -42,6 +42,7 @@ Já foram validados no cluster atual:
 - correlação real entre log e trace usando o mesmo `trace_id`;
 - provisioning e health dos datasources Prometheus, Tempo e Loki no Grafana;
 - `make observability-validate` com 13/13 targets Prometheus `up`, query `up` com 13 séries, todos os Pods de monitoring Ready e todos os PVCs Bound;
+- métricas customizadas `otel_demo_*` identificadas no Prometheus;
 - kubeconfig externo e acesso `kubectl` a partir de outra máquina da LAN.
 
 A validação de logs gerou o trace `44955206ae5e874899a7147290607951` e localizou no Loki uma linha do demo contendo exatamente esse mesmo ID.
@@ -92,6 +93,8 @@ make otel-go-demo-metrics-test
 
 O teste abre port-forwards temporários para a aplicação e Prometheus, gera tráfego em `/work` e exige que Prometheus retorne valores positivos para requests do frontend, buckets de latência, chamadas downstream e requests recebidas pelo segundo serviço.
 
+As métricas customizadas já foram identificadas no Prometheus em runtime.
+
 ### Nota: métricas vetoriais são criadas sob demanda
 
 Durante a primeira execução do teste apareceu um falso negativo:
@@ -111,6 +114,53 @@ O teste foi corrigido para:
 5. validar as séries via PromQL.
 
 Esse comportamento é importante para interpretar corretamente endpoints Prometheus e evitar diagnosticar como falha uma métrica vetorial ainda sem valores de labels materializados.
+
+### Dashboard customizado
+
+O demo possui agora um dashboard declarativo do Grafana chamado:
+
+```text
+OTel Go Demo - Application Metrics
+```
+
+Ele é entregue como `ConfigMap` no namespace `monitoring`, com label `grafana_dashboard: "1"`, permitindo que o sidecar do Grafana carregue a definição automaticamente.
+
+Painéis iniciais:
+
+- taxa de requests por serviço;
+- latência HTTP p95 por serviço/path;
+- taxa por status HTTP;
+- requests em andamento;
+- taxa de chamadas downstream;
+- latência downstream p95;
+- taxa de erros downstream.
+
+PromQL de exemplo usado no dashboard:
+
+```promql
+sum by (service) (rate(otel_demo_http_requests_total[2m]))
+```
+
+```promql
+histogram_quantile(
+  0.95,
+  sum by (le, service, path) (
+    rate(otel_demo_http_request_duration_seconds_bucket[5m])
+  )
+)
+```
+
+### Alertas de aplicação
+
+Foi adicionado um `PrometheusRule` com três regras didáticas:
+
+- `OtelGoDemoHighErrorRate`: taxa de respostas 5xx acima de 5% por 5 minutos, exigindo também tráfego mínimo;
+- `OtelGoDemoHighP95Latency`: p95 de `/work` acima de 500 ms por 5 minutos;
+- `OtelGoDemoDownstreamErrors`: erros downstream contínuos por 5 minutos.
+
+Esses thresholds não são tratados como SLOs universais. Eles servem como primeira experiência com alerting baseado em métricas reais da aplicação e devem ser ajustados conforme o workload.
+
+`make otel-go-demo-metrics-test` agora também confirma que as três regras foram carregadas pela API do Prometheus e valida a estrutura do dashboard declarativo.
 
 ## Baseline de recursos
 
@@ -293,14 +343,14 @@ e criar link interno para o datasource Tempo.
 
 O datasource Tempo recebe `tracesToLogsV2` apontando para Loki, mapeando `service.name` para label `app` e filtrando pelo trace ID.
 
-A meta é navegar nos dois sentidos:
+A navegação foi validada nos dois sentidos:
 
 ```text
 Loki log -> TraceID -> Tempo trace
 Tempo trace -> tracesToLogs -> Loki logs
 ```
 
-Como datasources provisionados podem exigir reload/restart do Grafana após uma mudança na configuração, existem agora targets explícitos:
+Como datasources provisionados podem exigir reload/restart do Grafana após uma mudança na configuração, existem targets explícitos:
 
 ```bash
 make observability-grafana-reload
@@ -308,8 +358,6 @@ make observability-grafana-datasources
 ```
 
 `observability-grafana-reload` reinicia o StatefulSet/Deployment do Grafana e depois valida os datasources. `observability-grafana-datasources` consulta a API do Grafana via port-forward local e exige a presença dos UIDs `prometheus`, `tempo` e `loki`.
-
-A correlação no backend e o health dos três datasources estão validados; a navegação visual Loki -> Tempo e Tempo -> Loki também foi validada no Grafana Explore.
 
 ## Acesso ao Grafana
 
@@ -339,18 +387,21 @@ make observability-grafana ADDRESS=192.168.88.9 PORT=3000
 
 ## Próximas etapas
 
-1. validar em runtime as métricas customizadas do demo;
-2. revisar dashboards padrão;
-3. revisar alertas ruidosos/incompatíveis com K3s;
-4. repetir a medição de capacidade após alguns dias de retenção e uso normal;
-5. adicionar dashboards/alertas customizados essenciais;
-6. avaliar exemplars/span metrics quando fizer sentido;
-7. somente depois avaliar publicação protegida do Grafana.
+1. executar novamente `make otel-go-demo-install` para aplicar dashboard e `PrometheusRule`;
+2. executar `make otel-go-demo-metrics-test` para confirmar regras e dashboard declarativo;
+3. abrir o dashboard `OTel Go Demo - Application Metrics` no Grafana e validar os painéis com tráfego real;
+4. revisar dashboards padrão;
+5. revisar alertas ruidosos/incompatíveis com K3s;
+6. repetir a medição de capacidade após alguns dias de retenção e uso normal;
+7. avaliar exemplars/span metrics quando fizer sentido;
+8. somente depois avaliar publicação protegida do Grafana.
 
 ## Fontes
 
 - https://github.com/prometheus/client_golang
 - https://prometheus-operator.dev/docs/developer/getting-started/
+- https://prometheus-operator.dev/docs/getting-started/design/
+- https://grafana.com/docs/grafana/latest/dashboards/build-dashboards/
 - https://grafana.com/docs/loki/latest/setup/install/helm/
 - https://grafana.com/docs/loki/latest/setup/install/helm/install-monolithic/
 - https://grafana.com/docs/loki/latest/operations/storage/filesystem/
