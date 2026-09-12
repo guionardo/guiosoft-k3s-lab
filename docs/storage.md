@@ -39,7 +39,7 @@ Isso separa o caminho lógico usado pela infraestrutura da localização física
 
 Área dedicada aos volumes provisionados dinamicamente pelo `local-path-provisioner` do K3s.
 
-O K3s passa a receber no seu `config.yaml`:
+O K3s recebe no seu `config.yaml`:
 
 ```yaml
 default-local-storage-path: /mnt/store1/k3s/local-path
@@ -59,7 +59,7 @@ Isso não implica que todo workload deva usar `hostPath`. Para aplicações norm
 
 Área local para staging de backups. Ela está em outro disco físico em relação ao armazenamento primário, mas **não é considerada backup definitivo**.
 
-Uma estratégia de backup válida ainda deve incluir cópia off-host e testes reais de restore.
+A cópia off-host atual usa Restic sobre Cloudflare R2.
 
 ## Regras de segurança do role Ansible
 
@@ -76,7 +76,7 @@ O role `storage` é deliberadamente conservador:
 
 ## Teste de persistência
 
-Foi adicionado um workload de validação em:
+O workload de validação está em:
 
 ```text
 kubernetes/storage/persistence-test.yaml
@@ -96,14 +96,39 @@ make storage-test
 make storage-test-recreate
 ```
 
-O primeiro comando aplica o novo `default-local-storage-path` e reinicia o K3s se a configuração mudou. O segundo cria o PVC/Deployment e mostra o marker. O terceiro apaga o Pod; o Deployment cria outro Pod e o mesmo marker deve continuar disponível.
+O primeiro comando aplica o `default-local-storage-path` e reinicia o K3s se a configuração mudou. O segundo cria o PVC/Deployment e mostra o marker. O terceiro apaga apenas o Pod; o Deployment cria outro Pod e o mesmo marker deve continuar disponível.
 
 Para inspecionar o volume:
 
 ```bash
 make storage-test-status
-kubectl get pv
+make storage-test-placement
 ```
+
+`make storage-test-placement` aceita PVs representados por `spec.hostPath.path` ou `spec.local.path` e exige que o caminho físico esteja abaixo de:
+
+```text
+/mnt/store1/k3s/local-path
+```
+
+## Reprovisionamento validado
+
+O inventário inicial mostrou que o primeiro PVC de teste havia sido criado no path legado:
+
+```text
+/var/lib/rancher/k3s/storage
+```
+
+Como `default-local-storage-path` só afeta novos volumes, isso era esperado para um PV anterior à mudança de configuração.
+
+O PVC descartável foi então reprovisionado e a localização física foi validada com sucesso usando:
+
+```bash
+make storage-test-reprovision
+make storage-test-placement
+```
+
+O novo PV foi confirmado abaixo de `/mnt/store1/k3s/local-path`, comprovando que novos volumes seguem o layout desejado.
 
 Depois da validação, o workload de teste pode ser removido com:
 
@@ -113,20 +138,28 @@ make storage-test-delete
 
 Como o StorageClass `local-path` possui política de reclaim `Delete`, remover o PVC também remove o PV e o diretório provisionado para esse volume. Portanto, esse target é adequado apenas ao PVC descartável de teste.
 
+## Estado atual dos dados de aplicação
+
+O inventário mais recente não encontrou PVC real de aplicação. O único PVC existente é `lab/persistence-test`.
+
+Portanto, ainda não há banco de dados ou PVC file-oriented real para proteger. A política será aplicada quando o primeiro workload stateful for introduzido:
+
+- bancos de dados: backup nativo/lógico ou físico suportado pela engine;
+- arquivos: backup consistente do filesystem, snapshot ou export suportado pela aplicação;
+- serviços externos: procedimento específico do provedor;
+- stateless: reconstrução por Git/IaC.
+
 ## Limitação importante
 
 `local-path` é armazenamento local ao nó. Um Pod que usa esse PV fica associado ao nó que contém os dados. Isso funciona bem no cluster single-node atual, mas não fornece replicação nem alta disponibilidade quando um segundo nó for adicionado.
 
 ## Próximas etapas
 
-Depois da validação real do PVC no host:
-
-1. confirmar que o PV foi criado fisicamente sob `/mnt/store1/k3s/local-path`;
-2. remover/recriar o Pod e confirmar persistência;
-3. definir política para bancos de dados;
-4. implementar backup local automatizado;
-5. adicionar destino off-host;
-6. executar restore real.
+1. classificar cada futuro workload stateful no momento em que for introduzido;
+2. implementar backup nativo para bancos de dados reais;
+3. implementar backup de PVCs file-oriented reais;
+4. executar disaster recovery completo em ambiente separado;
+5. reavaliar storage quando houver segundo nó.
 
 ## Fontes
 
