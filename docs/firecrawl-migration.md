@@ -165,22 +165,15 @@ O script:
 6. valida que o arquivo cifrado pode ser descriptografado;
 7. não imprime valores secretos.
 
-Depois da geração, valide sem alterar o cluster:
-
-```bash
-make secret-validate FILE=kubernetes/apps/firecrawl/firecrawl-secrets.sops.yaml
-```
-
-Antes de aplicar o Secret, o namespace precisa existir. O `Secret` declara `metadata.namespace: firecrawl`, então a API do Kubernetes rejeita a criação enquanto o namespace ainda não tiver sido criado.
-
-A ordem correta é:
+Fluxo já validado no cluster atual:
 
 ```bash
 kubectl apply -f kubernetes/apps/firecrawl/namespace.yaml
+make secret-validate FILE=kubernetes/apps/firecrawl/firecrawl-secrets.sops.yaml
 make secret-apply FILE=kubernetes/apps/firecrawl/firecrawl-secrets.sops.yaml
 ```
 
-Criar apenas o namespace neste ponto é seguro: isso ainda não sobe Deployments, Services ou Ingress e não interfere com o Docker Compose atual.
+O namespace `firecrawl` e o Secret `firecrawl-secrets` já foram criados/aplicados com sucesso sem expor seus valores em stdout.
 
 O arquivo cifrado pode ser versionado; o `.env` e a identidade privada age não podem.
 
@@ -192,7 +185,7 @@ O comando:
 make firecrawl-k8s-validate
 ```
 
-é read-only e agora valida o perfil efetivo escolhido:
+é read-only e valida o perfil efetivo escolhido:
 
 - Kustomize renderiza corretamente;
 - `kubectl apply --dry-run=client` passa;
@@ -208,6 +201,26 @@ Para consultar o estado depois do deploy:
 make firecrawl-k8s-status
 ```
 
+## Primeiro deploy K3s
+
+O helper agora possui a ação:
+
+```bash
+bash scripts/firecrawl-k8s.sh deploy
+```
+
+Ela verifica namespace e Secret antes de alterar recursos, executa novamente a validação do scaffold, aplica `kubectl apply -k kubernetes/apps/firecrawl` e aguarda o rollout dos cinco Deployments:
+
+```text
+nuq-postgres
+redis
+rabbitmq
+playwright-service
+firecrawl-api
+```
+
+O Docker Compose atual não é parado nem alterado por esse deploy e continua disponível como rollback.
+
 ## Estratégia de implantação
 
 Sequência atualizada:
@@ -218,11 +231,11 @@ Sequência atualizada:
 4. pin das imagens por digest — **concluído**;
 5. criar Ingress `firecrawl.guiosoft.info` — **concluído em código**;
 6. validar render/dry-run do scaffold no host;
-7. gerar Secret SOPS a partir do `.env` local;
-8. validar o Secret por dry-run;
-9. criar namespace `firecrawl`;
-10. aplicar o Secret cifrado via SOPS;
-11. subir stack K3s;
+7. gerar Secret SOPS a partir do `.env` local — **concluído**;
+8. validar o Secret por dry-run — **concluído**;
+9. criar namespace `firecrawl` — **concluído**;
+10. aplicar o Secret cifrado via SOPS — **concluído**;
+11. subir stack K3s — **próximo passo**;
 12. validar comunicação interna e readiness;
 13. validar API localmente pelo Traefik usando Host header;
 14. validar `https://firecrawl.guiosoft.info` via Cloudflare;
