@@ -2,146 +2,104 @@
 
 ## Estado atual
 
-Firecrawl continua sendo o primeiro workload real candidato à migração. Hoje ele roda em Docker Compose no host Debian e deve permanecer intacto até que a versão Kubernetes esteja validada.
+Firecrawl é o primeiro workload real escolhido para migração. Hoje ele roda em Docker Compose no host Debian e deve permanecer disponível até que a versão Kubernetes esteja validada.
 
-Componentes observados no Compose atual:
+Componentes observados no runtime atual:
 
-| Componente | Imagem | Estado | Persistência atual | Observação |
-|---|---|---|---|---|
-| API | `ghcr.io/firecrawl/firecrawl` | stateless de aplicação | nenhuma | publica a porta 3002 no host |
-| Playwright | `ghcr.io/firecrawl/playwright-service:latest` | stateless | tmpfs/cache efêmero | CPU/memória relativamente altos |
-| Redis | `redis:alpine` | stateful | volume `redis-data` | filas/cache/estado runtime |
-| RabbitMQ | `rabbitmq:3-management` | stateful operacional | volume Docker anônimo montado em `/var/lib/rabbitmq` | persiste estado entre recriações do container atual |
-| PostgreSQL | `ghcr.io/firecrawl/nuq-postgres:latest` | stateful crítico | volume `nuq-postgres-data` | banco persistente principal |
+| Componente | Imagem observada | Persistência Docker atual | Política K3s inicial |
+|---|---|---|---|
+| API | `ghcr.io/firecrawl/firecrawl` | nenhuma | stateless |
+| Playwright | `ghcr.io/firecrawl/playwright-service:latest` | cache temporário | `emptyDir` em memória |
+| Redis | `redis:alpine` | volume `firecrawl_redis-data` | efêmero via `emptyDir` |
+| RabbitMQ | `rabbitmq:3-management` | volume Docker anônimo em `/var/lib/rabbitmq` | efêmero via `emptyDir` |
+| PostgreSQL/NuQ | `ghcr.io/firecrawl/nuq-postgres:latest` | volume `firecrawl_nuq-postgres-data` | efêmero via `emptyDir` |
 
-O stack utiliza uma rede Docker privada `backend`. Somente a API é publicada no host; PostgreSQL, Redis, RabbitMQ e Playwright ficam internos.
+O stack utiliza a rede Docker privada `firecrawl_backend`. Somente a API é publicada atualmente no host, em `3002`.
 
 ## Auditoria runtime validada
 
-A auditoria read-only executada no host confirmou os cinco containers esperados ativos há cerca de 12 dias:
+A auditoria read-only confirmou os cinco containers esperados ativos, limites atuais e identidades imutáveis das imagens. Também identificou o volume Docker anônimo como pertencente ao RabbitMQ em `/var/lib/rabbitmq`.
 
-- `firecrawl-api-1` em `ghcr.io/firecrawl/firecrawl`, publicando `3002:3002`;
-- `firecrawl-nuq-postgres-1` em `ghcr.io/firecrawl/nuq-postgres:latest`;
-- `firecrawl-redis-1` em `redis:alpine`;
-- `firecrawl-rabbitmq-1` em `rabbitmq:3-management`, healthy;
-- `firecrawl-playwright-service-1` em `ghcr.io/firecrawl/playwright-service:latest`.
+As imagens do scaffold Kubernetes foram então pinadas pelos mesmos digests observados no runtime Docker atual:
 
-Todos estão ligados somente à rede Docker `firecrawl_backend`, exceto pela publicação da API no host.
+- `ghcr.io/firecrawl/firecrawl@sha256:a88c2c1b546560b77206cf88da87600cb69ac65358eed1a0f8bb06dde691b065`;
+- `ghcr.io/firecrawl/nuq-postgres@sha256:aed86f62858f29bd971abddcdeb301c12888098d2cf5d33c1ba42b053bc460f6`;
+- `redis@sha256:978f0e01593e65eed801f2402944efcd936d43b5027e4908a7897baf88ed6241`;
+- `rabbitmq@sha256:e582c0bc7766f3342496d8485efb5a1df782b5ce3886ad017e2eaae442311f69`;
+- `ghcr.io/firecrawl/playwright-service@sha256:468009bae00911d40d7120d58489a1d529362c22c45585cb9076094fe61b0025`.
 
-Os limites efetivos observados foram:
+Isso evita que uma atualização futura de `latest`, `alpine` ou tag implícita altere o staging de forma invisível.
 
-- API: `3 CPU / 4 GiB`;
-- Playwright: `2 CPU / 3 GiB`;
-- PostgreSQL, Redis e RabbitMQ: sem hard CPU/memory limit no Docker Compose atual.
+## Decisão sobre persistência
 
-### Identidade imutável das imagens observadas
+Para esta primeira migração, PostgreSQL/NuQ, Redis e RabbitMQ foram explicitamente classificados como **efêmeros**.
 
-O audit capturou os `repo_digest` efetivamente em execução e o scaffold K3s foi pinado para reproduzir exatamente esses artefatos durante o staging inicial:
+Motivação:
 
-```text
-API        ghcr.io/firecrawl/firecrawl@sha256:a88c2c1b546560b77206cf88da87600cb69ac65358eed1a0f8bb06dde691b065
-PostgreSQL ghcr.io/firecrawl/nuq-postgres@sha256:aed86f62858f29bd971abddcdeb301c12888098d2cf5d33c1ba42b053bc460f6
-Redis      redis@sha256:978f0e01593e65eed801f2402944efcd936d43b5027e4908a7897baf88ed6241
-RabbitMQ   rabbitmq@sha256:e582c0bc7766f3342496d8485efb5a1df782b5ce3886ad017e2eaae442311f69
-Playwright ghcr.io/firecrawl/playwright-service@sha256:468009bae00911d40d7120d58489a1d529362c22c45585cb9076094fe61b0025
-```
+- o objetivo atual é disponibilizar o Firecrawl como serviço utilizável, não preservar histórico interno de filas/jobs;
+- esses componentes podem ser recriados junto com a aplicação;
+- reduzir PVCs simplifica operação, backup e restore nesta fase;
+- se surgir necessidade de preservar estado entre recriações de Pod, a decisão será revista.
 
-Isso evita que `latest`, `alpine` ou tags implícitas mudem silenciosamente entre o Docker atual e o staging K3s.
+Consequência importante: `emptyDir` sobrevive a restart do container dentro do mesmo Pod, mas é perdido quando o Pod é substituído/reagendado. Portanto, jobs em andamento e estado interno podem ser perdidos após recriação.
 
-### Volumes observados
+O perfil K3s atual **não contém PVCs do Firecrawl**.
 
-O volume anteriormente anônimo foi identificado sem ambiguidade:
+## PVCs e uso de disco no laboratório
 
-```text
-firecrawl-nuq-postgres-1
-  /var/lib/docker/volumes/firecrawl_nuq-postgres-data/_data
-  -> /var/lib/postgresql/data
+Para os workloads que usam `local-path`, o valor `requests.storage` de um PVC é capacidade declarada ao Kubernetes; no setup atual ele não pré-aloca nem reserva fisicamente todo aquele espaço em `/mnt/store1` e também não cria automaticamente uma quota rígida no ext4.
 
-firecrawl-redis-1
-  /var/lib/docker/volumes/firecrawl_redis-data/_data
-  -> /data
-
-firecrawl-rabbitmq-1
-  /var/lib/docker/volumes/ada1e8aec9043050844168d92f6f2d63b4ebfac26a20aacd4dfe45e48fa454fe/_data
-  -> /var/lib/rabbitmq
-```
-
-Portanto, embora o `docker-compose.yml` não declare um volume nomeado para RabbitMQ, a imagem criou/usa armazenamento Docker persistente em `/var/lib/rabbitmq`. Isso muda a classificação do componente: o conteúdo continua sendo operacional/in-flight, mas a implantação K3s deve preservar seu filesystem entre reinícios de Pod. O scaffold agora possui PVC `rabbitmq-data` dedicado.
-
-Nenhum dado ou environment secret foi alterado ou impresso pela auditoria.
-
-## Recursos atuais declarados
-
-- API: até 3 CPUs / 4 GiB;
-- Playwright: até 2 CPUs / 3 GiB;
-- demais serviços sem hard limit explícito no Compose;
-- concorrência configurada para perfil de homelab, incluindo workers, jobs, browser pool e requests simultâneos.
-
-Esses valores são limites máximos do runtime atual e **não devem ser simplesmente copiados para requests Kubernetes**. O scaffold K3s usa requests menores e, por padrão, evita hard CPU limits; memória continua limitada para reduzir risco de um workload degradar todo o single-node.
-
-## Secrets
-
-O Compose injeta múltiplas variáveis via `.env`, incluindo chaves de API, credenciais de banco, proxy e integrações externas.
-
-Regras para a migração:
-
-- não versionar `.env`;
-- não copiar secrets para ConfigMap;
-- criar Secret Kubernetes cifrado com SOPS + age;
-- separar configuração não sensível em ConfigMap;
-- manter passwords/tokens fora de logs e scripts de auditoria;
-- aplicar least privilege: Playwright recebe apenas credenciais de proxy opcionais, e não credenciais de PostgreSQL ou integrações que não utiliza.
-
-O template público `kubernetes/apps/firecrawl/secret.example.yaml` contém apenas placeholders. O Secret real esperado pelo runtime chama-se `firecrawl-secrets` e deve ser criado como arquivo `*.sops.yaml` cifrado antes de qualquer deploy real.
-
-## Persistência
-
-### PostgreSQL
-
-`nuq-postgres-data` é o dado crítico da aplicação.
-
-A migração não deve copiar diretamente o diretório físico do volume Docker para um PVC PostgreSQL em execução. O caminho preferido será backup lógico/dump + restore em uma instância PostgreSQL nova dentro do K3s, seguido de validação.
-
-A documentação atual do Firecrawl confirma que o NuQ/PostgreSQL é a fonte de estado da fila e que a imagem `nuq-postgres` possui requisitos próprios, incluindo `pg_cron`. Por isso a migração preserva essa imagem em vez de substituir o banco por um PostgreSQL genérico sem validar compatibilidade.
-
-### Redis
-
-`redis-data` existe como named volume. Antes de decidir migrá-lo, precisamos determinar se o conteúdo é necessário para continuidade de jobs ou se pode ser tratado como estado transitório/cache. O scaffold inicial mantém um PVC dedicado para permitir teste conservador sem assumir que o volume pode ser descartado.
-
-### RabbitMQ
-
-A auditoria mostrou que RabbitMQ **possui estado persistido no Docker atual**, apesar de o Compose não declarar um volume explicitamente. O volume anônimo está montado em `/var/lib/rabbitmq`.
-
-Isso não muda a interpretação de negócio: RabbitMQ continua sendo transporte operacional e jobs em trânsito devem ser drenados/evitados no cutover. Porém, para equivalência operacional e para não perder fila/configuração em uma simples recriação de Pod, o scaffold K3s agora usa PVC `rabbitmq-data` de 2 GiB e `strategy: Recreate`.
-
-Não vamos copiar o diretório físico do volume Docker para o PVC Kubernetes. Antes do cutover será decidido se a fila deve ser drenada e recriada vazia ou se algum procedimento de migração/export é necessário.
-
-## Arquitetura Kubernetes proposta
-
-Primeira versão:
+A implicação é que:
 
 ```text
-Cloudflare Tunnel no host
-        |
-        v
-Traefik Ingress       <- somente após validação/autenticação
-        |
-        v
-firecrawl-api Service
-        |
-        +--> Redis Service + PVC
-        +--> RabbitMQ Service + PVC
-        +--> PostgreSQL Service + PVC
-        +--> Playwright Service
+capacidade nominal do PVC != espaço já ocupado/reservado no host
 ```
 
-Todos os backends continuam `ClusterIP`. O scaffold base **não contém Ingress público**. Isso é intencional porque o Firecrawl self-hosted pode operar sem autenticação de API; não vamos publicar uma instância de staging antes de definir explicitamente o controle de acesso.
+O consumo real cresce conforme arquivos são gravados. Isso permite overcommit e torna a monitoração do espaço livre de `/mnt/store1` mais importante que apenas somar capacidades declaradas. A explicação completa está em `docs/storage.md`.
 
-Namespace: `firecrawl`.
+## Publicação externa
 
-A migração do `cloudflared` para dentro do cluster continua fora deste passo.
+Foi aprovada a publicação direta da API em:
 
-## Scaffold Kubernetes criado
+```text
+https://firecrawl.guiosoft.info
+```
+
+O Ingress usa:
+
+```yaml
+ingressClassName: traefik
+```
+
+Fluxo esperado:
+
+```text
+Internet
+  ↓
+Cloudflare *.guiosoft.info
+  ↓
+Tunnel atual no host
+  ↓
+127.0.0.1:80
+  ↓
+Traefik K3s
+  ↓
+Ingress firecrawl.guiosoft.info
+  ↓
+Service firecrawl-api:3002
+  ↓
+Pod firecrawl-api
+```
+
+Nenhum PostgreSQL, Redis, RabbitMQ ou Playwright é publicado externamente; todos permanecem acessíveis apenas por Services `ClusterIP`.
+
+### Segurança da API pública
+
+O Ingress não adiciona autenticação por si só. Se a API Firecrawl em execução não exigir credencial de cliente, `firecrawl.guiosoft.info` será utilizável por qualquer pessoa que conheça o endpoint, podendo consumir CPU, memória e integrações externas configuradas.
+
+A publicação pública foi aceita para este ambiente, mas autenticação/rate limiting via aplicação ou Cloudflare continua sendo uma opção futura se o uso anônimo não for desejado.
+
+## Recursos Kubernetes
 
 Arquivos versionados:
 
@@ -150,138 +108,139 @@ kubernetes/apps/firecrawl/
 ├── namespace.yaml
 ├── configmap.yaml
 ├── stack.yaml
+├── ingress.yaml
 ├── secret.example.yaml
 └── kustomization.yaml
 ```
 
 O scaffold contém:
 
-- namespace isolado `firecrawl`;
-- ConfigMap apenas com configuração não sensível;
-- PVC PostgreSQL de 10 GiB em `local-path`;
-- PVC Redis de 2 GiB em `local-path`;
-- PVC RabbitMQ de 2 GiB em `local-path`;
+- namespace `firecrawl`;
+- ConfigMap com configuração não sensível;
 - Services `ClusterIP` para API, PostgreSQL, Redis, RabbitMQ e Playwright;
-- Deployments de cada componente;
-- probes conservadoras usando `pg_isready`, `redis-cli`, `rabbitmq-diagnostics` e TCP para API/Playwright enquanto não definimos um health endpoint HTTP estável;
-- `strategy: Recreate` nos componentes que usam PVC local;
-- requests conservadores e limites de memória; hard CPU limits foram evitados inicialmente para não introduzir throttling artificial sem evidência;
-- imagens pinadas pelos digests exatamente observados no Docker atual;
-- nenhum Ingress na base.
+- Deployments para os cinco componentes;
+- `emptyDir` para PostgreSQL, Redis e RabbitMQ;
+- cache Playwright em `emptyDir` com `medium: Memory`;
+- probes conservadoras;
+- requests iniciais de CPU/memória e apenas limits de memória onde apropriado;
+- imagens pinadas por digest;
+- Ingress público `firecrawl.guiosoft.info`.
+
+Hard CPU limits continuam evitados inicialmente para não introduzir throttling artificial sem evidência, seguindo a experiência observada com node-exporter na stack de monitoramento.
+
+## Secrets
+
+O Docker Compose usa `.env` com valores sensíveis. A regra permanece:
+
+- não versionar `.env`;
+- não copiar tokens/passwords para ConfigMap;
+- armazenar o Secret Kubernetes real cifrado com SOPS + age;
+- nunca imprimir os valores durante geração/aplicação.
+
+Foi criado:
+
+```bash
+scripts/firecrawl-secret-from-env.sh
+```
+
+Uso:
+
+```bash
+bash scripts/firecrawl-secret-from-env.sh /caminho/do/firecrawl/.env
+```
+
+Saída padrão:
+
+```text
+kubernetes/apps/firecrawl/firecrawl-secrets.sops.yaml
+```
+
+O script:
+
+1. lê o dotenv local sem executá-lo como shell;
+2. seleciona somente as chaves usadas pelo Firecrawl;
+3. cria o Secret em diretório temporário;
+4. cifra imediatamente com SOPS + age;
+5. remove o plaintext ao sair;
+6. valida que o arquivo cifrado pode ser descriptografado;
+7. não imprime valores secretos.
+
+Depois:
+
+```bash
+make secret-validate FILE=kubernetes/apps/firecrawl/firecrawl-secrets.sops.yaml
+make secret-apply FILE=kubernetes/apps/firecrawl/firecrawl-secrets.sops.yaml
+```
+
+O arquivo cifrado pode ser versionado; o `.env` e a identidade privada age não podem.
 
 ## Validação do scaffold
 
-Foi adicionado:
+O comando:
 
 ```bash
-bash scripts/firecrawl-k8s.sh validate
+make firecrawl-k8s-validate
 ```
 
-O comando é read-only e:
+é read-only e agora valida o perfil efetivo escolhido:
 
-- renderiza o Kustomize;
-- executa `kubectl apply --dry-run=client`;
-- confirma que não há Ingress público na base;
-- lista imagens;
-- destaca referências flutuantes que precisam ser pinadas antes de produção;
-- lista PVCs;
-- documenta a expectativa do Secret SOPS.
+- Kustomize renderiza corretamente;
+- `kubectl apply --dry-run=client` passa;
+- existe Ingress para `firecrawl.guiosoft.info`;
+- todas as imagens estão pinadas por digest;
+- nenhum PVC Firecrawl é renderizado;
+- PostgreSQL, Redis e RabbitMQ são tratados como efêmeros;
+- o Secret runtime `firecrawl-secrets` é esperado separadamente.
 
-Para consultar estado futuro sem alterar recursos:
+Para consultar o estado depois do deploy:
 
 ```bash
-bash scripts/firecrawl-k8s.sh status
+make firecrawl-k8s-status
 ```
 
 ## Estratégia de implantação
 
-Não faremos cutover direto do Docker Compose para Kubernetes.
+Sequência atualizada:
 
-Sequência prevista:
+1. auditar stack Docker atual — **concluído**;
+2. identificar imagens/digests e volumes — **concluído**;
+3. decidir persistência inicial — **concluído: PostgreSQL, Redis e RabbitMQ efêmeros**;
+4. pin das imagens por digest — **concluído**;
+5. criar Ingress `firecrawl.guiosoft.info` — **concluído em código**;
+6. validar render/dry-run do scaffold no host;
+7. gerar Secret SOPS a partir do `.env` local;
+8. validar/aplicar o Secret;
+9. subir stack K3s;
+10. validar comunicação interna e readiness;
+11. validar API localmente pelo Traefik usando Host header;
+12. validar `https://firecrawl.guiosoft.info` via Cloudflare;
+13. validar funcionalmente requests reais do Firecrawl;
+14. observar logs e consumo de recursos;
+15. parar o Docker Compose antigo após período de confiança;
+16. manter rollback simples enquanto a nova instalação estiver em observação.
 
-1. executar auditoria read-only do stack Docker atual; **concluído**;
-2. confirmar imagens efetivas, volumes, limites, portas e consumo; **quase concluído** — identidade imutável e mounts já confirmados, falta medir uso dos volumes;
-3. identificar health endpoint da API e dependências de startup;
-4. validar sintaxe/renderização do scaffold Kubernetes sem aplicar recursos;
-5. criar Secret SOPS real a partir do `.env`, sem expor valores;
-6. pin das imagens Firecrawl compatíveis; **concluído para o staging inicial usando os digests em execução**;
-7. iniciar stack Kubernetes com dados descartáveis primeiro;
-8. validar comunicação interna e health checks;
-9. definir autenticação e só então publicar hostname temporário via Traefik/Cloudflare wildcard;
-10. validar logs no Loki e, quando expostas, métricas no Prometheus;
-11. gerar backup consistente do PostgreSQL Docker;
-12. impedir novas escritas/jobs durante a janela de cutover;
-13. restaurar dados na instância K3s;
-14. validar funcionalmente a aplicação;
-15. mudar o hostname definitivo para o Ingress Kubernetes;
-16. manter Docker Compose parado, mas disponível para rollback por uma janela curta;
-17. remover stack antigo somente depois de estabilidade e backup/restore confirmados.
+Como não haverá migração de dados persistentes do Firecrawl nesta fase, o cutover fica significativamente mais simples: não existe sincronização de banco antigo/novo nem risco de divergência de writes entre bancos.
 
 ## Rollback
 
-Enquanto a migração não estiver considerada estável:
+Antes da remoção definitiva do Compose:
 
 ```text
 K3s Firecrawl apresenta problema
-        |
-        +--> interromper writes na versão K3s
-        +--> restaurar rota para o endpoint antigo
-        +--> subir novamente Docker Compose
+        ↓
+remover/desabilitar Ingress K3s se necessário
+        ↓
+parar stack K3s
+        ↓
+reativar endpoint Docker :3002
 ```
 
-Rollback com banco exige atenção: depois que o K3s aceitar escrita real, não existe rollback seguro para o banco antigo sem sincronização/restauração. Por isso o ponto de corte precisa ser explícito.
-
-## Auditoria do runtime atual
-
-Foi adicionado o script:
-
-```bash
-bash scripts/firecrawl-migration-audit.sh
-```
-
-Ele é read-only e coleta somente metadados não secretos:
-
-- containers do projeto Compose `firecrawl`;
-- imagens efetivas e identidade imutável (`image_id` / `repo_digest`);
-- estado e portas;
-- CPU/memória/restart policy;
-- volumes, mountpoints e destination dentro de cada container;
-- redes;
-- portas publicadas no host.
-
-Ele não imprime environment variables nem altera Docker/Kubernetes.
-
-## Critérios antes do primeiro deploy K3s
-
-Antes de criar uma instância de staging real precisamos confirmar:
-
-- o `kubectl kustomize` e dry-run do scaffold passam;
-- digests das imagens de staging estão pinados; **concluído**;
-- Secret SOPS real existe sem plaintext no Git;
-- endpoint/semântica de health da API são conhecidos ou a probe TCP inicial foi explicitamente aceita;
-- tamanho/uso atual dos volumes cabe nos PVCs propostos;
-- volume Docker anônimo é associado ao container/destination correto; **concluído: RabbitMQ -> `/var/lib/rabbitmq`**;
-- política para Redis durante migração é decidida;
-- política de fila RabbitMQ no cutover é decidida;
-- procedimento de dump/restore do `nuq-postgres` é ensaiado.
-
-## Decisões atuais
-
-- Firecrawl será migrado como **primeiro workload real**, mas de modo conservador;
-- não mover volumes físicos às cegas;
-- PostgreSQL é estado crítico e terá migração explícita por backup/restore;
-- Redis precisa ser classificado antes do cutover;
-- RabbitMQ possui persistência operacional no runtime atual e terá PVC no K3s, mas não será tratado como fonte autoritativa de negócio;
-- staging usa exatamente os digests observados no Docker atual;
-- secrets serão SOPS + age;
-- Cloudflare Tunnel permanece no host neste passo;
-- nenhum Ingress público será aplicado antes de uma decisão explícita de autenticação/acesso;
-- Docker Compose permanece disponível para rollback até conclusão da validação.
+Como o estado K3s atual é efêmero, não há necessidade de sincronizar dados de volta ao Compose.
 
 ## Fontes
 
-- Firecrawl, guia oficial de self-hosting: https://github.com/firecrawl/firecrawl/blob/main/SELF_HOST.md
-- Firecrawl, configuração atual de ambiente da API: https://github.com/firecrawl/firecrawl/blob/main/apps/api/.env.example
+- Firecrawl self-hosting: https://github.com/firecrawl/firecrawl/blob/main/SELF_HOST.md
+- Firecrawl environment example: https://github.com/firecrawl/firecrawl/blob/main/apps/api/.env.example
 - Firecrawl upstream: https://github.com/firecrawl/firecrawl
-
-Pontos extraídos dessas fontes para esta etapa: preferência por release/tag exata em vez de referências flutuantes; NuQ PostgreSQL como backend de fila; API self-hosted potencialmente sem autenticação por padrão; dependências internas não devem ser publicadas; persistência e recuperação são responsabilidade de quem opera a instalação self-hosted.
+- Kubernetes `emptyDir`: https://kubernetes.io/docs/concepts/storage/volumes/#emptydir
+- K3s storage: https://docs.k3s.io/add-ons/storage
