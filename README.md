@@ -52,15 +52,13 @@ A camada off-host usa Restic sobre Cloudflare R2. O bucket `guiosoft-k3s-backups
 
 O Disaster Recovery já possui readiness check, restore rehearsal isolado via R2 e um fluxo guardado para restore destrutivo em outro host. O teste completo em uma VM/segundo host ficou adiado até existir uma máquina disponível; o servidor atual não será usado como alvo destrutivo.
 
-A frente ativa agora é observabilidade. O `kube-prometheus-stack` está instalado e saudável com Prometheus, Alertmanager, Grafana, kube-state-metrics e node-exporter. Tempo `2.2.3` e OpenTelemetry Collector chart `0.172.1` também foram instalados e validados em `Running`, com PVC Tempo de 5 GiB em `local-path`. Grafana, Tempo e Collector permanecem sem Ingress público.
+A fundação de observabilidade está operacional. O `kube-prometheus-stack`, Tempo, OpenTelemetry Collector, Loki e Grafana Alloy estão ativos; Prometheus, Tempo e Loki estão provisionados no Grafana e com health `OK`.
 
-O primeiro workload Go instrumentado com OpenTelemetry já foi validado ponta a ponta: uma requisição gera `trace_id`, o trace atravessa aplicação -> Collector -> Tempo e o teste automatizado consegue recuperá-lo diretamente pela API do Tempo.
+`make observability-validate` foi validado no cluster atual com 13/13 scrape targets Prometheus `up`, query `up` retornando 13 séries, Pods Ready e todos os PVCs Bound. Na mesma amostra, o node estava em aproximadamente 782m CPU (13%) e 8331 MiB de RAM (52%); Grafana (~440 MiB) e Prometheus (~337 MiB) eram os maiores consumidores de memória da stack.
 
-A fundação de logs também está operacional. Loki community chart `18.5.0` roda em modo `Monolithic`, Grafana Alloy chart `1.12.1` coleta logs dos Pods pela Kubernetes API e envia ao Loki, e `make observability-logging-test` já confirmou uma linha de log contendo exatamente o mesmo `trace_id` da requisição. A correlação de backend logs <-> traces está, portanto, validada; resta revisar a navegação visual no Grafana.
+O demo OpenTelemetry também foi validado em modo distribuído: `otel-go-demo` propaga W3C `traceparent` para `otel-go-downstream`, e o teste confirma os dois `service.name` dentro do mesmo trace no Tempo.
 
-O Grafana tem provisioning validado para os três datasources principais: Prometheus, Tempo e Loki. O fluxo de reload + validação consulta a API do Grafana e confirma os UIDs esperados. O `make observability-validate` também inclui essa checagem de datasources além dos scrape targets Prometheus.
-
-O demo de tracing evoluiu para dois processos. `otel-go-demo` chama `otel-go-downstream` por HTTP interno e injeta W3C `traceparent`; o downstream extrai o contexto e cria spans no mesmo trace. O teste `make otel-go-demo-test` agora só passa quando o Tempo devolve o mesmo trace contendo os dois `service.name`. Essa nova etapa está implementada e aguarda validação runtime no cluster.
+A fundação de logs está operacional. `make observability-logging-test` confirmou uma linha de log contendo exatamente o mesmo `trace_id` da requisição, validando o caminho Alloy -> Loki e a correlação backend logs <-> traces. Resta validar visualmente a navegação Loki -> Tempo e Tempo -> Loki no Grafana.
 
 ## Divisão de responsabilidades
 
@@ -157,40 +155,15 @@ Traces  -> OpenTelemetry Collector -> Tempo
 UI      -> Grafana
 ```
 
-Tracing e logging já foram validados em runtime com o demo Go. O fluxo de logs/traces comprovado é:
-
-```text
-request
-  ├── trace -> OpenTelemetry Collector -> Tempo
-  └── log   -> Grafana Alloy -> Loki
-                 ^
-                 |
-            mesmo trace_id
-```
-
-O teste automatizado de logs:
+A validação consolidada está disponível em:
 
 ```bash
-make observability-logging-test
+make observability-validate
 ```
 
-gera uma requisição, obtém o `trace_id` e consulta o Loki até localizar uma linha contendo exatamente o mesmo ID. O teste passou no cluster atual.
+Ela verifica Pods/PVCs, targets e query `up` do Prometheus, health dos datasources Grafana e uso atual de recursos quando o metrics-server estiver disponível. No cluster atual o teste passou com 13/13 targets `up` e Prometheus, Tempo e Loki com health `OK`.
 
-O Grafana recebe Prometheus, Tempo e Loki por provisioning declarativo. Os datasources Tempo e Loki também carregam a correlação bidirecional `TraceID`/`tracesToLogsV2`. O reload/provisioning dos três datasources já foi validado em runtime.
-
-Para validar apenas os datasources:
-
-```bash
-make observability-grafana-datasources
-```
-
-Para forçar reload do provisioning e validar novamente:
-
-```bash
-make observability-grafana-reload
-```
-
-O demo distribuído agora usa:
+O demo distribuído usa:
 
 ```text
 client
@@ -212,17 +185,13 @@ make otel-go-demo-install
 make otel-go-demo-test
 ```
 
-O teste exige uma chamada downstream bem-sucedida e consulta o trace no Tempo até encontrar os dois serviços `otel-go-demo` e `otel-go-downstream` dentro do mesmo `trace_id`.
-
-O próximo bloco operacional também continua sendo revisar métricas e saúde da stack completa:
+A correlação backend entre logs e traces também está validada. Para validar logs:
 
 ```bash
-make observability-validate
+make observability-logging-test
 ```
 
-Esse target verifica Pods/PVCs, scrape targets e query `up` do Prometheus, provisioning dos datasources Grafana e uso atual de recursos quando `metrics-server` estiver disponível.
-
-Depois, revisar visualmente no Grafana:
+O próximo fechamento visual no Grafana é:
 
 ```text
 Loki log -> TraceID -> Tempo trace
@@ -283,19 +252,14 @@ A evolução atual foi baseada em:
 
 - validações reais do cluster K3s, Traefik, Cloudflare Tunnel, `kubectl`, PVC/local-path, SOPS + age e backup/restore executadas no próprio servidor;
 - validação real do kubeconfig remoto a partir de outra máquina da LAN;
-- validação real do `kube-prometheus-stack`, Tempo e OpenTelemetry Collector no cluster atual;
-- validação real de um trace OpenTelemetry ponta a ponta aplicação -> Collector -> Tempo;
+- validação real do `kube-prometheus-stack`, Tempo, OpenTelemetry Collector, Loki e Alloy no cluster atual;
+- validação real de 13/13 targets Prometheus `up` e health dos datasources Prometheus/Tempo/Loki;
+- validação real de tracing distribuído `otel-go-demo -> otel-go-downstream` com W3C Trace Context;
 - validação real de logs `otel-go-demo -> Alloy -> Loki` e correlação pelo mesmo `trace_id`;
-- validação real do provisioning Prometheus/Tempo/Loki pela API do Grafana;
 - documentação oficial do OpenTelemetry sobre propagação de contexto e W3C Trace Context;
 - documentação oficial do K3s para cluster access, storage, datastore e backup/restore;
 - documentação oficial do Kubernetes sobre kubeconfig e `kubectl`;
-- documentação oficial do Grafana Loki para Helm, modo Monolithic, TSDB, filesystem e retenção;
-- Artifact Hub do chart community `grafana-community/loki`;
-- documentação oficial do Grafana Alloy para Kubernetes e coleta de Pod logs;
-- documentação oficial do Grafana sobre provisioning de datasources, datasource Loki, derived fields e trace-to-logs;
-- documentação oficial do Promtail registrando EOL em 2 de março de 2026;
-- documentação oficial do Grafana Tempo e OpenTelemetry Collector;
+- documentação oficial do Grafana Loki, Alloy, Tempo e provisioning de datasources;
 - documentação oficial do Restic, Cloudflare R2, SOPS, age, Helm e systemd.
 
 Referências relevantes:
@@ -304,13 +268,7 @@ Referências relevantes:
 - https://www.w3.org/TR/trace-context/
 - https://grafana.com/docs/grafana/latest/administration/provisioning/#data-sources
 - https://grafana.com/docs/loki/latest/setup/install/helm/
-- https://grafana.com/docs/loki/latest/setup/install/helm/install-monolithic/
-- https://grafana.com/docs/loki/latest/operations/storage/filesystem/
-- https://artifacthub.io/packages/helm/grafana-community/loki
-- https://grafana.com/docs/alloy/latest/set-up/install/kubernetes/
 - https://grafana.com/docs/alloy/latest/collect/logs-in-kubernetes/
-- https://artifacthub.io/packages/helm/grafana/alloy
-- https://grafana.com/docs/loki/latest/send-data/promtail/
-- https://grafana.com/docs/grafana/latest/datasources/loki/
+- https://grafana.com/docs/tempo/latest/
 
 Nenhum dado persistente existente foi movido e nenhum secret plaintext deve ser mantido no Git.
