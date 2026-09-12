@@ -67,18 +67,30 @@ The test creates temporary plaintext, encrypts it using `.sops.yaml`, decrypts i
 
 ## Kubernetes workflow
 
-Encrypted Kubernetes Secret manifests live under:
+Encrypted Kubernetes manifests may live anywhere below:
 
 ```text
-kubernetes/secrets/*.sops.yaml
+kubernetes/**/*.sops.yaml
 ```
 
-The Git ignore rules allow only encrypted `*.sops.yaml` files and `README.md` in that directory.
+This allows both shared secrets under `kubernetes/secrets/` and application-local encrypted manifests beside the workload that consumes them, for example:
+
+```text
+kubernetes/apps/firecrawl/firecrawl-secrets.sops.yaml
+```
+
+The helper verifies that the path resolves inside the repository `kubernetes/` tree and refuses path traversal or files without the `.sops.yaml` suffix.
 
 Create or edit a secret directly through the SOPS editor:
 
 ```bash
 make secret-edit FILE=kubernetes/secrets/example.sops.yaml
+```
+
+or application-local:
+
+```bash
+make secret-edit FILE=kubernetes/apps/example/example-secrets.sops.yaml
 ```
 
 SOPS can create a new encrypted file from the configured creation rule, so there is no need to create a persistent plaintext precursor.
@@ -92,16 +104,14 @@ make secret-view FILE=kubernetes/secrets/example.sops.yaml
 Validate the decrypted Kubernetes manifest without changing the cluster:
 
 ```bash
-make secret-validate FILE=kubernetes/secrets/example.sops.yaml
+make secret-validate FILE=kubernetes/apps/firecrawl/firecrawl-secrets.sops.yaml
 ```
 
 Apply it directly to Kubernetes without writing a decrypted file:
 
 ```bash
-make secret-apply FILE=kubernetes/secrets/example.sops.yaml
+make secret-apply FILE=kubernetes/apps/firecrawl/firecrawl-secrets.sops.yaml
 ```
-
-The helper refuses files outside `kubernetes/secrets/*.sops.yaml` to reduce the chance of accidentally handling unrelated plaintext as a secret.
 
 Until GitOps is implemented, `secret-apply` is the explicit bridge between encrypted Git state and the live cluster. Later, the chosen GitOps controller will own in-cluster decryption/reconciliation.
 
