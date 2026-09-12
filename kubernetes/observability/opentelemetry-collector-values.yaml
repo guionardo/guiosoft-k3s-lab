@@ -31,7 +31,7 @@ config:
 
   exporters:
     debug: null
-    otlp/tempo:
+    otlp_grpc/tempo:
       endpoint: tempo.monitoring.svc.cluster.local:4317
       tls:
         insecure: true
@@ -54,4 +54,4 @@ config:
           - memory_limiter
           - batch
         exporters:
-          - otlp/tempo
+          - otlp_grpc/tempo
