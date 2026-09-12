@@ -40,6 +40,8 @@ Hostnames desconhecidos sob o wildcard `*.guiosoft.info` chegam ao Traefik, mas 
 
 O layout persistente em `/srv/k3s` foi validado no host. Novos volumes do StorageClass `local-path` passam a ser provisionados em `/mnt/store1/k3s/local-path`, e existe um workload descartável para validar PVC, escrita e persistência após recriação do Pod.
 
+A infraestrutura Cloudflare começou a ser declarada em Terraform usando o provider v5. O Tunnel existente, sua configuração remota e o wildcard DNS já possuem configuração declarativa, mas ainda devem ser importados para o state antes de qualquer `apply`.
+
 ## Divisão de responsabilidades
 
 ```text
@@ -82,6 +84,7 @@ Kubernetes / Helm / GitOps
 │   └── troubleshooting.md
 ├── ansible/
 ├── terraform/
+│   └── cloudflare/
 ├── kubernetes/
 └── scripts/
 ```
@@ -97,11 +100,16 @@ make storage-test
 make storage-test-recreate
 make cluster-status
 make firewall-audit
+make tf-cloudflare-init
+make tf-cloudflare-validate
+make tf-cloudflare-plan
 ```
 
 O target `make storage` é conservador: valida que os discos esperados já estão montados, cria somente diretórios e links sob `/srv/k3s`, e não formata, reparticiona, move ou remove dados existentes.
 
 O target `make k3s` também garante que novos volumes locais usem `/mnt/store1/k3s/local-path`. Para validar a persistência, `make storage-test` cria um PVC descartável e `make storage-test-recreate` recria o Pod mantendo o mesmo volume.
+
+Para Cloudflare, o fluxo também é deliberadamente conservador: configurar variáveis locais, exportar `CLOUDFLARE_API_TOKEN`, importar os recursos existentes para o state e somente então revisar `terraform plan`. Não executar `apply` enquanto houver mudanças inesperadas.
 
 ## Primeira etapa: discovery
 
@@ -182,6 +190,8 @@ A evolução atual foi baseada em:
 - validações reais do cluster K3s, Traefik, Cloudflare Tunnel e `kubectl` executadas no próprio servidor;
 - documentação oficial do K3s para `default-local-storage-path`;
 - documentação do Rancher `local-path-provisioner` para comportamento de PVs locais;
-- documentação versionada em `docs/current-state.md`, `docs/networking.md`, `docs/firewall.md` e `docs/storage.md`.
+- documentação oficial do Cloudflare Terraform Provider v5 para `cloudflare_dns_record`, `cloudflare_zero_trust_tunnel_cloudflared` e `cloudflare_zero_trust_tunnel_cloudflared_config`;
+- documentação oficial da Cloudflare para importação de recursos existentes em Terraform;
+- documentação versionada em `docs/current-state.md`, `docs/networking.md`, `docs/firewall.md`, `docs/storage.md` e `terraform/cloudflare/README.md`.
 
-Nenhum dado persistente existente foi movido como parte desta etapa de storage.
+Nenhum dado persistente existente foi movido como parte da etapa de storage, e nenhum recurso Cloudflare deve ser recriado durante a adoção inicial de Terraform.
