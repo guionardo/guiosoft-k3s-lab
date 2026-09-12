@@ -5,6 +5,8 @@ k3s_service_cidr: 10.43.0.0/16
 
 # Current stable release pinned for reproducible rebuilds.
 k3s_version: v1.36.4+k3s1
+kubectl_version: v1.36.4
+kubectl_arch: amd64
 
 k3s_node_name: guiosoft-info
 k3s_data_dir: /var/lib/rancher/k3s
