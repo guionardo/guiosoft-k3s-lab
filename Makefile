@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: help discovery ansible-deps preflight bootstrap tools k3s storage storage-test storage-test-status storage-test-recreate storage-test-delete backup-create backup-list backup-verify backup-install backup-status backup-run backup-prune restic-test firewall-audit cluster-status lab-deploy lab-status lab-test lab-delete secrets-test secret-edit secret-view secret-validate secret-apply tf-cloudflare-discovery tf-cloudflare-init tf-cloudflare-fmt tf-cloudflare-validate tf-cloudflare-import tf-cloudflare-plan tf-r2-init tf-r2-fmt tf-r2-validate tf-r2-plan tf-r2-apply
+.PHONY: help discovery ansible-deps preflight bootstrap tools k3s storage storage-test storage-test-status storage-test-recreate storage-test-delete backup-create backup-list backup-verify backup-install backup-status backup-run backup-prune restic-test restic-r2-secret restic-r2-install restic-r2-test restic-r2-sync restic-r2-status restic-r2-check firewall-audit cluster-status lab-deploy lab-status lab-test lab-delete secrets-test secret-edit secret-view secret-validate secret-apply tf-cloudflare-discovery tf-cloudflare-init tf-cloudflare-fmt tf-cloudflare-validate tf-cloudflare-import tf-cloudflare-plan tf-r2-init tf-r2-fmt tf-r2-validate tf-r2-plan tf-r2-apply
 
 help:
 	@echo "guiosoft-k3s-lab"
@@ -20,11 +20,17 @@ help:
 	@echo "  make backup-create         Cria backup local do datastore SQLite + token do K3s"
 	@echo "  make backup-list           Lista backups locais e checksums do K3s"
 	@echo "  make backup-verify         Reidrata e valida o backup mais recente sem tocar no K3s ativo"
-	@echo "  make backup-install        Instala timer systemd e política de retenção via Ansible"
+	@echo "  make backup-install        Instala timer systemd, retenção local e sync R2 via Ansible"
 	@echo "  make backup-status         Mostra timer e últimas execuções do backup"
 	@echo "  make backup-run            Dispara agora o mesmo serviço usado pelo timer"
-	@echo "  make backup-prune          Executa manualmente a retenção configurada"
+	@echo "  make backup-prune          Executa manualmente a retenção local configurada"
 	@echo "  make restic-test           Valida backup/restore restic em repositório temporário local"
+	@echo "  make restic-r2-secret      Cria/atualiza credenciais R2 cifradas com SOPS"
+	@echo "  make restic-r2-install     Instala credenciais R2 runtime em /etc/k3s-backup"
+	@echo "  make restic-r2-test        Valida round-trip real Restic -> R2 -> restore"
+	@echo "  make restic-r2-sync        Envia o backup K3s mais recente e aplica retenção remota"
+	@echo "  make restic-r2-status      Lista o snapshot R2 mais recente"
+	@echo "  make restic-r2-check       Executa restic check no repositório R2"
 	@echo "  make firewall-audit        Audita firewall/listeners após K3s sem alterar regras"
 	@echo "  make cluster-status        Mostra nodes, pods e services do cluster"
 	@echo "  make lab-deploy            Cria namespace e workload de teste"
@@ -116,7 +122,7 @@ backup-status:
 	sudo systemctl list-timers k3s-backup.timer --no-pager
 	@echo
 	@echo "Últimas execuções:"
-	sudo journalctl -u k3s-backup.service -n 40 --no-pager
+	sudo journalctl -u k3s-backup.service -n 60 --no-pager
 
 backup-run:
 	sudo systemctl start k3s-backup.service
@@ -127,6 +133,27 @@ backup-prune:
 
 restic-test:
 	sudo bash scripts/restic-smoke-test.sh
+
+restic-r2-secret:
+	bash scripts/restic-r2-secret.sh
+
+restic-r2-install:
+	bash scripts/restic-r2-install.sh
+
+restic-r2-test:
+	sudo bash scripts/restic-r2-test.sh
+
+restic-r2-sync:
+	sudo RESTIC_R2_KEEP_DAILY=$${RESTIC_R2_KEEP_DAILY:-14} \
+	  RESTIC_R2_KEEP_WEEKLY=$${RESTIC_R2_KEEP_WEEKLY:-8} \
+	  RESTIC_R2_KEEP_MONTHLY=$${RESTIC_R2_KEEP_MONTHLY:-12} \
+	  bash scripts/restic-r2-sync.sh
+
+restic-r2-status:
+	@sudo bash -c 'set -euo pipefail; set -a; source /etc/k3s-backup/r2.env; set +a; export RESTIC_REPOSITORY_FILE=/etc/k3s-backup/restic.repository RESTIC_PASSWORD_FILE=/etc/k3s-backup/restic.password; restic snapshots --tag k3s-control-plane --latest 1'
+
+restic-r2-check:
+	@sudo bash -c 'set -euo pipefail; set -a; source /etc/k3s-backup/r2.env; set +a; export RESTIC_REPOSITORY_FILE=/etc/k3s-backup/restic.repository RESTIC_PASSWORD_FILE=/etc/k3s-backup/restic.password; restic check'
 
 firewall-audit:
 	cd ansible && ansible-playbook -K playbooks/firewall-audit.yml
