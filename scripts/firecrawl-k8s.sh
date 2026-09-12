@@ -85,14 +85,52 @@ status() {
     echo "Firecrawl namespace '$NAMESPACE' does not exist yet."
     exit 0
   fi
-  kubectl get deploy,svc,ingress -n "$NAMESPACE" -o wide
+  kubectl get deploy,pods,svc,ingress -n "$NAMESPACE" -o wide
+}
+
+deploy() {
+  need kubectl
+
+  echo "Firecrawl Kubernetes deploy"
+  echo
+
+  if ! kubectl get namespace "$NAMESPACE" >/dev/null 2>&1; then
+    echo "error: namespace '$NAMESPACE' does not exist" >&2
+    echo "Apply $APP_DIR/namespace.yaml first." >&2
+    exit 1
+  fi
+
+  if ! kubectl get secret -n "$NAMESPACE" firecrawl-secrets >/dev/null 2>&1; then
+    echo "error: required Secret '$NAMESPACE/firecrawl-secrets' does not exist" >&2
+    echo "Generate/apply the SOPS Secret before deploying the stack." >&2
+    exit 1
+  fi
+
+  validate
+  echo
+  echo "Applying Firecrawl manifests..."
+  kubectl apply -k "$APP_DIR"
+
+  echo
+  echo "Waiting for deployments..."
+  for deployment in nuq-postgres redis rabbitmq playwright-service firecrawl-api; do
+    echo "- deployment/$deployment"
+    kubectl rollout status -n "$NAMESPACE" "deployment/$deployment" --timeout=240s
+  done
+
+  echo
+  echo "Firecrawl deploy completed."
+  echo "Docker Compose was not modified or stopped."
+  echo
+  status
 }
 
 case "$ACTION" in
   validate) validate ;;
   status) status ;;
+  deploy) deploy ;;
   *)
-    echo "Usage: $0 {validate|status}" >&2
+    echo "Usage: $0 {validate|status|deploy}" >&2
     exit 2
     ;;
 esac
