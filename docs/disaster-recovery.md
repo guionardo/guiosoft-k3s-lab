@@ -26,9 +26,10 @@ No host atual já foram validados:
 - retenção remota;
 - `restic check`;
 - restore R2 -> local com comparação SHA-256 byte a byte;
-- readiness check de DR com todos os pré-requisitos atuais acessíveis.
+- readiness check de DR com todos os pré-requisitos atuais acessíveis;
+- rehearsal isolado usando exclusivamente o snapshot remoto do R2 como fonte.
 
-Isso prova a qualidade do artefato de backup, mas ainda não prova a reconstrução completa de um servidor perdido.
+Isso prova a qualidade e recuperabilidade do artefato de backup. O passo que ainda falta é subir um K3s separado usando esse datastore restaurado.
 
 ## Dependências que não podem depender do servidor perdido
 
@@ -51,22 +52,13 @@ Antes de preparar um ambiente destrutivo, execute no servidor atual:
 make dr-readiness
 ```
 
-O check é somente leitura. Ele valida:
+O check é somente leitura. Ele valida ferramentas, checkout Git, artefatos IaC, descriptografia SOPS, configuração runtime, acesso ao R2, snapshot remoto, backup local e restore rehearsal.
 
-- ferramentas essenciais instaladas;
-- checkout Git e artefatos IaC presentes;
-- existência e descriptografia do secret SOPS de Restic/R2;
-- configuração runtime de backup;
-- acesso ao repositório Restic no R2;
-- existência de snapshot `k3s-control-plane`;
-- existência de backup local recente;
-- restore rehearsal do backup local.
-
-Esse check já foi validado com sucesso no host atual. O comando não altera o cluster nem o repositório Restic.
+Esse check já foi validado com sucesso no host atual.
 
 ## Rehearsal isolado a partir do R2
 
-Antes de restaurar um K3s real em uma VM, existe uma etapa intermediária que usa **somente o snapshot remoto** como fonte do artefato:
+A etapa intermediária usa **somente o snapshot remoto** como fonte:
 
 ```bash
 make dr-r2-rehearsal
@@ -94,18 +86,94 @@ PRAGMA integrity_check
 limpeza automática do staging
 ```
 
-O script `scripts/dr-r2-restore-rehearsal.sh` não usa os archives locais como fonte, não escreve em `/var/lib/rancher/k3s` e não altera o cluster. Todo o conteúdo restaurado é colocado em um diretório temporário abaixo da área de backup e removido ao final.
+Esse fluxo já foi validado com sucesso. O script não usa os archives locais como fonte, não escreve em `/var/lib/rancher/k3s` e não altera o cluster.
 
-Essa etapa comprova que o artefato necessário para DR pode ser obtido exclusivamente do destino off-host e continua estruturalmente válido. Ela ainda não substitui o restore completo em uma máquina separada.
+## Exportar um artefato para o alvo de DR
 
-## Rehearsal em ambiente separado
+Para transferir um backup verificado para uma VM/host separado:
 
-O primeiro restore completo deve usar uma VM ou outro servidor sem acesso de escrita aos discos do host de produção.
+```bash
+make dr-r2-export DEST=/secure/dr-export
+```
 
-Fluxo planejado:
+O target restaura o snapshot mais recente do R2 em staging temporário, executa o mesmo verificador usado nos rehearsals e só depois grava no destino informado:
 
 ```text
-Debian limpo
+k3s-<host>-<timestamp>.tar.gz
+k3s-<host>-<timestamp>.tar.gz.sha256
+```
+
+O archive contém o server token e deve ser tratado como secret. O target recusa exportar diretamente para `/var/lib/rancher/k3s`.
+
+## Alvo isolado de rehearsal
+
+O restore destrutivo foi implementado com múltiplas barreiras para impedir uso acidental no servidor ativo.
+
+No host/VM de DR, após instalar o K3s de teste, execute:
+
+```bash
+make dr-target-init
+```
+
+Esse comando cria:
+
+```text
+/etc/guiosoft-k3s-lab/dr-rehearsal-target
+```
+
+Ele **recusa** marcar um host cujo hostname seja `guiosoft-info` ou que possua o IP de produção `192.168.88.9`.
+
+Existe também um inventário de exemplo em:
+
+```text
+ansible/inventory/dr.example.yml
+```
+
+Copie-o para um inventário local não versionado e ajuste endereço, usuário e node name do alvo.
+
+## Restore destrutivo somente no alvo marcado
+
+Depois de copiar o par archive/checksum para o host isolado:
+
+```bash
+make dr-restore FILE=/secure/dr/k3s-guiosoft-info-TIMESTAMP.tar.gz
+```
+
+O target chama `scripts/dr-restore-k3s.sh`, que só continua quando todas estas condições são verdadeiras:
+
+- execução como root;
+- marker `dr-rehearsal-target` válido;
+- hostname diferente do host de produção;
+- IP de produção ausente;
+- confirmação explícita `DR_RESTORE_CONFIRM=restore-isolated-k3s`;
+- archive e `.sha256` presentes;
+- restore rehearsal do archive aprovado;
+- K3s instalado no alvo.
+
+A sequência destrutiva é limitada ao host marcado:
+
+```text
+validar archive
+    ↓
+parar K3s
+    ↓
+preservar db/token atuais do alvo em dr-pre-restore-<timestamp>
+    ↓
+substituir server/db e server/token
+    ↓
+iniciar K3s
+    ↓
+aguardar /readyz
+    ↓
+mostrar nodes restaurados
+```
+
+O backup de segurança do estado inicial da VM é mantido sob o próprio `K3S_DATA_DIR`. Isso não é um rollback de produção; é apenas uma proteção adicional do ambiente descartável de rehearsal.
+
+## Sequência do primeiro restore completo
+
+```text
+VM/host Debian isolado
    ↓
 git clone guiosoft-k3s-lab
    ↓
@@ -113,30 +181,18 @@ restaurar identidade age fora do Git
    ↓
 make ansible-deps
    ↓
-make bootstrap
+bootstrap/tooling/K3s no alvo usando inventário DR
    ↓
-make tools
+make dr-target-init
    ↓
-make storage
+copiar archive + checksum exportados do R2
    ↓
-recuperar/decriptar configuração Restic R2
-   ↓
-restaurar archive K3s mais recente do R2
-   ↓
-validar archive/checksum/SQLite/token
-   ↓
-instalar K3s na versão documentada
-   ↓
-parar K3s no host de DR
-   ↓
-restaurar server/db + server/token
-   ↓
-iniciar K3s
+make dr-restore FILE=...
    ↓
 validar node, namespaces, Services, Ingress e objetos do cluster
 ```
 
-A etapa que substitui `server/db` e `server/token` é deliberadamente destrutiva e ainda não é automatizada. Ela só será implementada para um alvo explicitamente identificado como ambiente de DR.
+Não execute `make dr-target-init` ou `make dr-restore` no servidor ativo.
 
 ## Critérios de sucesso do primeiro teste completo
 
