@@ -138,14 +138,21 @@ Para qualquer workload escolhido futuramente:
 - [x] adicionar values pinados para Tempo e OpenTelemetry Collector;
 - [x] adicionar pipeline OTLP Collector -> Tempo e datasource Tempo no Grafana;
 - [x] expor instalação/status de tracing pelo Makefile;
+- [x] instalar Tempo `2.2.3` e OpenTelemetry Collector chart `0.172.1` no cluster;
+- [x] validar Tempo e Collector em `Running` e PVC Tempo de 5 GiB em `local-path`;
+- [x] atualizar exporter do Collector para `otlp_grpc` após deprecation reportada pelo chart;
+- [x] implementar workload Go instrumentado com OpenTelemetry e fluxo local build -> K3s containerd;
+- [x] adicionar validação automatizada que gera `trace_id` e consulta o trace diretamente no Tempo;
 - [ ] validar métricas do cluster e targets Prometheus com `make observability-validate`;
 - [ ] validar Grafana e dashboards padrão;
-- [ ] instalar e validar Tempo + OpenTelemetry Collector com `make observability-tracing-install`;
-- [ ] instrumentar workload Go de laboratório e validar trace end-to-end;
+- [ ] executar `make otel-go-demo-install` e validar rollout do workload instrumentado;
+- [ ] executar `make otel-go-demo-test` e confirmar trace ponta a ponta;
+- [ ] visualizar o trace no Grafana Explore;
 - [ ] revisar consumo de CPU, memória e storage após estabilização;
 - [ ] revisar alertas incompatíveis/ruidosos no K3s;
 - [ ] logs com Loki;
 - [ ] configurar correlação metrics -> traces -> logs;
+- [ ] demonstrar propagação distribuída entre dois serviços instrumentados;
 - [ ] dashboards adicionais de recursos/workloads;
 - [ ] alertas essenciais customizados.
 
