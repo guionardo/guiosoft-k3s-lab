@@ -1,6 +1,6 @@
 # Estado atual e decisões de escopo
 
-Atualizado após discovery, limpeza manual do host, instalação do K3s e validação do acesso externo via Cloudflare Tunnel.
+Atualizado após discovery, limpeza manual do host, instalação do K3s, validação do acesso externo via Cloudflare Tunnel, configuração administrativa do `kubectl` e auditoria pós-K3s do firewall.
 
 ## Host
 
@@ -11,6 +11,7 @@ Atualizado após discovery, limpeza manual do host, instalação do K3s e valida
 - Cloudflare Tunnel ativo via systemd
 - Tailscale removido
 - K3s `v1.36.4+k3s1` instalado e operacional
+- `kubectl` standalone configurado para o usuário administrativo local
 
 ## Validação pós-limpeza
 
@@ -54,6 +55,8 @@ Service
     ↓
 Pod
 ```
+
+O `kubectl` administrativo também foi validado sem `sudo`, utilizando kubeconfig próprio do usuário em `~/.kube/config`.
 
 ## Serviços atuais
 
@@ -121,18 +124,40 @@ Pod
 
 O teste `https://k3s-test.guiosoft.info/` retornou a resposta do workload `whoami`, incluindo os headers encaminhados pelo Cloudflare e pelo Traefik.
 
+Um hostname coberto pelo wildcard, mas sem Ingress correspondente, foi testado tanto local quanto externamente e retornou HTTP 404. Portanto, o wildcard não publica automaticamente workloads desconhecidos.
+
+## Firewall e listeners
+
+A auditoria pós-K3s confirmou:
+
+- K3s ativo;
+- Docker ativo;
+- `cloudflared` ativo;
+- Kubernetes API operacional;
+- UFW instalado, mas inativo.
+
+Foram observados listeners em todas as interfaces para serviços como SSH, NFS/RPC, Firecrawl, PCP, Kubernetes API, kubelet e Cockpit. A existência desses listeners não comprova exposição à Internet; isso depende também do roteador, NAT e demais regras de rede externas ao host.
+
+A decisão atual é **não habilitar UFW automaticamente** até classificar cada serviço por escopo de acesso e validar impacto em K3s, Docker, NFS e administração remota. A política e as pendências estão registradas em `docs/firewall.md`.
+
 ## Diretriz para publicação de novos workloads
 
-Para aplicações públicas que sigam o caminho padrão do cluster, o objetivo é que a publicação exija principalmente um Ingress Kubernetes para um hostname `*.guiosoft.info`.
+Para aplicações públicas que sigam o caminho padrão do cluster, a publicação exige principalmente um Ingress Kubernetes para um hostname `*.guiosoft.info`.
 
-Antes de ampliar esse padrão para workloads reais, ainda devem ser definidos:
+Convenções atuais:
 
-- comportamento para hostnames desconhecidos;
-- padrão de Ingress;
-- distinção entre aplicações públicas e privadas;
-- estratégia de TLS/origin e headers confiáveis;
-- gerenciamento gradual dos recursos Cloudflare por Terraform.
+- `ingressClassName: traefik` explícito;
+- Service `ClusterIP` por padrão;
+- publicação externa preferencial via Cloudflare Tunnel;
+- sem catch-all Ingress público;
+- hostname sem Ingress conhecido retorna 404;
+- serviços administrativos devem receber política de acesso própria.
 
-## Próximo passo
+## Próximos passos
 
-Com o caminho externo validado, os próximos itens de base são configurar `kubectl` administrativo sem depender de `sudo k3s kubectl`, documentar troubleshooting básico e definir o padrão de Ingress antes de iniciar a migração de workloads reais.
+Os próximos blocos de infraestrutura são:
+
+1. classificar serviços e definir a política de firewall antes de qualquer alteração de regras;
+2. criar o role `storage` e definir o layout persistente;
+3. iniciar gerenciamento gradual do Cloudflare por Terraform, importando recursos existentes em vez de recriá-los;
+4. definir estratégia SOPS + age para secrets.
