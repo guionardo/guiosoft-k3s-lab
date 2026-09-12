@@ -56,13 +56,15 @@ trace_test() {
   app_log="$(mktemp)"
   tempo_log="$(mktemp)"
   tempo_response="$(mktemp)"
+  app_pf=""
+  tempo_pf=""
 
   cleanup() {
     [[ -n "${app_pf:-}" ]] && kill "$app_pf" >/dev/null 2>&1 || true
     [[ -n "${tempo_pf:-}" ]] && kill "$tempo_pf" >/dev/null 2>&1 || true
-    rm -f "$app_log" "$tempo_log" "$tempo_response"
+    rm -f "${app_log:-}" "${tempo_log:-}" "${tempo_response:-}"
   }
-  trap cleanup EXIT
+  trap cleanup RETURN
 
   kubectl port-forward -n "$NAMESPACE" service/otel-go-demo "$APP_PORT":8080 >"$app_log" 2>&1 &
   app_pf=$!
@@ -112,7 +114,7 @@ trace_test() {
 
   echo "error: trace was not found in Tempo within the validation window" >&2
   [[ -s "$tempo_response" ]] && cat "$tempo_response" >&2 || true
-  exit 1
+  return 1
 }
 
 delete_app() {
