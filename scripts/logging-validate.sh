@@ -29,17 +29,28 @@ loki_pf=$!
 kubectl port-forward -n "$APP_NAMESPACE" service/otel-go-demo "$APP_LOCAL_PORT":8080 >"$local_app_log" 2>&1 &
 app_pf=$!
 
+# The Loki gateway is nginx and does not expose Loki's native /ready endpoint.
+# Validate the routed Loki HTTP API instead, because this is the same path used
+# by Grafana and by the LogQL query below.
+LOKI_API_CHECK="http://127.0.0.1:${LOKI_LOCAL_PORT}/loki/api/v1/status/buildinfo"
+
 for _ in $(seq 1 30); do
-  if curl --fail --silent "http://127.0.0.1:${LOKI_LOCAL_PORT}/ready" >/dev/null 2>&1 && \
+  if curl --fail --silent "$LOKI_API_CHECK" >/dev/null 2>&1 && \
      curl --fail --silent "http://127.0.0.1:${APP_LOCAL_PORT}/healthz" >/dev/null 2>&1; then
     break
   fi
   sleep 1
 done
 
-curl --fail --silent "http://127.0.0.1:${LOKI_LOCAL_PORT}/ready" >/dev/null || {
-  echo "error: Loki gateway did not become ready" >&2
+curl --fail --silent "$LOKI_API_CHECK" >/dev/null || {
+  echo "error: Loki API through gateway did not become ready" >&2
   cat "$local_loki_log" >&2
+  echo >&2
+  echo "Gateway service/endpoints:" >&2
+  kubectl get service,endpoints -n "$NAMESPACE" loki-gateway -o wide >&2 || true
+  echo >&2
+  echo "Loki pods:" >&2
+  kubectl get pods -n "$NAMESPACE" -l app.kubernetes.io/name=loki -o wide >&2 || true
   exit 1
 }
 curl --fail --silent "http://127.0.0.1:${APP_LOCAL_PORT}/healthz" >/dev/null || {
