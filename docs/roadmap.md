@@ -111,7 +111,12 @@ Para qualquer workload escolhido futuramente:
 - [x] inicializar repositório Restic no R2;
 - [x] validar round-trip real Restic -> R2 -> restore com comparação SHA-256;
 - [x] implementar automação de cópia off-host e retenção remota no serviço de backup;
-- [ ] validar execução completa agendada local + R2 pelo `k3s-backup.service`;
+- [x] validar execução completa local + R2 pelo `k3s-backup.service`;
+- [x] validar `restic check` no repositório R2;
+- [x] adicionar inventário read-only de PVC/PV para planejar backup de dados de aplicações;
+- [ ] classificar cada PVC de aplicação como stateless, file-oriented, database ou external;
+- [ ] definir e implementar backup nativo para cada banco de dados persistente;
+- [ ] definir backup de PVCs file-oriented;
 - [ ] executar restore completo do K3s a partir de backup em ambiente de disaster recovery;
 - [ ] testes periódicos de restore.
 
