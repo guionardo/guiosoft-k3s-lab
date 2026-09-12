@@ -61,6 +61,48 @@ Isso não implica que todo workload deva usar `hostPath`. Para aplicações norm
 
 A cópia off-host atual usa Restic sobre Cloudflare R2.
 
+## Capacidade declarada de PVCs no `local-path`
+
+No perfil atual do laboratório, um PVC como:
+
+```yaml
+resources:
+  requests:
+    storage: 10Gi
+```
+
+**não pré-aloca nem reserva 10 GiB no filesystem do host**. O `local-path-provisioner` cria um diretório local para o volume e o consumo físico cresce conforme arquivos são realmente gravados.
+
+Em outras palavras:
+
+```text
+PVC request = capacidade declarada ao Kubernetes
+            ≠ espaço pré-alocado no disco
+            ≠ reserva física garantida
+            ≠ quota rígida do diretório
+```
+
+Se cinco PVCs declararem juntos 32 GiB, mas seus arquivos ocuparem apenas 6 GiB, o uso real do filesystem ficará próximo desses 6 GiB, somado ao overhead normal do filesystem.
+
+Também é importante não interpretar `capacity: 10Gi` como uma quota forte do ext4 usado atualmente. O provisionador local não cria automaticamente uma quota de filesystem para aquele diretório. Portanto, um workload pode consumir mais espaço físico que o valor nominal do PVC enquanto o filesystem subjacente ainda tiver espaço disponível.
+
+Consequências operacionais:
+
+- existe possibilidade de **overcommit** de storage declarado;
+- a soma da capacidade dos PVCs não representa espaço já ocupado ou garantido;
+- o risco real é o filesystem `/mnt/store1` ficar cheio;
+- capacidade livre do filesystem deve ser monitorada independentemente da capacidade nominal dos PVCs;
+- para workloads realmente críticos, backup e observabilidade de disco continuam obrigatórios mesmo com PVC definido.
+
+Prometheus/node-exporter já fornece métricas adequadas para acompanhar isso, como:
+
+```text
+node_filesystem_avail_bytes
+node_filesystem_size_bytes
+```
+
+Um alerta específico para pouco espaço livre em `/mnt/store1` pode ser adicionado quando houver workloads persistentes relevantes.
+
 ## Regras de segurança do role Ansible
 
 O role `storage` é deliberadamente conservador:
@@ -140,14 +182,16 @@ Como o StorageClass `local-path` possui política de reclaim `Delete`, remover o
 
 ## Estado atual dos dados de aplicação
 
-O inventário mais recente não encontrou PVC real de aplicação. O único PVC existente é `lab/persistence-test`.
+A stack de observabilidade já utiliza PVCs reais em `local-path` para Prometheus, Grafana, Tempo e Loki. Esses volumes são operacionais e reconstruíveis a partir da configuração, mas contêm histórico útil de métricas, dashboards/estado do Grafana, traces e logs.
 
-Portanto, ainda não há banco de dados ou PVC file-oriented real para proteger. A política será aplicada quando o primeiro workload stateful for introduzido:
+O Firecrawl, no perfil inicial de migração definido em setembro de 2026, **não usa PVC para PostgreSQL, Redis ou RabbitMQ**. Esses componentes foram deliberadamente classificados como efêmeros nesta etapa e usam `emptyDir`; seus dados podem desaparecer quando o Pod é substituído. Essa decisão pode ser revista se o Firecrawl passar a armazenar dados que precisem sobreviver a recriações.
 
-- bancos de dados: backup nativo/lógico ou físico suportado pela engine;
+Para workloads stateful futuros, a política continua sendo:
+
+- bancos de dados críticos: backup nativo/lógico ou físico suportado pela engine;
 - arquivos: backup consistente do filesystem, snapshot ou export suportado pela aplicação;
 - serviços externos: procedimento específico do provedor;
-- stateless: reconstrução por Git/IaC.
+- stateless/efêmero: reconstrução por Git/IaC.
 
 ## Limitação importante
 
@@ -155,14 +199,16 @@ Portanto, ainda não há banco de dados ou PVC file-oriented real para proteger.
 
 ## Próximas etapas
 
-1. classificar cada futuro workload stateful no momento em que for introduzido;
-2. implementar backup nativo para bancos de dados reais;
-3. implementar backup de PVCs file-oriented reais;
-4. executar disaster recovery completo em ambiente separado;
-5. reavaliar storage quando houver segundo nó.
+1. monitorar espaço livre de `/mnt/store1` independentemente da soma nominal dos PVCs;
+2. classificar cada futuro workload stateful no momento em que for introduzido;
+3. implementar backup nativo para bancos de dados reais;
+4. implementar backup de PVCs file-oriented reais;
+5. executar disaster recovery completo em ambiente separado;
+6. reavaliar storage quando houver segundo nó.
 
 ## Fontes
 
 - K3s — Volumes and Storage: https://docs.k3s.io/add-ons/storage
 - Rancher local-path-provisioner: https://github.com/rancher/local-path-provisioner
 - Manifest padrão do local storage no K3s: https://github.com/k3s-io/k3s/blob/main/manifests/local-storage.yaml
+- Kubernetes — Persistent Volumes: https://kubernetes.io/docs/concepts/storage/persistent-volumes/
