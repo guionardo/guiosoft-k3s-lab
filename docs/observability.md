@@ -122,13 +122,11 @@ Labels mantidos:
 
 ```text
 cluster
-a pp (quando presente)
+app (quando presente)
 namespace
 pod
 container
 ```
-
-> Nota: a chave correta é `app`; o espaço acima não faz parte da configuração. O values file usa `app` normalmente.
 
 Destino interno:
 
