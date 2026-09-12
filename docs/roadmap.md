@@ -105,12 +105,13 @@ Para qualquer workload escolhido futuramente:
 - [ ] validar round-trip local do restic;
 - [x] escolher Cloudflare R2 como destino off-host via API S3-compatible;
 - [x] criar stack Terraform separada para o bucket R2 com `prevent_destroy`;
-- [ ] criar bucket R2 e validar acesso;
-- [ ] criar credencial R2 Object Read & Write restrita ao bucket;
-- [ ] armazenar credenciais R2 + senha Restic com SOPS + age;
-- [ ] inicializar repositório Restic no R2;
-- [ ] automatizar cópia off-host e retenção remota;
-- [ ] validar restore a partir do R2;
+- [x] criar bucket R2 e validar acesso;
+- [x] criar credencial R2 Object Read & Write restrita ao bucket;
+- [x] armazenar credenciais R2 + senha Restic com SOPS + age;
+- [x] inicializar repositório Restic no R2;
+- [x] validar round-trip real Restic -> R2 -> restore com comparação SHA-256;
+- [x] implementar automação de cópia off-host e retenção remota no serviço de backup;
+- [ ] validar execução completa agendada local + R2 pelo `k3s-backup.service`;
 - [ ] executar restore completo do K3s a partir de backup em ambiente de disaster recovery;
 - [ ] testes periódicos de restore.
 
