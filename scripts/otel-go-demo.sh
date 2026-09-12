@@ -36,6 +36,12 @@ deploy_app() {
   kubectl apply -f "$REPO_ROOT/kubernetes/namespaces/lab.yaml"
   kubectl apply -f "$APP_DIR/deployment.yaml"
   kubectl apply -f "$APP_DIR/service.yaml"
+
+  # The demo deliberately reuses the local :dev tag with imagePullPolicy: Never.
+  # Applying an unchanged Deployment would otherwise keep the existing Pod running
+  # the previous image already loaded by containerd. Force a rollout so each local
+  # rebuild/import is actually exercised by Kubernetes.
+  kubectl rollout restart deployment/otel-go-demo -n "$NAMESPACE"
   kubectl rollout status deployment/otel-go-demo -n "$NAMESPACE" --timeout=120s
 }
 
