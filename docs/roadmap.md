@@ -90,7 +90,7 @@ Para cada workload futuro:
 - [x] PVCs Prometheus 10 GiB e Grafana 2 GiB em `local-path`;
 - [x] provisionar automaticamente datasources Prometheus, Tempo e Loki no Grafana;
 - [x] validar reload/provisioning dos datasources Grafana;
-- [x] executar/revisar `make observability-validate`: 13/13 scrape targets `up`, query `up` com 13 séries, datasources Prometheus/Tempo/Loki com health `OK`, Pods Ready e PVCs Bound;
+- [x] executar/revisar `make observability-validate`: 15/15 scrape targets `up`, query `up` com 15 séries, datasources Prometheus/Tempo/Loki com health `OK`, Pods Ready e PVCs Bound;
 - [x] instrumentar o demo Go com counters, histograms e gauge Prometheus de baixa cardinalidade;
 - [x] adicionar `ServiceMonitor` para `otel-go-demo` e `otel-go-downstream`;
 - [x] adicionar `make otel-go-demo-metrics-test` com geração de tráfego e queries à API do Prometheus;
@@ -100,8 +100,10 @@ Para cada workload futuro:
 - [x] validar em runtime a reconciliação das regras customizadas pelo Prometheus Operator;
 - [x] implementar `make otel-go-demo-incident-test` com falha downstream controlada e restauração automática;
 - [x] validar em runtime o incident drill completo: HTTP 502 -> métricas -> alerta pending/firing -> Loki -> Tempo -> recuperação;
-- [ ] revisar dashboards Grafana padrão;
-- [ ] revisar alertas ruidosos/incompatíveis com K3s.
+- [x] auditar alertas padrão e eliminar o falso positivo `KubeProxyDown` para o perfil K3s;
+- [x] classificar `Watchdog` e `InfoInhibitor` como alertas esperados por desenho;
+- [ ] concluir investigação de `CPUThrottlingHigh` no node-exporter com métricas de throttling/CPU/limits;
+- [ ] revisar dashboards Grafana padrão.
 
 ### Traces
 
@@ -136,6 +138,7 @@ Para cada workload futuro:
 ### Capacidade
 
 - [x] registrar baseline inicial de recursos com a stack completa: node em ~782m CPU (13%) e ~8331 MiB RAM (52%); maiores consumidores observados foram Grafana ~440 MiB e Prometheus ~337 MiB;
+- [x] registrar segunda amostra durante auditoria: node em ~1130m CPU (18%) e ~7265 MiB RAM (45%); Prometheus ~410 MiB e Grafana ~205 MiB;
 - [ ] revisar consumo novamente após período maior de retenção/carga;
 - [x] adicionar dashboard/alertas customizados essenciais para o demo de aplicação;
 - [ ] adicionar exemplars/span metrics quando houver benefício real.
