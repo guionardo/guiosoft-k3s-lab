@@ -38,7 +38,7 @@ O cluster single-node K3s está operacional. Traefik, CoreDNS, metrics-server e 
 
 Hostnames desconhecidos sob o wildcard `*.guiosoft.info` chegam ao Traefik, mas recebem HTTP 404 quando não existe um Ingress explícito.
 
-A etapa atual prepara o storage de forma não destrutiva. O layout lógico usa `/srv/k3s`, mantendo os dados físicos nos mounts existentes e sem alterar ainda o StorageClass do K3s.
+O layout persistente em `/srv/k3s` foi validado no host. Novos volumes do StorageClass `local-path` passam a ser provisionados em `/mnt/store1/k3s/local-path`, e existe um workload descartável para validar PVC, escrita e persistência após recriação do Pod.
 
 ## Divisão de responsabilidades
 
@@ -91,13 +91,17 @@ Kubernetes / Helm / GitOps
 ```bash
 make preflight
 make bootstrap
-make k3s
 make storage
+make k3s
+make storage-test
+make storage-test-recreate
 make cluster-status
 make firewall-audit
 ```
 
 O target `make storage` é conservador: valida que os discos esperados já estão montados, cria somente diretórios e links sob `/srv/k3s`, e não formata, reparticiona, move ou remove dados existentes.
+
+O target `make k3s` também garante que novos volumes locais usem `/mnt/store1/k3s/local-path`. Para validar a persistência, `make storage-test` cria um PVC descartável e `make storage-test-recreate` recria o Pod mantendo o mesmo volume.
 
 ## Primeira etapa: discovery
 
@@ -176,6 +180,8 @@ A evolução atual foi baseada em:
 - discovery read-only executado no host Debian;
 - estado observado dos mounts `/mnt/store1`, `/mnt/store2` e `/mnt/dev`;
 - validações reais do cluster K3s, Traefik, Cloudflare Tunnel e `kubectl` executadas no próprio servidor;
+- documentação oficial do K3s para `default-local-storage-path`;
+- documentação do Rancher `local-path-provisioner` para comportamento de PVs locais;
 - documentação versionada em `docs/current-state.md`, `docs/networking.md`, `docs/firewall.md` e `docs/storage.md`.
 
-Nenhum dado persistente foi movido como parte desta etapa de storage.
+Nenhum dado persistente existente foi movido como parte desta etapa de storage.
