@@ -8,3 +8,4 @@
 
   roles:
     - role: base
+    - role: terraform
