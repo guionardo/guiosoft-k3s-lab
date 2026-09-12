@@ -165,12 +165,22 @@ O script:
 6. valida que o arquivo cifrado pode ser descriptografado;
 7. não imprime valores secretos.
 
-Depois:
+Depois da geração, valide sem alterar o cluster:
 
 ```bash
 make secret-validate FILE=kubernetes/apps/firecrawl/firecrawl-secrets.sops.yaml
+```
+
+Antes de aplicar o Secret, o namespace precisa existir. O `Secret` declara `metadata.namespace: firecrawl`, então a API do Kubernetes rejeita a criação enquanto o namespace ainda não tiver sido criado.
+
+A ordem correta é:
+
+```bash
+kubectl apply -f kubernetes/apps/firecrawl/namespace.yaml
 make secret-apply FILE=kubernetes/apps/firecrawl/firecrawl-secrets.sops.yaml
 ```
+
+Criar apenas o namespace neste ponto é seguro: isso ainda não sobe Deployments, Services ou Ingress e não interfere com o Docker Compose atual.
 
 O arquivo cifrado pode ser versionado; o `.env` e a identidade privada age não podem.
 
@@ -209,15 +219,17 @@ Sequência atualizada:
 5. criar Ingress `firecrawl.guiosoft.info` — **concluído em código**;
 6. validar render/dry-run do scaffold no host;
 7. gerar Secret SOPS a partir do `.env` local;
-8. validar/aplicar o Secret;
-9. subir stack K3s;
-10. validar comunicação interna e readiness;
-11. validar API localmente pelo Traefik usando Host header;
-12. validar `https://firecrawl.guiosoft.info` via Cloudflare;
-13. validar funcionalmente requests reais do Firecrawl;
-14. observar logs e consumo de recursos;
-15. parar o Docker Compose antigo após período de confiança;
-16. manter rollback simples enquanto a nova instalação estiver em observação.
+8. validar o Secret por dry-run;
+9. criar namespace `firecrawl`;
+10. aplicar o Secret cifrado via SOPS;
+11. subir stack K3s;
+12. validar comunicação interna e readiness;
+13. validar API localmente pelo Traefik usando Host header;
+14. validar `https://firecrawl.guiosoft.info` via Cloudflare;
+15. validar funcionalmente requests reais do Firecrawl;
+16. observar logs e consumo de recursos;
+17. parar o Docker Compose antigo após período de confiança;
+18. manter rollback simples enquanto a nova instalação estiver em observação.
 
 Como não haverá migração de dados persistentes do Firecrawl nesta fase, o cutover fica significativamente mais simples: não existe sincronização de banco antigo/novo nem risco de divergência de writes entre bancos.
 
