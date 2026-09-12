@@ -33,9 +33,11 @@ A stack base usa `kube-prometheus-stack`, que reúne Prometheus Operator, Promet
 - Helm: `v4.3.0`;
 - kube-prometheus-stack: `89.2.0`;
 - Grafana Tempo single-binary chart: `2.2.3`;
-- OpenTelemetry Collector Helm chart: `0.172.1`.
+- OpenTelemetry Collector Helm chart: `0.172.1`;
+- Go demo toolchain: `1.27.1`;
+- OpenTelemetry Go: `1.46.0`.
 
-As versões são explícitas para manter rebuilds reproduzíveis. Atualizações devem ser feitas de forma consciente, revisando notas de upgrade e CRDs.
+As versões são explícitas para manter rebuilds reproduzíveis. Atualizações devem ser feitas de forma consciente, revisando notas de upgrade, CRDs e mudanças de configuração.
 
 ## Estado validado no host
 
@@ -48,12 +50,20 @@ A instalação do `kube-prometheus-stack` foi executada com sucesso no cluster K
 - kube-state-metrics;
 - node-exporter.
 
-Os CRs de Prometheus e Alertmanager estavam reconciliados e disponíveis. Também foram confirmados dois PVCs `Bound` usando `local-path`:
+Os CRs de Prometheus e Alertmanager estavam reconciliados e disponíveis. Também foram confirmados PVCs `Bound` usando `local-path`:
 
 - Prometheus: 10 GiB;
 - Grafana: 2 GiB.
 
-Essa validação comprova que a stack foi instalada e que os componentes principais e seus volumes persistentes estão operacionais. A saúde dos scrape targets e os dashboards ainda são validados separadamente.
+A fundação de tracing também foi instalada e validada no host:
+
+- Tempo chart `2.2.3` em `Running`;
+- OpenTelemetry Collector chart `0.172.1` em `Running`;
+- PVC Tempo de 5 GiB `Bound` em `local-path`;
+- Services Tempo e Collector apenas como `ClusterIP`;
+- OTLP gRPC/HTTP disponíveis apenas dentro do cluster.
+
+Durante a primeira instalação, o chart do Collector reportou a renomeação do exporter `otlp` para `otlp_grpc`; a configuração versionada foi atualizada para usar diretamente o nome novo e não depender do rewrite de compatibilidade do chart.
 
 ## Métricas
 
@@ -135,29 +145,24 @@ Instalação:
 make observability-tracing-install
 ```
 
-O target instala/atualiza:
-
-- `grafana-community/tempo` em single-binary mode;
-- `open-telemetry/opentelemetry-collector` como Deployment;
-- depois reaplica o `kube-prometheus-stack` para provisionar o datasource Tempo no Grafana.
-
 Estado:
 
 ```bash
 make observability-tracing-status
 ```
 
-Configuração inicial:
+Configuração atual:
 
 - Tempo com PVC `local-path` de 5 GiB;
 - retenção de traces de 72 horas;
 - OTLP gRPC e HTTP habilitados;
 - Collector com um único pipeline de traces;
+- exporter `otlp_grpc` apontando para Tempo;
 - logs e métricas no Collector desabilitados nessa primeira etapa para não duplicar responsabilidades;
 - nenhum Ingress para Tempo ou Collector;
 - datasource Tempo provisionado no Grafana com node graph habilitado.
 
-Endpoints internos planejados:
+Endpoints internos:
 
 ```text
 OTLP gRPC: otel-collector-opentelemetry-collector.monitoring.svc.cluster.local:4317
@@ -165,11 +170,33 @@ OTLP HTTP: http://otel-collector-opentelemetry-collector.monitoring.svc.cluster.
 Tempo query: http://tempo.monitoring.svc.cluster.local:3200
 ```
 
-O próximo passo após validar a infraestrutura é instrumentar um workload simples em Go e confirmar um trace end-to-end no Grafana.
+## Workload Go instrumentado
+
+Existe agora um workload didático específico para comprovar o trace ponta a ponta:
+
+```text
+kubernetes/apps/otel-go-demo/
+```
+
+O serviço Go gera um span HTTP raiz e quatro spans internos simulando etapas de uma requisição. A resposta de `/work` inclui o `trace_id`, permitindo testar o backend sem depender inicialmente da UI.
+
+O fluxo operacional usa a imagem Docker construída localmente e a importa diretamente no containerd do K3s, evitando adicionar registry/credenciais apenas para o laboratório:
+
+```bash
+make otel-go-demo-install
+make otel-go-demo-status
+make otel-go-demo-test
+```
+
+`make otel-go-demo-test` abre port-forwards temporários apenas em loopback, chama `/work`, captura o `trace_id` retornado e consulta `/api/traces/<trace_id>` no Tempo. O target falha se o trace não aparecer no backend dentro da janela de validação.
+
+Depois do teste automatizado, o mesmo `trace_id` pode ser pesquisado manualmente em Grafana -> Explore -> Tempo.
+
+Detalhes em [`docs/otel-go-demo.md`](otel-go-demo.md).
 
 ## Logs: Loki
 
-Loki continua planejado como backend de logs. A implementação será feita depois da validação de Prometheus/Grafana e da fundação de tracing.
+Loki continua planejado como backend de logs. A implementação será feita depois da validação de Prometheus/Grafana e do primeiro trace real do workload Go.
 
 A correlação alvo é:
 
@@ -202,20 +229,22 @@ O password não é versionado no Git.
 ```bash
 make observability-status
 make observability-tracing-status
+make otel-go-demo-status
 ```
 
 ## Próximas etapas
 
 1. validar targets Prometheus com `make observability-validate`;
-2. abrir Grafana localmente e validar dashboards padrão;
-3. instalar e validar Tempo + OpenTelemetry Collector;
-4. instrumentar um workload Go de laboratório e validar OTLP -> Collector -> Tempo -> Grafana;
+2. executar `make otel-go-demo-install`;
+3. executar `make otel-go-demo-test` e comprovar OTLP -> Collector -> Tempo;
+4. abrir Grafana localmente e localizar o trace pelo `trace_id`;
 5. revisar consumo de CPU/memória/storage após estabilização;
 6. revisar alertas ruidosos ou incompatíveis com K3s;
 7. adicionar Loki;
 8. configurar correlação metrics -> traces -> logs;
-9. adicionar dashboards e alertas customizados;
-10. somente depois avaliar publicação protegida do Grafana via Cloudflare.
+9. evoluir o demo para dois serviços e propagação de contexto distribuída;
+10. adicionar dashboards e alertas customizados;
+11. somente depois avaliar publicação protegida do Grafana via Cloudflare.
 
 ## Fontes
 
@@ -229,6 +258,10 @@ make observability-tracing-status
 - Grafana Tempo Helm charts: https://grafana.com/docs/tempo/latest/setup/helm-chart/
 - Grafana Community Helm repository: https://grafana-community.github.io/helm-charts/
 - Tempo package: https://artifacthub.io/packages/helm/grafana-community/tempo
+- Tempo HTTP API: https://grafana.com/docs/tempo/latest/api_docs/
 - OpenTelemetry Collector: https://opentelemetry.io/docs/collector/
 - OpenTelemetry Collector Helm chart: https://opentelemetry.io/docs/platforms/kubernetes/helm/collector/
 - OpenTelemetry Helm chart releases: https://github.com/open-telemetry/opentelemetry-helm-charts/releases
+- OpenTelemetry Go: https://opentelemetry.io/docs/languages/go/
+- OpenTelemetry Go packages: https://pkg.go.dev/go.opentelemetry.io/otel
+- Go releases: https://go.dev/doc/devel/release
