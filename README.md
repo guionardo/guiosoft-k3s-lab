@@ -48,7 +48,7 @@ O backup do K3s foi validado manualmente, por restore rehearsal não destrutivo 
 
 A camada off-host usa Restic sobre Cloudflare R2. O bucket `guiosoft-k3s-backups` é gerenciado por uma stack Terraform separada, as credenciais runtime ficam cifradas com SOPS + age, o round-trip real Restic -> R2 -> restore foi validado por SHA-256 e o `k3s-backup.service` foi validado executando a cadeia completa local -> Restic -> R2 com `restic check` remoto.
 
-A próxima frente ativa é Disaster Recovery. O plano de reconstrução em ambiente separado está documentado em `docs/disaster-recovery.md`, e existe um readiness check somente leitura para confirmar que Git, SOPS/age, Restic/R2 e os backups necessários estão acessíveis antes de qualquer restore destrutivo.
+A frente ativa é Disaster Recovery. O readiness check foi validado com sucesso e agora existe um rehearsal isolado que restaura o snapshot `k3s-control-plane` diretamente do R2 para staging temporário, validando archive, checksum, token e integridade SQLite sem escrever em `/var/lib/rancher/k3s` nem alterar o cluster ativo.
 
 ## Divisão de responsabilidades
 
@@ -121,6 +121,7 @@ make restic-r2-sync
 make restic-r2-status
 make restic-r2-check
 make dr-readiness
+make dr-r2-rehearsal
 make tf-cloudflare-plan
 make tf-r2-plan
 ```
@@ -173,13 +174,23 @@ restaurar SQLite + server token
 K3s restaurado
 ```
 
-Antes de qualquer rehearsal destrutivo, execute:
+Pré-validação:
 
 ```bash
 make dr-readiness
 ```
 
-Esse target é somente leitura e verifica ferramentas, artefatos IaC, descriptografia SOPS, acesso ao R2, existência de snapshot remoto e integridade do backup local. O restore destrutivo será implementado somente para um ambiente explicitamente separado de DR.
+Esse target é somente leitura e já foi validado no host atual.
+
+A etapa seguinte é um restore ainda não destrutivo, mas usando o R2 como única fonte do artefato:
+
+```bash
+make dr-r2-rehearsal
+```
+
+Ele restaura o snapshot remoto para staging temporário isolado e reutiliza o verificador do backup para confirmar SHA-256, presença do server token, metadata SQLite e `PRAGMA integrity_check`. O staging é removido automaticamente e o K3s ativo não é alterado.
+
+O restore destrutivo será implementado somente para um ambiente explicitamente separado de DR.
 
 Detalhes em [`docs/disaster-recovery.md`](docs/disaster-recovery.md).
 
@@ -238,6 +249,7 @@ A evolução atual foi baseada em:
 - discovery read-only executado no host Debian;
 - validações reais do cluster K3s, Traefik, Cloudflare Tunnel, `kubectl`, PVC/local-path, SOPS + age e backup/restore executadas no próprio servidor;
 - reprovisionamento controlado do PVC descartável e validação do novo path em `/mnt/store1/k3s/local-path`;
+- validação do readiness check de disaster recovery no host atual;
 - documentação oficial do K3s para `default-local-storage-path`, datastore SQLite e backup/restore;
 - documentação do Rancher `local-path-provisioner`;
 - documentação oficial do SOPS e age;
