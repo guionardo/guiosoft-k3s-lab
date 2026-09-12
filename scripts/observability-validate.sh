@@ -61,6 +61,26 @@ fi
 printf "Prometheus query 'up': %s series\n" "$UP_SERIES"
 
 echo
+echo 'Prometheus alert audit (read-only):'
+ALERTS_JSON="$(kubectl get --raw "${PROM_PROXY}/api/v1/alerts")"
+if [[ "$(jq -r '.status' <<<"$ALERTS_JSON")" != "success" ]]; then
+  echo "error: Prometheus alerts API did not return success" >&2
+  exit 1
+fi
+
+ALERT_TOTAL="$(jq '.data.alerts | length' <<<"$ALERTS_JSON")"
+ALERT_FIRING="$(jq '[.data.alerts[] | select(.state == "firing")] | length' <<<"$ALERTS_JSON")"
+ALERT_PENDING="$(jq '[.data.alerts[] | select(.state == "pending")] | length' <<<"$ALERTS_JSON")"
+printf 'Active alerts: %s total, %s firing, %s pending\n' "$ALERT_TOTAL" "$ALERT_FIRING" "$ALERT_PENDING"
+
+if (( ALERT_TOTAL > 0 )); then
+  echo 'Active alert details:'
+  jq -r '.data.alerts[] | "- state=\(.state) alert=\(.labels.alertname // "unknown") severity=\(.labels.severity // "n/a") namespace=\(.labels.namespace // "n/a") pod=\(.labels.pod // "n/a") summary=\(.annotations.summary // .annotations.description // "")"' <<<"$ALERTS_JSON" | sort
+else
+  echo 'No active Prometheus alerts.'
+fi
+
+echo
 echo 'Grafana datasource validation:'
 bash "$REPO_ROOT/scripts/grafana-datasources.sh" validate
 
@@ -83,4 +103,4 @@ fi
 
 echo
 echo 'Observability validation: OK'
-echo 'Prometheus targets are healthy, Grafana datasources are provisioned, monitoring Pods are Ready and PVCs are Bound.'
+echo 'Prometheus targets are healthy, active alerts were audited, Grafana datasources are provisioned, monitoring Pods are Ready and PVCs are Bound.'
