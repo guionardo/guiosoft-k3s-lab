@@ -94,10 +94,10 @@ Para cada workload futuro:
 - [x] instrumentar o demo Go com counters, histograms e gauge Prometheus de baixa cardinalidade;
 - [x] adicionar `ServiceMonitor` para `otel-go-demo` e `otel-go-downstream`;
 - [x] adicionar `make otel-go-demo-metrics-test` com geração de tráfego e queries à API do Prometheus;
-- [x] validar em runtime as métricas customizadas do demo;
-- [x] adicionar dashboard Grafana declarativo `OTel Go Demo - Application Metrics` com request rate, p95, status, in-flight e métricas downstream;
-- [x] adicionar `PrometheusRule` com alertas de taxa de erro, p95 elevado e erros downstream;
-- [ ] validar dashboard customizado carregado no Grafana e regras carregadas pelo Prometheus;
+- [x] validar em runtime as métricas customizadas do demo no Prometheus (frontend, histogram buckets, downstream e serviço downstream);
+- [x] adicionar dashboard customizado `OTel Go Demo - Application Metrics`;
+- [x] adicionar regras `OtelGoDemoHighErrorRate`, `OtelGoDemoHighP95Latency` e `OtelGoDemoDownstreamErrors`;
+- [ ] validar em runtime a reconciliação das regras customizadas pelo Prometheus Operator;
 - [ ] revisar dashboards Grafana padrão;
 - [ ] revisar alertas ruidosos/incompatíveis com K3s.
 
@@ -135,7 +135,7 @@ Para cada workload futuro:
 
 - [x] registrar baseline inicial de recursos com a stack completa: node em ~782m CPU (13%) e ~8331 MiB RAM (52%); maiores consumidores observados foram Grafana ~440 MiB e Prometheus ~337 MiB;
 - [ ] revisar consumo novamente após período maior de retenção/carga;
-- [x] adicionar dashboard e alertas customizados iniciais para o demo;
+- [ ] adicionar dashboards/alertas customizados essenciais;
 - [ ] adicionar exemplars/span metrics quando houver benefício real.
 
 ## Fase 7 — GitOps
