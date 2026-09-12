@@ -61,6 +61,29 @@ Para cada workload futuro:
 7. observar e manter rollback simples;
 8. remover instalação anterior apenas depois da validação.
 
+### Firecrawl — primeiro workload real
+
+- [x] auditar stack Docker Compose atual sem expor secrets;
+- [x] confirmar os cinco containers, rede privada, porta publicada, limites e volumes principais;
+- [x] documentar estratégia de migração incremental e rollback;
+- [x] criar scaffold Kubernetes com namespace, ConfigMap, Services, Deployments e PVCs;
+- [x] manter scaffold sem Ingress público até decisão explícita de autenticação/acesso;
+- [x] adicionar validação read-only por Kustomize + `kubectl --dry-run=client`;
+- [x] expor auditoria/validação/status por targets do Makefile;
+- [ ] validar em runtime o scaffold com `make firecrawl-k8s-validate`;
+- [ ] identificar `repo_digest`/image ID exatos das imagens atuais e piná-las antes do cutover;
+- [ ] associar o volume Docker anônimo ao container/destination correspondente;
+- [ ] criar Secret real cifrado com SOPS + age a partir do `.env` atual, sem plaintext no Git;
+- [ ] medir tamanho/uso dos volumes atuais e confirmar capacidade dos PVCs propostos;
+- [ ] definir health check HTTP definitivo da API ou aceitar explicitamente probe TCP inicial;
+- [ ] decidir tratamento do estado Redis no cutover;
+- [ ] ensaiar dump/restore do `nuq-postgres`;
+- [ ] subir staging K3s com dados descartáveis e validar comunicação interna;
+- [ ] definir autenticação antes de qualquer hostname público de staging;
+- [ ] validar logs/métricas e comportamento funcional no K3s;
+- [ ] executar cutover controlado com janela de rollback;
+- [ ] remover Docker Compose somente após estabilidade e backup/restore validados.
+
 ## Fase 5 — Storage e backup
 
 - [x] layout `/srv/k3s` mapeado para discos existentes;
