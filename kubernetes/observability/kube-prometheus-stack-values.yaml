@@ -70,6 +70,15 @@ grafana:
       memory: 512Mi
   defaultDashboardsEnabled: true
   defaultDashboardsTimezone: browser
+  additionalDataSources:
+    - name: Tempo
+      uid: tempo
+      type: tempo
+      access: proxy
+      url: http://tempo.monitoring.svc.cluster.local:3200
+      jsonData:
+        nodeGraph:
+          enabled: true
 
 prometheus-node-exporter:
   resources:
