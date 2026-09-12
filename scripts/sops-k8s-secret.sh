@@ -9,7 +9,7 @@ Usage:
   scripts/sops-k8s-secret.sh validate <file.sops.yaml>
   scripts/sops-k8s-secret.sh apply <file.sops.yaml>
 
-The file must live below kubernetes/secrets/ and end with .sops.yaml.
+The file must live below kubernetes/ and end with .sops.yaml.
 EOF
 }
 
@@ -30,9 +30,22 @@ case "$ACTION" in
 esac
 
 case "$FILE" in
-  kubernetes/secrets/*.sops.yaml) ;;
+  kubernetes/*.sops.yaml|kubernetes/**/*.sops.yaml) ;;
   *)
-    echo "Refusing file outside kubernetes/secrets/*.sops.yaml: $FILE" >&2
+    echo "Refusing file outside kubernetes/**/*.sops.yaml: $FILE" >&2
+    exit 2
+    ;;
+esac
+
+# Guard against path traversal while still allowing application-local encrypted
+# manifests such as kubernetes/apps/firecrawl/firecrawl-secrets.sops.yaml.
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+KUBERNETES_ROOT="$(realpath -m "$REPO_ROOT/kubernetes")"
+ABS_FILE="$(realpath -m "$REPO_ROOT/$FILE")"
+case "$ABS_FILE" in
+  "$KUBERNETES_ROOT"/*) ;;
+  *)
+    echo "Refusing path outside repository kubernetes tree: $FILE" >&2
     exit 2
     ;;
 esac
