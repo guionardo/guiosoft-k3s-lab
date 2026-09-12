@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: help discovery ansible-deps preflight bootstrap tools k3s kubeconfig-external storage storage-test storage-test-status storage-test-recreate storage-test-placement storage-test-reprovision storage-test-delete backup-create backup-list backup-verify backup-install backup-status backup-run backup-prune backup-inventory restic-test restic-r2-secret restic-r2-install restic-r2-test restic-r2-sync restic-r2-status restic-r2-check dr-readiness dr-r2-rehearsal dr-r2-export dr-target-init dr-restore observability-install observability-status observability-validate observability-tracing-install observability-tracing-status observability-logging-install observability-logging-status observability-logging-test observability-grafana observability-grafana-reload observability-grafana-datasources otel-go-demo-build otel-go-demo-deploy otel-go-demo-install otel-go-demo-status otel-go-demo-test otel-go-demo-metrics-test otel-go-demo-incident-test otel-go-demo-delete firewall-audit cluster-status lab-deploy lab-status lab-test lab-delete secrets-test secret-edit secret-view secret-validate secret-apply tf-cloudflare-discovery tf-cloudflare-init tf-cloudflare-fmt tf-cloudflare-validate tf-cloudflare-import tf-cloudflare-plan tf-r2-init tf-r2-fmt tf-r2-validate tf-r2-plan tf-r2-apply
+.PHONY: help discovery ansible-deps preflight bootstrap tools k3s kubeconfig-external storage storage-test storage-test-status storage-test-recreate storage-test-placement storage-test-reprovision storage-test-delete backup-create backup-list backup-verify backup-install backup-status backup-run backup-prune backup-inventory restic-test restic-r2-secret restic-r2-install restic-r2-test restic-r2-sync restic-r2-status restic-r2-check dr-readiness dr-r2-rehearsal dr-r2-export dr-target-init dr-restore observability-install observability-status observability-validate observability-cpu-throttling-audit observability-tracing-install observability-tracing-status observability-logging-install observability-logging-status observability-logging-test observability-grafana observability-grafana-reload observability-grafana-datasources otel-go-demo-build otel-go-demo-deploy otel-go-demo-install otel-go-demo-status otel-go-demo-test otel-go-demo-metrics-test otel-go-demo-incident-test otel-go-demo-delete firewall-audit cluster-status lab-deploy lab-status lab-test lab-delete secrets-test secret-edit secret-view secret-validate secret-apply tf-cloudflare-discovery tf-cloudflare-init tf-cloudflare-fmt tf-cloudflare-validate tf-cloudflare-import tf-cloudflare-plan tf-r2-init tf-r2-fmt tf-r2-validate tf-r2-plan tf-r2-apply
 
 help:
 	@echo "guiosoft-k3s-lab"
@@ -42,7 +42,8 @@ help:
 	@echo "  make dr-restore FILE=...   Restaura K3s apenas em alvo DR marcado e confirmado"
 	@echo "  make observability-install Instala/atualiza Prometheus, Alertmanager e Grafana"
 	@echo "  make observability-status  Mostra release, pods, services, PVCs e targets básicos"
-	@echo "  make observability-validate Valida Pods/PVCs e targets Prometheus sem alterar estado"
+	@echo "  make observability-validate Valida Pods/PVCs, targets, alertas e datasources sem alterar estado"
+	@echo "  make observability-cpu-throttling-audit Diagnostica CPUThrottlingHigh sem alterar recursos"
 	@echo "  make observability-tracing-install Instala Tempo e OpenTelemetry Collector"
 	@echo "  make observability-tracing-status Mostra releases/pods/services/PVCs de tracing"
 	@echo "  make observability-logging-install Instala Loki e Grafana Alloy"
@@ -246,6 +247,9 @@ observability-status:
 
 observability-validate:
 	bash scripts/observability-validate.sh
+
+observability-cpu-throttling-audit:
+	bash scripts/cpu-throttling-audit.sh
 
 observability-tracing-install:
 	bash scripts/tracing-install.sh
