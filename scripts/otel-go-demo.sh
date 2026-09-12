@@ -41,6 +41,8 @@ deploy_app() {
   kubectl apply -f "$APP_DIR/deployment.yaml"
   kubectl apply -f "$APP_DIR/service.yaml"
   kubectl apply -f "$APP_DIR/service-monitor.yaml"
+  kubectl apply -f "$APP_DIR/grafana-dashboard.yaml"
+  kubectl apply -f "$APP_DIR/prometheus-rules.yaml"
 
   # Both deployments deliberately reuse the local :dev tag with imagePullPolicy: Never.
   # Force rollouts so each local rebuild/import is actually exercised by Kubernetes.
@@ -54,7 +56,9 @@ status_app() {
   need kubectl
   kubectl get deployment,pod,service -n "$NAMESPACE" -l 'app in (otel-go-demo,otel-go-downstream)' -o wide
   echo
-  kubectl get servicemonitor -n monitoring otel-go-demo -o wide
+  kubectl get servicemonitor,prometheusrule -n monitoring otel-go-demo -o wide
+  echo
+  kubectl get configmap -n monitoring otel-go-demo-grafana-dashboard -o wide
 }
 
 trace_test() {
@@ -149,9 +153,11 @@ metrics_test() {
   kubectl get deployment -n "$NAMESPACE" otel-go-demo >/dev/null
   kubectl get deployment -n "$NAMESPACE" otel-go-downstream >/dev/null
   kubectl get servicemonitor -n monitoring otel-go-demo >/dev/null
+  kubectl get prometheusrule -n monitoring otel-go-demo >/dev/null
+  kubectl get configmap -n monitoring otel-go-demo-grafana-dashboard >/dev/null
   kubectl get service -n monitoring "$PROM_SERVICE" >/dev/null
 
-  local app_log prom_log app_pf prom_pf metrics query response value
+  local app_log prom_log app_pf prom_pf metrics query response value rules_json dashboard_json
   app_log="$(mktemp)"
   prom_log="$(mktemp)"
   app_pf=""
@@ -247,14 +253,32 @@ metrics_test() {
     printf '  %-86s %s\n' "$query" "$value"
   done
 
+  rules_json="$(curl --fail --silent "http://127.0.0.1:${PROM_PORT}/api/v1/rules?type=alert")"
+  for alert_name in OtelGoDemoHighErrorRate OtelGoDemoHighP95Latency OtelGoDemoDownstreamErrors; do
+    jq -e --arg name "$alert_name" '.. | objects | select(.name? == $name)' <<<"$rules_json" >/dev/null || {
+      echo "error: Prometheus did not load alert rule $alert_name" >&2
+      return 1
+    }
+  done
+
+  dashboard_json="$(kubectl get configmap -n monitoring otel-go-demo-grafana-dashboard -o jsonpath='{.data.otel-go-demo\.json}')"
+  jq -e '.uid == "otel-go-demo-metrics" and (.panels | length) >= 7' <<<"$dashboard_json" >/dev/null || {
+    echo "error: Grafana dashboard ConfigMap is missing or invalid" >&2
+    return 1
+  }
+
   echo
   echo "Custom metrics validation: OK"
   echo "Prometheus is scraping /metrics from both demo services through ServiceMonitor/otel-go-demo."
+  echo "Prometheus alert rules: OK (error rate, p95 latency, downstream errors)."
+  echo "Grafana dashboard definition: OK (OTel Go Demo - Application Metrics)."
   echo "Try in Grafana Explore -> Prometheus: rate(otel_demo_http_requests_total[5m])"
 }
 
 delete_app() {
   need kubectl
+  kubectl delete -f "$APP_DIR/prometheus-rules.yaml" --ignore-not-found
+  kubectl delete -f "$APP_DIR/grafana-dashboard.yaml" --ignore-not-found
   kubectl delete -f "$APP_DIR/service-monitor.yaml" --ignore-not-found
   kubectl delete -f "$APP_DIR/service.yaml" --ignore-not-found
   kubectl delete -f "$APP_DIR/deployment.yaml" --ignore-not-found
