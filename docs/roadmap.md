@@ -71,12 +71,14 @@ Para cada workload futuro:
 - [x] adicionar validação read-only por Kustomize + `kubectl --dry-run=client`;
 - [x] expor auditoria/validação/status por targets do Makefile;
 - [ ] validar em runtime o scaffold com `make firecrawl-k8s-validate`;
-- [ ] identificar `repo_digest`/image ID exatos das imagens atuais e piná-las antes do cutover;
-- [ ] associar o volume Docker anônimo ao container/destination correspondente;
+- [x] identificar `repo_digest`/image ID exatos das imagens atuais e piná-las no scaffold de staging;
+- [x] associar o volume Docker anônimo ao RabbitMQ em `/var/lib/rabbitmq`;
+- [x] adicionar PVC RabbitMQ no scaffold para preservar estado operacional entre recriações de Pod;
 - [ ] criar Secret real cifrado com SOPS + age a partir do `.env` atual, sem plaintext no Git;
 - [ ] medir tamanho/uso dos volumes atuais e confirmar capacidade dos PVCs propostos;
 - [ ] definir health check HTTP definitivo da API ou aceitar explicitamente probe TCP inicial;
 - [ ] decidir tratamento do estado Redis no cutover;
+- [ ] decidir tratamento da fila/estado RabbitMQ no cutover;
 - [ ] ensaiar dump/restore do `nuq-postgres`;
 - [ ] subir staging K3s com dados descartáveis e validar comunicação interna;
 - [ ] definir autenticação antes de qualquer hostname público de staging;
