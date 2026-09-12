@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: help discovery ansible-deps preflight bootstrap tools k3s storage storage-test storage-test-status storage-test-recreate storage-test-placement storage-test-reprovision storage-test-delete backup-create backup-list backup-verify backup-install backup-status backup-run backup-prune backup-inventory restic-test restic-r2-secret restic-r2-install restic-r2-test restic-r2-sync restic-r2-status restic-r2-check dr-readiness firewall-audit cluster-status lab-deploy lab-status lab-test lab-delete secrets-test secret-edit secret-view secret-validate secret-apply tf-cloudflare-discovery tf-cloudflare-init tf-cloudflare-fmt tf-cloudflare-validate tf-cloudflare-import tf-cloudflare-plan tf-r2-init tf-r2-fmt tf-r2-validate tf-r2-plan tf-r2-apply
+.PHONY: help discovery ansible-deps preflight bootstrap tools k3s storage storage-test storage-test-status storage-test-recreate storage-test-placement storage-test-reprovision storage-test-delete backup-create backup-list backup-verify backup-install backup-status backup-run backup-prune backup-inventory restic-test restic-r2-secret restic-r2-install restic-r2-test restic-r2-sync restic-r2-status restic-r2-check dr-readiness dr-r2-rehearsal firewall-audit cluster-status lab-deploy lab-status lab-test lab-delete secrets-test secret-edit secret-view secret-validate secret-apply tf-cloudflare-discovery tf-cloudflare-init tf-cloudflare-fmt tf-cloudflare-validate tf-cloudflare-import tf-cloudflare-plan tf-r2-init tf-r2-fmt tf-r2-validate tf-r2-plan tf-r2-apply
 
 help:
 	@echo "guiosoft-k3s-lab"
@@ -35,6 +35,7 @@ help:
 	@echo "  make restic-r2-status      Lista o snapshot R2 mais recente"
 	@echo "  make restic-r2-check       Executa restic check no repositório R2"
 	@echo "  make dr-readiness          Audita pré-requisitos de disaster recovery sem alterar estado"
+	@echo "  make dr-r2-rehearsal       Restaura do R2 em staging isolado e valida o artefato K3s"
 	@echo "  make firewall-audit        Audita firewall/listeners após K3s sem alterar regras"
 	@echo "  make cluster-status        Mostra nodes, pods e services do cluster"
 	@echo "  make lab-deploy            Cria namespace e workload de teste"
@@ -192,6 +193,9 @@ restic-r2-check:
 
 dr-readiness:
 	sudo bash scripts/dr-readiness.sh
+
+dr-r2-rehearsal:
+	sudo bash scripts/dr-r2-restore-rehearsal.sh
 
 firewall-audit:
 	cd ansible && ansible-playbook -K playbooks/firewall-audit.yml
