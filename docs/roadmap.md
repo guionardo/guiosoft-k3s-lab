@@ -148,10 +148,13 @@ Objetivo: reconstruir um servidor a partir de Debian limpo + Git + backups.
 - [x] adicionar readiness check somente leitura para Git, SOPS/age, Restic/R2 e backup local;
 - [x] validar `make dr-readiness` no host atual;
 - [x] implementar rehearsal isolado que restaura o snapshot K3s diretamente do R2 sem tocar no cluster ativo;
-- [ ] validar `make dr-r2-rehearsal` no host atual;
+- [x] validar `make dr-r2-rehearsal` no host atual;
+- [x] implementar export verificado do archive/checksum diretamente do R2 para transferência ao alvo DR;
+- [x] implementar marker explícito e guards contra hostname/IP de produção no alvo de rehearsal;
+- [x] implementar restore destrutivo somente para alvo explicitamente marcado como DR, com confirmação adicional e safety copy do estado inicial do alvo;
+- [x] adicionar inventário Ansible de exemplo para um host DR separado;
 - [ ] garantir cópia off-host independente da identidade privada age;
-- [ ] automatizar bootstrap do ambiente de DR;
-- [ ] implementar restore destrutivo somente para alvo explicitamente marcado como DR;
+- [ ] provisionar/automatizar um host ou VM isolado para rehearsal;
 - [ ] restaurar K3s em ambiente separado;
 - [ ] restaurar infraestrutura Kubernetes;
 - [ ] restaurar dados de aplicações quando existirem;
