@@ -102,7 +102,7 @@ Para cada workload futuro:
 - [x] validar em runtime o incident drill completo: HTTP 502 -> métricas -> alerta pending/firing -> Loki -> Tempo -> recuperação;
 - [x] auditar alertas padrão e eliminar o falso positivo `KubeProxyDown` para o perfil K3s;
 - [x] classificar `Watchdog` e `InfoInhibitor` como alertas esperados por desenho;
-- [ ] concluir investigação de `CPUThrottlingHigh` no node-exporter com métricas de throttling/CPU/limits;
+- [x] investigar `CPUThrottlingHigh` no node-exporter, identificar throttling artificial causado por `limits.cpu: 200m`, remover apenas o CPU limit e validar ausência de throttling/alerta após estabilização;
 - [ ] revisar dashboards Grafana padrão.
 
 ### Traces
@@ -139,6 +139,7 @@ Para cada workload futuro:
 
 - [x] registrar baseline inicial de recursos com a stack completa: node em ~782m CPU (13%) e ~8331 MiB RAM (52%); maiores consumidores observados foram Grafana ~440 MiB e Prometheus ~337 MiB;
 - [x] registrar segunda amostra durante auditoria: node em ~1130m CPU (18%) e ~7265 MiB RAM (45%); Prometheus ~410 MiB e Grafana ~205 MiB;
+- [x] registrar amostra após estabilização do node-exporter sem CPU limit: node em ~742m CPU (12%) e ~6995 MiB RAM (44%), Prometheus ~422 MiB, Grafana ~204 MiB e node-exporter ~1m CPU / 11 MiB;
 - [ ] revisar consumo novamente após período maior de retenção/carga;
 - [x] adicionar dashboard/alertas customizados essenciais para o demo de aplicação;
 - [ ] adicionar exemplars/span metrics quando houver benefício real.
