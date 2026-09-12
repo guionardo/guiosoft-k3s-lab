@@ -55,7 +55,7 @@ O Disaster Recovery já possui readiness check, restore rehearsal isolado via R2
 
 A fundação de observabilidade está operacional. O `kube-prometheus-stack`, Tempo, OpenTelemetry Collector, Loki e Grafana Alloy estão ativos; Prometheus, Tempo e Loki estão provisionados no Grafana e com health `OK`.
 
-`make observability-validate` foi validado no cluster atual com 13/13 scrape targets Prometheus `up`, query `up` retornando 13 séries, Pods Ready e todos os PVCs Bound. Na mesma amostra, o node estava em aproximadamente 782m CPU (13%) e 8331 MiB de RAM (52%); Grafana (~440 MiB) e Prometheus (~337 MiB) eram os maiores consumidores de memória da stack.
+`make observability-validate` foi validado no cluster atual com 15/15 scrape targets Prometheus `up`, query `up` retornando 15 séries, Pods Ready e todos os PVCs Bound. A investigação de `CPUThrottlingHigh` identificou throttling artificial no node-exporter causado pelo antigo hard CPU limit de `200m`; após remover apenas esse limite, o throttling e o alerta desapareceram sem impacto nos demais workloads. A auditoria dos 26 dashboards Grafana também passou sem referências quebradas; dashboards AIX/MacOS foram apenas classificados como não aplicáveis ao host Linux.
 
 O demo OpenTelemetry também foi validado em modo distribuído: `otel-go-demo` propaga W3C `traceparent` para `otel-go-downstream`, e o teste confirma os dois `service.name` dentro do mesmo trace no Tempo. A navegação visual Loki -> Tempo e Tempo -> Loki também foi validada no Grafana.
 
@@ -64,6 +64,8 @@ O mesmo demo expõe métricas Prometheus customizadas de requests, latência, re
 O dashboard declarativo `OTel Go Demo - Application Metrics` e as regras `OtelGoDemoHighErrorRate`, `OtelGoDemoHighP95Latency` e `OtelGoDemoDownstreamErrors` também foram carregados e validados no Prometheus/Grafana.
 
 O controlled incident drill também foi validado em runtime. O target `make otel-go-demo-incident-test` reduziu temporariamente o downstream descartável para zero replicas, produziu HTTP 502 preservando o `trace_id`, confirmou a detecção nas métricas e no alerta, localizou o mesmo incidente no Loki e no Tempo, restaurou automaticamente a escala original e confirmou a recuperação da chamada frontend -> downstream.
+
+A Fase 4 começou com o **Firecrawl como primeiro workload real**. O stack Docker Compose atual foi auditado sem expor secrets: cinco containers, rede privada `firecrawl_backend`, API publicada em `3002`, PostgreSQL/Redis com volumes persistentes e RabbitMQ operacional sem volume explícito. Foi criado um scaffold Kubernetes declarativo em `kubernetes/apps/firecrawl/` com namespace, ConfigMap, Services, Deployments e PVCs. A base deliberadamente não contém Ingress público; a instalação self-hosted pode operar sem autenticação de API, então publicação externa de staging só será adicionada depois de uma decisão explícita de acesso/autenticação. O Docker Compose atual permanece intocado durante essa preparação.
 
 ## Divisão de responsabilidades
 
@@ -119,11 +121,15 @@ make observability-logging-status
 make observability-logging-test
 make observability-grafana-datasources
 make observability-grafana-reload
+make observability-grafana-dashboard-audit
 make observability-grafana
 make otel-go-demo-install
 make otel-go-demo-test
 make otel-go-demo-metrics-test
 make otel-go-demo-incident-test
+make firecrawl-migration-audit
+make firecrawl-k8s-validate
+make firecrawl-k8s-status
 make tf-cloudflare-plan
 make tf-r2-plan
 ```
@@ -168,7 +174,7 @@ A validação consolidada está disponível em:
 make observability-validate
 ```
 
-Ela verifica Pods/PVCs, targets e query `up` do Prometheus, health dos datasources Grafana e uso atual de recursos quando o metrics-server estiver disponível. No cluster atual o teste passou com 13/13 targets `up` e Prometheus, Tempo e Loki com health `OK`.
+Ela verifica Pods/PVCs, targets e query `up` do Prometheus, auditoria de alertas, health dos datasources Grafana e uso atual de recursos quando o metrics-server estiver disponível. No cluster atual o teste passou com 15/15 targets `up`; Prometheus, Tempo e Loki estão com health `OK` e o único alerta sintético ativo na última validação foi `Watchdog`, como esperado.
 
 O demo distribuído usa:
 
@@ -235,7 +241,23 @@ Para acesso temporário pela LAN administrativa:
 make observability-grafana ADDRESS=192.168.88.9
 ```
 
-Detalhes em [`docs/observability.md`](docs/observability.md) e [`docs/otel-go-demo.md`](docs/otel-go-demo.md).
+Detalhes em [`docs/observability.md`](docs/observability.md), [`docs/otel-go-demo.md`](docs/otel-go-demo.md), [`docs/alert-audit.md`](docs/alert-audit.md) e [`docs/grafana-dashboard-audit.md`](docs/grafana-dashboard-audit.md).
+
+## Firecrawl
+
+O primeiro workload real escolhido para migração é o Firecrawl, atualmente executado por Docker Compose no mesmo host. A estratégia é incremental: primeiro auditar, depois validar manifests sem aplicar, em seguida subir staging isolado com dados descartáveis, ensaiar backup/restore e somente então executar o cutover de dados/rota.
+
+Operações atuais:
+
+```bash
+make firecrawl-migration-audit
+make firecrawl-k8s-validate
+make firecrawl-k8s-status
+```
+
+`make firecrawl-k8s-validate` é read-only: renderiza Kustomize, executa dry-run client-side, confirma ausência de Ingress público, lista PVCs e aponta imagens flutuantes que precisam ser pinadas antes do cutover.
+
+A configuração não sensível fica em ConfigMap; credenciais/tokens deverão ser mantidos em Secret SOPS + age. O `.env` real do Compose nunca deve ser versionado. A documentação detalhada está em [`docs/firecrawl-migration.md`](docs/firecrawl-migration.md).
 
 ## Documentação final
 
@@ -291,11 +313,14 @@ A evolução atual foi baseada em:
 - validações reais do cluster K3s, Traefik, Cloudflare Tunnel, `kubectl`, PVC/local-path, SOPS + age e backup/restore executadas no próprio servidor;
 - validação real do kubeconfig remoto a partir de outra máquina da LAN;
 - validação real do `kube-prometheus-stack`, Tempo, OpenTelemetry Collector, Loki e Alloy no cluster atual;
-- validação real de 13/13 targets Prometheus `up` e health dos datasources Prometheus/Tempo/Loki;
+- validação real de 15/15 targets Prometheus `up`, auditoria dos alertas e health dos datasources Prometheus/Tempo/Loki;
+- validação real da remoção do hard CPU limit do node-exporter com desaparecimento de throttling e `CPUThrottlingHigh`;
+- auditoria read-only de 26 dashboards Grafana com carregamento válido e classificação K3s/Linux;
 - validação real de tracing distribuído `otel-go-demo -> otel-go-downstream` com W3C Trace Context;
 - validação real de logs `otel-go-demo -> Alloy -> Loki`, correlação pelo mesmo `trace_id` e navegação visual no Grafana;
 - validação real das métricas customizadas `otel_demo_*` e das regras customizadas no Prometheus;
 - validação real do controlled incident drill cobrindo HTTP 502, métricas, alerta, Loki, Tempo e recuperação do downstream;
+- auditoria read-only do Docker Compose Firecrawl atual e início do scaffold Kubernetes sem alterar o workload em produção;
 - Prometheus Go client `v1.24.1` para métricas customizadas;
 - documentação oficial do Prometheus Operator sobre `ServiceMonitor` e `PrometheusRule`;
 - documentação oficial do Prometheus sobre alerting rules;
@@ -304,6 +329,7 @@ A evolução atual foi baseada em:
 - documentação oficial do K3s para cluster access, storage, datastore e backup/restore;
 - documentação oficial do Kubernetes sobre kubeconfig e `kubectl`;
 - documentação oficial do Grafana Loki, Alloy, Tempo e provisioning de datasources;
+- documentação oficial do Firecrawl para self-hosting e configuração de ambiente;
 - documentação oficial do Restic, Cloudflare R2, SOPS, age, Helm e systemd.
 
 Referências relevantes:
@@ -318,5 +344,7 @@ Referências relevantes:
 - https://grafana.com/docs/loki/latest/setup/install/helm/
 - https://grafana.com/docs/alloy/latest/collect/logs-in-kubernetes/
 - https://grafana.com/docs/tempo/latest/
+- https://github.com/firecrawl/firecrawl/blob/main/SELF_HOST.md
+- https://github.com/firecrawl/firecrawl/blob/main/apps/api/.env.example
 
 Nenhum dado persistente existente foi movido e nenhum secret plaintext deve ser mantido no Git.
