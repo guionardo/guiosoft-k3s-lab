@@ -15,6 +15,17 @@ kubeControllerManager:
 kubeScheduler:
   enabled: false
 
+# kube-prometheus-stack assumes a conventional kube-proxy scrape target by default.
+# In this K3s profile that target is not present in Prometheus discovery, so the
+# stock KubeProxyDown rule becomes a permanent false positive. Disable both the
+# component ServiceMonitor and its default rule instead of hiding a real target failure.
+kubeProxy:
+  enabled: false
+
+defaultRules:
+  rules:
+    kubeProxy: false
+
 alertmanager:
   enabled: true
   alertmanagerSpec:
