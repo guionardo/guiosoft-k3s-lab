@@ -101,7 +101,7 @@ else
 fi
 
 run_sh "Existing Kubernetes/K3s" "{ command -v k3s 2>/dev/null || true; command -v kubectl 2>/dev/null || true; systemctl --no-pager --full status k3s k3s-agent 2>/dev/null || true; }"
-run_sh "Installed packages of interest" "dpkg-query -W -f='${binary:Package}\\t${Version}\\n' 2>/dev/null | grep -Ei 'docker|containerd|podman|cloudflared|nginx|apache|caddy|haproxy|postgres|mysql|maria|mongo|redis|k3s|kube|nftables|ufw|firewalld|ansible|terraform' || true"
+run_sh "Installed packages of interest" "dpkg-query -W -f='\${binary:Package}\\t\${Version}\\n' 2>/dev/null | grep -Ei 'docker|containerd|podman|cloudflared|nginx|apache|caddy|haproxy|postgres|mysql|maria|mongo|redis|k3s|kube|nftables|ufw|firewalld|ansible|terraform' || true"
 
 cat >> "$REPORT" <<'EOF'
 
