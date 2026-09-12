@@ -2,7 +2,7 @@
 
 ## Escopo atual
 
-O cluster atual é single-node e usa o datastore SQLite padrão do K3s. Nesta fase, o objetivo é estabelecer primeiro um backup local verificável do estado do cluster antes de adicionar retenção automática, cópia off-host ou testes destrutivos de restore.
+O cluster atual é single-node e usa o datastore SQLite padrão do K3s. A estratégia desta fase cobre o backup do estado do control plane e do server token, com validação de integridade, agendamento via systemd e retenção local conservadora.
 
 O staging local usa:
 
@@ -48,7 +48,7 @@ scripts/k3s-backup.sh
 8. cria SHA-256 portátil, referenciando apenas o nome do arquivo para continuar válido após cópia off-host;
 9. valida a leitura do tar e o checksum antes de reportar sucesso.
 
-Execute:
+Execute manualmente:
 
 ```bash
 make backup-create
@@ -59,7 +59,7 @@ O arquivo de backup contém o server token e portanto deve ser tratado como secr
 
 ## Restore rehearsal não destrutivo
 
-Antes de interromper o cluster para um restore real, existe um teste intermediário:
+O fluxo foi validado no host com:
 
 ```bash
 make backup-verify
@@ -85,11 +85,71 @@ O script `scripts/k3s-backup-verify.sh`:
 
 Esse teste **não modifica** `/var/lib/rancher/k3s`, não para o serviço K3s e não substitui o teste completo de disaster recovery. Ele prova que o artefato pode ser reidratado, que o token necessário está presente e que a cópia SQLite restaurada é estruturalmente íntegra.
 
+## Agendamento via systemd
+
+Após a validação manual de criação e reidratação, o agendamento pode ser instalado com:
+
+```bash
+make backup-install
+```
+
+O playbook `ansible/playbooks/backup.yml` instala o role `backup`, que:
+
+- valida que o disco de backup continua montado antes de configurar qualquer automação;
+- instala os scripts em `/usr/local/sbin`;
+- cria `k3s-backup.service` como `oneshot`;
+- cria e habilita `k3s-backup.timer`;
+- executa o prune somente depois de um backup ter sido criado com sucesso;
+- mantém o diretório de backup em modo `0700`.
+
+A política padrão está em `ansible/inventory/group_vars/all.yml`:
+
+```yaml
+k3s_backup_dir: /srv/k3s/backups/k3s
+k3s_backup_keep: 14
+k3s_backup_on_calendar: "*-*-* 03:15:00"
+k3s_backup_randomized_delay: 15m
+```
+
+O horário segue o timezone local do servidor. `Persistent=true` faz o systemd executar uma ocorrência perdida após o host voltar a ficar disponível. O atraso aleatório reduz a necessidade de um horário rígido e evita concentrar futuras rotinas exatamente no mesmo minuto.
+
+Para validar a instalação:
+
+```bash
+make backup-status
+```
+
+Para disparar manualmente exatamente o mesmo serviço utilizado pelo timer:
+
+```bash
+make backup-run
+```
+
+## Retenção local
+
+O script `scripts/k3s-backup-prune.sh` mantém, por padrão, os 14 archives mais recentes.
+
+A retenção possui proteções intencionais:
+
+- exige execução como root;
+- exige `K3S_BACKUP_KEEP >= 2`;
+- ordena os archives por data de modificação;
+- remove archive e checksum como um par;
+- **não remove** um archive antigo que esteja sem seu `.sha256`, deixando-o para inspeção manual.
+
+O prune pode ser testado manualmente com:
+
+```bash
+make backup-prune
+```
+
+A existência de retenção local não transforma `/srv/k3s/backups` em backup definitivo: o disco continua no mesmo servidor físico.
+
 ## Restore real do K3s
 
 O restore completo do SQLite exige restaurar o conteúdo de `server/db/` e o mesmo server token. Como isso altera o estado ativo do control plane, o teste deve ser executado em uma janela explícita de disaster recovery, idealmente em um host limpo ou após termos uma forma segura de reconstruir o servidor.
 
-Não automatizamos ainda essa substituição do datastore no host de produção do laboratório.
+Não automatizamos ainda essa substituição do datastore no host ativo.
 
 ## O que este backup ainda não resolve
 
@@ -99,12 +159,11 @@ PVCs, bancos de dados, uploads e outros dados persistentes precisam de política
 
 Também permanecem pendentes:
 
-- retenção automatizada;
-- execução agendada;
 - cópia off-host;
 - proteção/criptografia do destino off-host;
 - restore completo do K3s em ambiente reconstruído;
-- restore de dados de aplicações.
+- restore de dados de aplicações;
+- testes periódicos de restore completo.
 
 ## Política de evolução
 
@@ -115,9 +174,9 @@ backup manual verificável
     ↓
 restore rehearsal não destrutivo
     ↓
-automação/agendamento
+agendamento systemd
     ↓
-retenção
+retenção local
     ↓
 off-host
     ↓
@@ -125,8 +184,6 @@ restore completo em ambiente reconstruído
     ↓
 testes periódicos de restore
 ```
-
-Não habilitaremos remoção automática de backups antigos antes de termos confirmado o fluxo de criação e reidratação do artefato.
 
 ## Futuro multi-node
 
@@ -137,3 +194,4 @@ O script atual aborta quando encontra embedded etcd. Quando o laboratório evolu
 - K3s — Backup and Restore: https://docs.k3s.io/datastore/backup-restore
 - K3s — Cluster Datastore: https://docs.k3s.io/datastore
 - K3s — High Availability Embedded etcd: https://docs.k3s.io/datastore/ha-embedded
+- systemd.timer — https://www.freedesktop.org/software/systemd/man/latest/systemd.timer.html
