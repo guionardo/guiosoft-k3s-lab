@@ -38,9 +38,13 @@ O cluster single-node K3s está operacional. Traefik, CoreDNS, metrics-server e 
 
 Hostnames desconhecidos sob o wildcard `*.guiosoft.info` chegam ao Traefik, mas recebem HTTP 404 quando não existe um Ingress explícito.
 
-O layout persistente em `/srv/k3s` foi validado no host. Novos volumes do StorageClass `local-path` passam a ser provisionados em `/mnt/store1/k3s/local-path`, e existe um workload descartável para validar PVC, escrita e persistência após recriação do Pod.
+O layout persistente em `/srv/k3s` foi validado no host. Novos volumes do StorageClass `local-path` são provisionados em `/mnt/store1/k3s/local-path`, e o workload descartável de persistência já confirmou que os dados sobrevivem à recriação do Pod.
 
-A infraestrutura Cloudflare começou a ser declarada em Terraform usando o provider v5. O Tunnel existente, sua configuração remota e o wildcard DNS já possuem configuração declarativa, mas ainda devem ser importados para o state antes de qualquer `apply`.
+A infraestrutura Cloudflare está declarada em Terraform usando o provider v5. O Tunnel existente, sua configuração remota e o wildcard DNS foram importados para o state local e o `terraform plan` foi validado com `No changes`.
+
+SOPS + age estão instalados via Ansible. A identidade age é criada de forma idempotente somente quando ausente, a configuração pública do recipient está versionada em `.sops.yaml`, e o fluxo de encrypt/decrypt e de Kubernetes Secrets cifrados foi validado.
+
+A base de backup do K3s também foi iniciada. O repositório inclui um script conservador para criar um backup local verificável do datastore SQLite e do server token em `/srv/k3s/backups/k3s`. O próximo passo é validar a criação no host e depois testar restore antes de habilitar agendamento e retenção automáticos.
 
 ## Divisão de responsabilidades
 
@@ -56,6 +60,7 @@ Ansible
 ├── preparação do Debian
 ├── instalação/configuração do K3s
 ├── diretórios e storage do host
+├── ferramentas de IaC e secrets
 ├── firewall
 └── bootstrap do cluster
 
@@ -75,11 +80,13 @@ Kubernetes / Helm / GitOps
 ├── Makefile
 ├── docs/
 │   ├── architecture.md
+│   ├── backup.md
 │   ├── current-state.md
 │   ├── firewall.md
 │   ├── migration.md
 │   ├── networking.md
 │   ├── roadmap.md
+│   ├── secrets.md
 │   ├── storage.md
 │   └── troubleshooting.md
 ├── ansible/
@@ -100,6 +107,9 @@ make storage-test
 make storage-test-recreate
 make cluster-status
 make firewall-audit
+make secrets-test
+make backup-create
+make backup-list
 make tf-cloudflare-init
 make tf-cloudflare-validate
 make tf-cloudflare-plan
@@ -109,7 +119,11 @@ O target `make storage` é conservador: valida que os discos esperados já estã
 
 O target `make k3s` também garante que novos volumes locais usem `/mnt/store1/k3s/local-path`. Para validar a persistência, `make storage-test` cria um PVC descartável e `make storage-test-recreate` recria o Pod mantendo o mesmo volume.
 
-Para Cloudflare, o fluxo também é deliberadamente conservador: configurar variáveis locais, exportar `CLOUDFLARE_API_TOKEN`, importar os recursos existentes para o state e somente então revisar `terraform plan`. Não executar `apply` enquanto houver mudanças inesperadas.
+Secrets declarativos podem ser cifrados com SOPS + age. A chave privada age permanece fora do Git; somente o recipient público é versionado. O fluxo `secret-edit` / `secret-validate` / `secret-apply` permite manter Kubernetes Secrets cifrados em Git sem criar arquivos plaintext persistentes durante a aplicação.
+
+Para Cloudflare, o fluxo também é deliberadamente conservador: configurar variáveis locais, exportar `CLOUDFLARE_API_TOKEN`, importar os recursos existentes para o state e revisar `terraform plan`. A adoção inicial foi concluída com zero drift e nenhum `apply` foi necessário.
+
+O backup atual do K3s é local e intencionalmente simples. `make backup-create` cria um arquivo com o datastore SQLite e o server token e verifica tar + SHA-256. Esse arquivo contém material sensível e não deve ser versionado. Backup off-host e restore real ainda são obrigatórios antes de considerar a estratégia completa.
 
 ## Primeira etapa: discovery
 
@@ -166,14 +180,14 @@ Este repositório é público. Nunca versionar:
 
 - tokens do Cloudflare;
 - kubeconfig real;
-- chaves SSH ou age;
+- chaves SSH ou identidade privada age;
 - senhas;
 - arquivos `.env` com credenciais;
 - Secrets Kubernetes em texto puro;
 - backups ou dumps de banco de dados;
 - relatórios de discovery sem revisão.
 
-A estratégia prevista é começar simples e evoluir para SOPS + age para secrets declarativos no Kubernetes.
+SOPS + age são usados para secrets declarativos que precisam permanecer no Git. O recipient público pode ser versionado; a identidade privada permanece fora do repositório e precisa de cópia de recuperação off-host.
 
 ## Domínio
 
@@ -187,11 +201,12 @@ A evolução atual foi baseada em:
 
 - discovery read-only executado no host Debian;
 - estado observado dos mounts `/mnt/store1`, `/mnt/store2` e `/mnt/dev`;
-- validações reais do cluster K3s, Traefik, Cloudflare Tunnel e `kubectl` executadas no próprio servidor;
-- documentação oficial do K3s para `default-local-storage-path`;
+- validações reais do cluster K3s, Traefik, Cloudflare Tunnel, `kubectl`, PVC/local-path e SOPS + age executadas no próprio servidor;
+- documentação oficial do K3s para `default-local-storage-path`, datastore SQLite e backup/restore;
 - documentação do Rancher `local-path-provisioner` para comportamento de PVs locais;
+- documentação oficial do SOPS e age para recipients e gestão de secrets;
 - documentação oficial do Cloudflare Terraform Provider v5 para `cloudflare_dns_record`, `cloudflare_zero_trust_tunnel_cloudflared` e `cloudflare_zero_trust_tunnel_cloudflared_config`;
 - documentação oficial da Cloudflare para importação de recursos existentes em Terraform;
-- documentação versionada em `docs/current-state.md`, `docs/networking.md`, `docs/firewall.md`, `docs/storage.md` e `terraform/cloudflare/README.md`.
+- documentação versionada em `docs/current-state.md`, `docs/networking.md`, `docs/firewall.md`, `docs/storage.md`, `docs/secrets.md`, `docs/backup.md` e `terraform/cloudflare/README.md`.
 
-Nenhum dado persistente existente foi movido como parte da etapa de storage, e nenhum recurso Cloudflare deve ser recriado durante a adoção inicial de Terraform.
+Nenhum dado persistente existente foi movido como parte da etapa de storage, nenhum recurso Cloudflare foi recriado durante a adoção inicial de Terraform e nenhum secret plaintext deve ser mantido no Git.
