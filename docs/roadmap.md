@@ -39,7 +39,7 @@ Objetivo: entender o estado atual, eliminar dependências desnecessárias e prep
 - [x] scaffold Terraform Cloudflare com provider v5 e proteção contra destroy;
 - [x] importar Tunnel existente, configuração remota e wildcard DNS para o state;
 - [x] validar `terraform plan` sem mudanças inesperadas (`No changes`);
-- [ ] estratégia SOPS + age;
+- [x] estratégia SOPS + age instalada e validada com round-trip e fluxo de Kubernetes Secret cifrado;
 - [x] Makefile para operações comuns.
 
 ## Fase 2 — K3s
@@ -95,9 +95,13 @@ Para qualquer workload escolhido futuramente:
 - [x] validar no host criação do PVC e localização física do PV;
 - [x] validar persistência após recriação do Pod;
 - [ ] estratégia para bancos de dados;
-- [ ] backup automatizado;
+- [x] implementar backup local manual verificável do datastore SQLite + server token;
+- [ ] validar criação do backup no host;
+- [ ] executar restore real do K3s a partir de backup;
+- [ ] automatizar/agendar backup após restore validado;
+- [ ] definir retenção;
 - [ ] backup externo/off-host;
-- [ ] testes reais de restore.
+- [ ] testes periódicos de restore.
 
 ## Fase 6 — Observabilidade
 
