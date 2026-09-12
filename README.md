@@ -38,7 +38,7 @@ O cluster single-node K3s está operacional. Traefik, CoreDNS, metrics-server e 
 
 Hostnames desconhecidos sob o wildcard `*.guiosoft.info` chegam ao Traefik, mas recebem HTTP 404 quando não existe um Ingress explícito.
 
-O layout persistente em `/srv/k3s` foi validado no host. Novos volumes do StorageClass `local-path` são provisionados em `/mnt/store1/k3s/local-path`, e o workload descartável de persistência já confirmou que os dados sobrevivem à recriação do Pod.
+O layout persistente em `/srv/k3s` foi validado no host. A configuração atual direciona novos volumes `local-path` para `/mnt/store1/k3s/local-path`. O inventário read-only mais recente mostrou que o único PVC existente é o workload descartável `lab/persistence-test`; seu PV ainda aponta para o path legado `/var/lib/rancher/k3s/storage`, o que indica que foi provisionado antes da mudança do `default-local-storage-path`. Nenhum PVC real de aplicação existe atualmente.
 
 A infraestrutura Cloudflare está declarada em Terraform usando o provider v5. O Tunnel existente, sua configuração remota e o wildcard DNS foram importados para o state local e o `terraform plan` foi validado com `No changes`.
 
@@ -48,7 +48,7 @@ O backup do K3s foi validado manualmente, por restore rehearsal não destrutivo 
 
 A camada off-host usa Restic sobre Cloudflare R2. O bucket `guiosoft-k3s-backups` é gerenciado por uma stack Terraform separada, as credenciais runtime ficam cifradas com SOPS + age, o round-trip real Restic -> R2 -> restore já foi validado por SHA-256 e o `k3s-backup.service` foi validado executando a cadeia completa local -> Restic -> R2 com `restic check` remoto.
 
-A próxima frente é o backup de dados de aplicações. Existe agora um inventário read-only de PVCs/PVs e dos caminhos persistentes associados para classificar cada workload antes de implementar qualquer política de backup de filesystem ou banco de dados.
+A próxima frente é o backup de dados de aplicações. Como ainda não existem PVCs reais de aplicação, a estratégia será aplicada quando workloads stateful forem introduzidos: bancos de dados usarão mecanismos nativos da engine e PVCs file-oriented terão política própria de filesystem/snapshot/export.
 
 ## Divisão de responsabilidades
 
@@ -104,6 +104,7 @@ make storage
 make k3s
 make storage-test
 make storage-test-recreate
+make storage-test-reprovision
 make cluster-status
 make firewall-audit
 make secrets-test
@@ -127,7 +128,7 @@ O `Makefile` é a interface operacional preferida. Os scripts continuam sendo a 
 
 O target `make storage` é conservador: valida que os discos esperados já estão montados, cria somente diretórios e links sob `/srv/k3s`, e não formata, reparticiona, move ou remove dados existentes.
 
-O target `make k3s` garante que novos volumes locais usem `/mnt/store1/k3s/local-path`. Para validar persistência, `make storage-test` cria um PVC descartável e `make storage-test-recreate` recria o Pod mantendo o mesmo volume.
+O target `make k3s` garante que novos volumes locais usem `/mnt/store1/k3s/local-path`. Para validar persistência, `make storage-test` cria um PVC descartável e `make storage-test-recreate` recria apenas o Pod mantendo o mesmo volume. Quando é necessário validar a localização física de um novo PV, `make storage-test-reprovision` remove e recria **somente** o PVC descartável `lab/persistence-test`, perdendo intencionalmente apenas o marker de teste, e exige que o novo PV fique abaixo de `/mnt/store1/k3s/local-path`.
 
 Secrets declarativos podem ser cifrados com SOPS + age. A chave privada age permanece fora do Git; somente o recipient público é versionado. Credenciais de infraestrutura, como as do Restic/R2, também são mantidas somente em arquivos `.sops.yaml` cifrados.
 
@@ -149,7 +150,7 @@ Cloudflare R2
 retenção daily/weekly/monthly pelo Restic
 ```
 
-Para dados de aplicações, `make backup-inventory` é somente leitura e serve para identificar PVCs, PVs, caminhos físicos e Pods consumidores antes de definir backups. Bancos de dados serão tratados com mecanismos nativos da engine, não com cópia crua de arquivos em execução.
+Para dados de aplicações, `make backup-inventory` é somente leitura e serve para identificar PVCs, PVs, caminhos físicos e Pods consumidores antes de definir backups. O inventário agora também destaca qualquer `local-path` provisionado fora de `/mnt/store1/k3s/local-path`, sem mover ou alterar volumes existentes.
 
 ## Primeira etapa: discovery
 
@@ -227,6 +228,7 @@ A evolução atual foi baseada em:
 
 - discovery read-only executado no host Debian;
 - validações reais do cluster K3s, Traefik, Cloudflare Tunnel, `kubectl`, PVC/local-path, SOPS + age e backup/restore executadas no próprio servidor;
+- inventário read-only de PVC/PV executado no cluster, que identificou apenas o PVC descartável `lab/persistence-test` e seu path legado;
 - documentação oficial do K3s para `default-local-storage-path`, datastore SQLite e backup/restore;
 - documentação do Rancher `local-path-provisioner`;
 - documentação oficial do SOPS e age;
