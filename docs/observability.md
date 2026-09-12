@@ -13,6 +13,24 @@ A primeira etapa usa o chart `kube-prometheus-stack`, que reúne Prometheus Oper
 
 As versões são explícitas para manter rebuilds reproduzíveis. Atualizações devem ser feitas de forma consciente, revisando notas de upgrade e CRDs.
 
+## Estado validado no host
+
+A instalação do `kube-prometheus-stack` foi executada com sucesso no cluster K3s atual. Foram observados em `Running`:
+
+- Prometheus;
+- Alertmanager;
+- Grafana;
+- Prometheus Operator;
+- kube-state-metrics;
+- node-exporter.
+
+Os CRs de Prometheus e Alertmanager estavam reconciliados e disponíveis. Também foram confirmados dois PVCs `Bound` usando `local-path`:
+
+- Prometheus: 10 GiB;
+- Grafana: 2 GiB.
+
+Essa validação comprova que a stack foi instalada e que os componentes principais e seus volumes persistentes estão operacionais. A saúde dos scrape targets e os dashboards ainda são validados separadamente.
+
 ## Instalação
 
 ```bash
@@ -38,6 +56,26 @@ O perfil inicial foi ajustado para o servidor single-node atual:
 - requests/limits conservadores para evitar competição desnecessária com os workloads existentes.
 
 Métricas são importantes operacionalmente, mas os dados históricos de Prometheus/Grafana ainda não são classificados como dados críticos de negócio. A política de backup de PVCs continua separada.
+
+## Validação de métricas e targets
+
+Depois da instalação, execute:
+
+```bash
+make observability-validate
+```
+
+O target é somente leitura. Ele:
+
+- aguarda os Pods do namespace `monitoring` ficarem Ready;
+- confirma que os PVCs estão `Bound`;
+- consulta a API do Prometheus através do proxy autenticado do Kubernetes API server, sem expor porta externa;
+- verifica que existe pelo menos um scrape target ativo;
+- falha se algum target ativo estiver com health diferente de `up`;
+- executa a query Prometheus `up` e confirma que existem séries retornadas;
+- mostra `kubectl top` para node e containers do namespace quando metrics-server estiver disponível.
+
+Esse comando serve como evidência antes de considerar a coleta de métricas do cluster validada.
 
 ## Acesso ao Grafana
 
@@ -73,18 +111,19 @@ O comando mostra:
 
 ## Próximas etapas
 
-1. instalar e validar a stack no host;
-2. confirmar consumo de CPU/memória/storage;
-3. verificar targets Prometheus;
-4. validar dashboards de node, pods, workloads e Kubernetes;
-5. revisar alertas ruidosos ou incompatíveis com K3s;
-6. depois adicionar Loki para logs;
-7. somente depois avaliar publicação protegida do Grafana via Cloudflare.
+1. validar targets Prometheus com `make observability-validate`;
+2. abrir Grafana localmente e validar dashboards padrão;
+3. revisar consumo de CPU/memória/storage após estabilização;
+4. revisar alertas ruidosos ou incompatíveis com K3s;
+5. depois adicionar Loki para logs;
+6. somente depois avaliar publicação protegida do Grafana via Cloudflare.
 
 ## Fontes
 
 - kube-prometheus-stack chart: https://github.com/prometheus-community/helm-charts/tree/main/charts/kube-prometheus-stack
 - Artifact Hub kube-prometheus-stack: https://artifacthub.io/packages/helm/prometheus-community/kube-prometheus-stack
 - Prometheus Operator: https://prometheus-operator.dev/
+- Prometheus HTTP API: https://prometheus.io/docs/prometheus/latest/querying/api/
+- Kubernetes API service proxy: https://kubernetes.io/docs/tasks/access-application-cluster/access-cluster-services/
 - Helm install docs: https://helm.sh/docs/intro/install/
 - Helm releases: https://github.com/helm/helm/releases
