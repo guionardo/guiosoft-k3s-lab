@@ -85,11 +85,11 @@ CPUThrottlingHigh   pending
 
 `KubeProxyDown` desapareceu como esperado. Isso confirma que o ajuste removeu somente o falso positivo específico do perfil K3s, sem degradar os targets existentes.
 
-### CPUThrottlingHigh — evidência de burst limitado por CFS
+### CPUThrottlingHigh — causa confirmada e corrigida
 
-Classificação: **ajuste de resource limit justificado por medição**.
+Classificação final: **resource limit artificialmente restritivo / corrigido e validado**.
 
-A auditoria específica retornou:
+A auditoria específica inicial retornou:
 
 ```text
 rule threshold: >25%
@@ -101,7 +101,7 @@ CPU limit: 200m
 alert state: pending
 ```
 
-O ponto importante é a combinação de **throttling muito alto** com **uso médio muito baixo**. O node estava longe de saturação e o processo consumia, em média, uma fração pequena do limite configurado. Isso é compatível com bursts curtos atingindo o hard CPU limit e sendo limitados por CFS, mesmo com CPU livre no host.
+O ponto importante foi a combinação de **throttling muito alto** com **uso médio muito baixo**. O node estava longe de saturação e o processo consumia, em média, uma fração pequena do limite configurado. Isso é compatível com bursts curtos atingindo o hard CPU limit e sendo limitados por CFS, mesmo com CPU livre no host.
 
 Na mesma amostra:
 
@@ -132,23 +132,48 @@ prometheus-node-exporter:
       memory: 128Mi
 ```
 
-A regra `CPUThrottlingHigh` permanece habilitada. O objetivo não é esconder o alerta; é remover a causa artificial detectada e depois revalidar o comportamento real.
+A regra `CPUThrottlingHigh` permaneceu habilitada. O objetivo não foi esconder o alerta; foi remover a causa artificial detectada e revalidar o comportamento real.
 
-Próxima validação:
+#### Validação após estabilização
 
-```bash
-git pull
-make observability-install
-make observability-cpu-throttling-audit
-make observability-validate
+Após cerca de duas horas do rollout, a auditoria retornou:
+
+```text
+Current 5-minute throttling ratio:
+- no matching throttling series found
+
+Current 5-minute average CPU usage:
+- node-exporter cpu_cores=0.0023578320121328193
+
+Configured CPU requests:
+- request_cores=0.02
+
+Configured CPU limits:
+- no CPU limit series found
+
+Current CPUThrottlingHigh alert state:
+- not active
 ```
 
-Critério de sucesso:
+A validação consolidada retornou:
 
-- ausência de CPU limit efetivo no node-exporter;
-- razão de throttling cair substancialmente após o rollout;
-- `CPUThrottlingHigh` deixar de permanecer `pending`/`firing` depois da janela de avaliação;
-- nenhum impacto negativo nos demais workloads nem no consumo global do node.
+```text
+Prometheus active targets: 15 total, 15 up, 0 not-up
+Prometheus query 'up': 15 series
+Active alerts: 1 total, 1 firing, 0 pending
+- Watchdog
+```
+
+O node estava em aproximadamente:
+
+```text
+CPU:    742m / 12%
+Memory: 6995 MiB / 44%
+```
+
+O node-exporter aparecia em aproximadamente `1m CPU / 11 MiB` no `kubectl top`.
+
+Isso fecha a investigação: o throttling desapareceu sem desabilitar a regra, os 15 targets continuaram saudáveis e o único alerta ativo restante passou a ser o `Watchdog`, esperado por desenho.
 
 ## Critério adotado
 
@@ -161,9 +186,10 @@ Para cada alerta:
 3. separar alertas sintéticos/operacionais (`Watchdog`, `InfoInhibitor`) de falhas reais;
 4. comparar o alerta com métricas atuais de recursos;
 5. medir a expressão efetiva da regra quando necessário;
-6. somente então alterar regras ou limites.
+6. alterar a causa mensurável antes de desabilitar o alerta;
+7. aguardar a janela da métrica/regra e revalidar depois da estabilização.
 
-Isso evita transformar a observabilidade em um sistema silencioso apenas para obter uma tela sem alertas.
+Esse processo evitou transformar a observabilidade em um sistema silencioso apenas para obter uma tela sem alertas e produziu uma correção baseada em evidência.
 
 ## Fontes
 
