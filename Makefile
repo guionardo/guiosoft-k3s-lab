@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: help discovery ansible-deps preflight bootstrap tools k3s storage storage-test storage-test-status storage-test-recreate storage-test-delete backup-create backup-list backup-verify backup-install backup-status backup-run backup-prune firewall-audit cluster-status lab-deploy lab-status lab-test lab-delete secrets-test secret-edit secret-view secret-validate secret-apply tf-cloudflare-discovery tf-cloudflare-init tf-cloudflare-fmt tf-cloudflare-validate tf-cloudflare-import tf-cloudflare-plan
+.PHONY: help discovery ansible-deps preflight bootstrap tools k3s storage storage-test storage-test-status storage-test-recreate storage-test-delete backup-create backup-list backup-verify backup-install backup-status backup-run backup-prune restic-test firewall-audit cluster-status lab-deploy lab-status lab-test lab-delete secrets-test secret-edit secret-view secret-validate secret-apply tf-cloudflare-discovery tf-cloudflare-init tf-cloudflare-fmt tf-cloudflare-validate tf-cloudflare-import tf-cloudflare-plan
 
 help:
 	@echo "guiosoft-k3s-lab"
@@ -10,7 +10,7 @@ help:
 	@echo "  make ansible-deps          Instala Ansible e collections necessárias"
 	@echo "  make preflight             Valida DNS, Tailscale, portas e serviços preservados"
 	@echo "  make bootstrap             Prepara Debian e ferramentas de IaC para K3s"
-	@echo "  make tools                 Instala/valida ferramentas de IaC no host"
+	@echo "  make tools                 Instala/valida Terraform, SOPS, age e restic"
 	@echo "  make k3s                   Instala/valida K3s, kubectl e local-path dedicado"
 	@echo "  make storage               Prepara layout persistente sem mover ou apagar dados"
 	@echo "  make storage-test          Cria PVC + Deployment para testar persistência"
@@ -24,6 +24,7 @@ help:
 	@echo "  make backup-status         Mostra timer e últimas execuções do backup"
 	@echo "  make backup-run            Dispara agora o mesmo serviço usado pelo timer"
 	@echo "  make backup-prune          Executa manualmente a retenção configurada"
+	@echo "  make restic-test           Valida backup/restore restic em repositório temporário local"
 	@echo "  make firewall-audit        Audita firewall/listeners após K3s sem alterar regras"
 	@echo "  make cluster-status        Mostra nodes, pods e services do cluster"
 	@echo "  make lab-deploy            Cria namespace e workload de teste"
@@ -118,6 +119,9 @@ backup-run:
 
 backup-prune:
 	sudo K3S_BACKUP_KEEP=$${K3S_BACKUP_KEEP:-14} bash scripts/k3s-backup-prune.sh
+
+restic-test:
+	sudo bash scripts/restic-smoke-test.sh
 
 firewall-audit:
 	cd ansible && ansible-playbook -K playbooks/firewall-audit.yml
