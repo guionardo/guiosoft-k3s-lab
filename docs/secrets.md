@@ -16,7 +16,8 @@ The homelab uses SOPS with age for secrets that must be stored in Git.
 
 - Terraform;
 - age from Debian packages;
-- the latest stable SOPS release from the official `getsops/sops` GitHub releases.
+- the latest stable SOPS release from the official `getsops/sops` GitHub releases;
+- an age identity for the administrative user, generated only when the identity file does not already exist.
 
 Validate with:
 
@@ -25,22 +26,28 @@ age --version
 sops --version
 ```
 
-## Initial key bootstrap
+## Idempotent age identity bootstrap
 
-Key generation is deliberately **not** automated by Ansible. Re-running bootstrap must never silently replace or create a new encryption identity.
+Ansible owns the initial creation of the local age identity at:
 
-Create the identity once as the normal administrative user:
-
-```bash
-mkdir -p ~/.config/sops/age
-chmod 700 ~/.config/sops ~/.config/sops/age
-age-keygen -o ~/.config/sops/age/keys.txt
-chmod 600 ~/.config/sops/age/keys.txt
+```text
+~/.config/sops/age/keys.txt
 ```
 
-Record the printed `age1...` public recipient. The `AGE-SECRET-KEY-...` identity must never be committed.
+The identity is created with `age-keygen` only when that file is absent. The task uses Ansible's `creates` guard, so subsequent runs preserve the existing private key instead of rotating or replacing it.
 
-Create an off-host backup of `~/.config/sops/age/keys.txt` before using it for irreplaceable secrets.
+Permissions are enforced as:
+
+```text
+~/.config/sops/age/           0700
+~/.config/sops/age/keys.txt   0600
+```
+
+At the end of `make tools`, Ansible prints only the public `age1...` recipient and the path that must be backed up. The private `AGE-SECRET-KEY-...` material must never be copied into the repository or shared in command output.
+
+Create an off-host backup of `~/.config/sops/age/keys.txt` before using it for irreplaceable secrets. Losing every private recipient makes the encrypted secrets unrecoverable.
+
+If deliberate key rotation is required, it must be an explicit maintenance operation: create a new identity, add its public recipient to SOPS configuration, update/re-encrypt the affected files, verify decryption, and only then retire the old identity.
 
 ## Repository configuration
 
