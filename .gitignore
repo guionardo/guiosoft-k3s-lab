@@ -10,6 +10,12 @@
 *.secret
 secrets/
 
+# Allow SOPS-encrypted infrastructure secret manifests only.
+!secrets/
+secrets/*
+!secrets/README.md
+!secrets/*.sops.yaml
+
 # Allow only encrypted Kubernetes secret manifests and their documentation.
 !kubernetes/secrets/
 kubernetes/secrets/*
