@@ -50,7 +50,7 @@ A camada off-host usa Restic sobre Cloudflare R2. O bucket `guiosoft-k3s-backups
 
 O Disaster Recovery já possui readiness check, restore rehearsal isolado via R2 e um fluxo guardado para restore destrutivo em outro host. O teste completo em uma VM/segundo host ficou adiado até existir uma máquina disponível; o servidor atual não será usado como alvo destrutivo.
 
-A frente ativa agora é observabilidade. Helm passa a ser instalado pelo Ansible em versão pinada, e o repositório contém a primeira configuração do `kube-prometheus-stack` para Prometheus, Alertmanager e Grafana com perfil conservador para o host single-node atual. Grafana permanece sem Ingress nesta etapa.
+A frente ativa agora é observabilidade. O `kube-prometheus-stack` já está instalado e saudável com Prometheus, Alertmanager, Grafana, kube-state-metrics e node-exporter. A arquitetura de tracing foi adicionada com Grafana Tempo em single-binary mode e OpenTelemetry Collector como ponto central OTLP. Loki continua planejado para completar métricas + logs + traces. Grafana, Tempo e Collector permanecem sem Ingress público nesta etapa.
 
 ## Divisão de responsabilidades
 
@@ -77,7 +77,8 @@ Kubernetes / Helm / GitOps
 ├── Traefik
 ├── namespaces
 ├── Prometheus / Alertmanager / Grafana
-├── observabilidade futura com Loki
+├── OpenTelemetry Collector / Tempo
+├── Loki
 └── aplicações
 ```
 
@@ -127,6 +128,9 @@ make dr-readiness
 make dr-r2-rehearsal
 make observability-install
 make observability-status
+make observability-validate
+make observability-tracing-install
+make observability-tracing-status
 make observability-grafana
 make tf-cloudflare-plan
 make tf-r2-plan
@@ -162,25 +166,34 @@ Para dados de aplicações, `make backup-inventory` é somente leitura e serve p
 
 ## Observabilidade
 
-A primeira etapa usa `kube-prometheus-stack` com versão pinada e valores próprios do laboratório:
+A arquitetura alvo agora cobre os três sinais principais:
 
 ```text
-kubernetes/observability/kube-prometheus-stack-values.yaml
+Metrics -> Prometheus
+Logs    -> Loki
+Traces  -> OpenTelemetry Collector -> Tempo
+UI      -> Grafana
 ```
+
+A base de métricas usa `kube-prometheus-stack`. O tracing foi preparado com Tempo single-binary, PVC `local-path` de 5 GiB, retenção inicial de 72h e OpenTelemetry Collector como endpoint OTLP central. O Grafana recebe um datasource Tempo declarativo.
 
 Fluxo:
 
 ```bash
 make tools
 make observability-install
-make observability-status
+make observability-validate
+make observability-tracing-install
+make observability-tracing-status
 ```
 
-Prometheus começa com retenção de 7 dias e PVC `local-path` de 10 GiB. Grafana usa PVC de 2 GiB e não recebe Ingress nesta fase. Para acesso local:
+Grafana usa PVC de 2 GiB e não recebe Ingress nesta fase. Para acesso local:
 
 ```bash
 make observability-grafana
 ```
+
+O próximo marco de tracing é instrumentar um workload Go simples e validar o caminho aplicação -> OTLP -> Collector -> Tempo -> Grafana. Depois será adicionado Loki e a correlação metrics -> traces -> logs.
 
 Detalhes em [`docs/observability.md`](docs/observability.md).
 
@@ -253,6 +266,7 @@ A evolução atual foi baseada em:
 - validações reais do cluster K3s, Traefik, Cloudflare Tunnel, `kubectl`, PVC/local-path, SOPS + age e backup/restore executadas no próprio servidor;
 - reprovisionamento controlado do PVC descartável e validação do novo path em `/mnt/store1/k3s/local-path`;
 - validação de `dr-readiness` e do restore isolado diretamente do R2;
+- validação real do `kube-prometheus-stack` no cluster atual;
 - documentação oficial do K3s para `default-local-storage-path`, datastore SQLite e backup/restore;
 - documentação do Rancher `local-path-provisioner`;
 - documentação oficial do SOPS e age;
@@ -262,6 +276,8 @@ A evolução atual foi baseada em:
 - documentação oficial do Cloudflare Terraform Provider v5;
 - documentação oficial do Helm para instalação e releases;
 - chart e documentação oficial do `prometheus-community/kube-prometheus-stack`;
+- documentação oficial do Grafana Tempo e Grafana Community Helm charts;
+- documentação oficial do OpenTelemetry Collector e seu Helm chart;
 - documentação versionada em `docs/` e nas stacks `terraform/cloudflare/` e `terraform/r2/`.
 
 Nenhum dado persistente existente foi movido como parte da etapa de storage e nenhum secret plaintext deve ser mantido no Git.
