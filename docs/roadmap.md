@@ -51,6 +51,8 @@ Objetivo: entender o estado atual, eliminar dependências desnecessárias e prep
 - [x] instalar `v1.36.4+k3s1` via Ansible;
 - [x] automatizar configuração de `kubectl` e kubeconfig para o usuário administrativo local;
 - [x] validar `kubectl` sem `sudo` no host;
+- [x] adicionar `make kubeconfig-external` para renderizar kubeconfig administrativo com o `InternalIP` do servidor em vez de loopback;
+- [ ] validar `make kubeconfig-external` e acesso `kubectl` a partir de outra máquina da LAN;
 - [x] validar node/CoreDNS/Traefik/local-path após estabilização inicial;
 - [x] criar namespace `lab`;
 - [x] deploy de workload de teste;
@@ -143,10 +145,10 @@ Para qualquer workload escolhido futuramente:
 - [x] atualizar exporter do Collector para `otlp_grpc` após deprecation reportada pelo chart;
 - [x] implementar workload Go instrumentado com OpenTelemetry e fluxo local build -> K3s containerd;
 - [x] adicionar validação automatizada que gera `trace_id` e consulta o trace diretamente no Tempo;
+- [x] executar `make otel-go-demo-install` e validar rollout do workload instrumentado;
+- [x] executar `make otel-go-demo-test` e confirmar trace ponta a ponta aplicação -> Collector -> Tempo;
 - [ ] validar métricas do cluster e targets Prometheus com `make observability-validate`;
 - [ ] validar Grafana e dashboards padrão;
-- [ ] executar `make otel-go-demo-install` e validar rollout do workload instrumentado;
-- [ ] executar `make otel-go-demo-test` e confirmar trace ponta a ponta;
 - [ ] visualizar o trace no Grafana Explore;
 - [ ] revisar consumo de CPU, memória e storage após estabilização;
 - [ ] revisar alertas incompatíveis/ruidosos no K3s;
