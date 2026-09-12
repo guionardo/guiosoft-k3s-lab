@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: help discovery ansible-deps preflight bootstrap tools k3s kubeconfig-external storage storage-test storage-test-status storage-test-recreate storage-test-placement storage-test-reprovision storage-test-delete backup-create backup-list backup-verify backup-install backup-status backup-run backup-prune backup-inventory restic-test restic-r2-secret restic-r2-install restic-r2-test restic-r2-sync restic-r2-status restic-r2-check dr-readiness dr-r2-rehearsal dr-r2-export dr-target-init dr-restore observability-install observability-status observability-validate observability-tracing-install observability-tracing-status observability-logging-install observability-logging-status observability-logging-test observability-grafana otel-go-demo-build otel-go-demo-deploy otel-go-demo-install otel-go-demo-status otel-go-demo-test otel-go-demo-delete firewall-audit cluster-status lab-deploy lab-status lab-test lab-delete secrets-test secret-edit secret-view secret-validate secret-apply tf-cloudflare-discovery tf-cloudflare-init tf-cloudflare-fmt tf-cloudflare-validate tf-cloudflare-import tf-cloudflare-plan tf-r2-init tf-r2-fmt tf-r2-validate tf-r2-plan tf-r2-apply
+.PHONY: help discovery ansible-deps preflight bootstrap tools k3s kubeconfig-external storage storage-test storage-test-status storage-test-recreate storage-test-placement storage-test-reprovision storage-test-delete backup-create backup-list backup-verify backup-install backup-status backup-run backup-prune backup-inventory restic-test restic-r2-secret restic-r2-install restic-r2-test restic-r2-sync restic-r2-status restic-r2-check dr-readiness dr-r2-rehearsal dr-r2-export dr-target-init dr-restore observability-install observability-status observability-validate observability-tracing-install observability-tracing-status observability-logging-install observability-logging-status observability-logging-test observability-grafana observability-grafana-reload observability-grafana-datasources otel-go-demo-build otel-go-demo-deploy otel-go-demo-install otel-go-demo-status otel-go-demo-test otel-go-demo-delete firewall-audit cluster-status lab-deploy lab-status lab-test lab-delete secrets-test secret-edit secret-view secret-validate secret-apply tf-cloudflare-discovery tf-cloudflare-init tf-cloudflare-fmt tf-cloudflare-validate tf-cloudflare-import tf-cloudflare-plan tf-r2-init tf-r2-fmt tf-r2-validate tf-r2-plan tf-r2-apply
 
 help:
 	@echo "guiosoft-k3s-lab"
@@ -48,7 +48,9 @@ help:
 	@echo "  make observability-logging-install Instala Loki e Grafana Alloy"
 	@echo "  make observability-logging-status Mostra releases/pods/services/PVCs de logs"
 	@echo "  make observability-logging-test Valida ingestão no Loki e correlação por trace_id"
-	@echo "  make observability-grafana Mostra senha admin e abre port-forward local na porta 3000"
+	@echo "  make observability-grafana Abre Grafana via port-forward; use ADDRESS=... para LAN"
+	@echo "  make observability-grafana-reload Reinicia Grafana e recarrega provisioning de datasources"
+	@echo "  make observability-grafana-datasources Valida Prometheus, Tempo e Loki na API do Grafana"
 	@echo "  make otel-go-demo-install  Builda, importa no K3s e publica o demo Go instrumentado"
 	@echo "  make otel-go-demo-test     Gera trace e confirma sua recuperação diretamente no Tempo"
 	@echo "  make otel-go-demo-status   Mostra Deployment, Pod e Service do demo Go"
@@ -260,6 +262,7 @@ observability-tracing-status:
 observability-logging-install:
 	bash scripts/logging-install.sh
 	$(MAKE) observability-install
+	$(MAKE) observability-grafana-reload
 	$(MAKE) observability-logging-status
 
 observability-logging-status:
@@ -274,11 +277,19 @@ observability-logging-status:
 observability-logging-test:
 	bash scripts/logging-validate.sh
 
+observability-grafana-datasources:
+	bash scripts/grafana-datasources.sh validate
+
+observability-grafana-reload:
+	bash scripts/grafana-datasources.sh reload-and-validate
+
 observability-grafana:
-	@echo "Grafana admin password:"
-	@kubectl get secret -n monitoring kube-prometheus-stack-grafana -o jsonpath='{.data.admin-password}' | base64 -d; echo
-	@echo "Open http://127.0.0.1:3000 (Ctrl-C to stop port-forward)"
-	kubectl port-forward -n monitoring svc/kube-prometheus-stack-grafana 3000:80
+	@ADDRESS="$(if $(ADDRESS),$(ADDRESS),127.0.0.1)"; PORT="$(if $(PORT),$(PORT),3000)"; \
+	  echo "Grafana admin user: admin"; \
+	  echo -n "Grafana admin password: "; \
+	  kubectl get secret -n monitoring kube-prometheus-stack-grafana -o jsonpath='{.data.admin-password}' | base64 -d; echo; \
+	  echo "Open http://$$ADDRESS:$$PORT (Ctrl-C to stop port-forward)"; \
+	  kubectl port-forward --address "$$ADDRESS" -n monitoring svc/kube-prometheus-stack-grafana "$$PORT":80
 
 otel-go-demo-build:
 	bash scripts/otel-go-demo.sh build
