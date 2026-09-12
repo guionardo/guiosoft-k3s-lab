@@ -1,43 +1,4 @@
 apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: nuq-postgres-data
-  namespace: firecrawl
-spec:
-  accessModes:
-    - ReadWriteOnce
-  storageClassName: local-path
-  resources:
-    requests:
-      storage: 10Gi
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: redis-data
-  namespace: firecrawl
-spec:
-  accessModes:
-    - ReadWriteOnce
-  storageClassName: local-path
-  resources:
-    requests:
-      storage: 2Gi
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: rabbitmq-data
-  namespace: firecrawl
-spec:
-  accessModes:
-    - ReadWriteOnce
-  storageClassName: local-path
-  resources:
-    requests:
-      storage: 2Gi
----
-apiVersion: v1
 kind: Service
 metadata:
   name: nuq-postgres
@@ -109,8 +70,7 @@ spec:
               mountPath: /var/lib/postgresql/data
       volumes:
         - name: data
-          persistentVolumeClaim:
-            claimName: nuq-postgres-data
+          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service
@@ -167,8 +127,7 @@ spec:
               mountPath: /data
       volumes:
         - name: data
-          persistentVolumeClaim:
-            claimName: redis-data
+          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service
@@ -226,8 +185,7 @@ spec:
               mountPath: /var/lib/rabbitmq
       volumes:
         - name: data
-          persistentVolumeClaim:
-            claimName: rabbitmq-data
+          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service
