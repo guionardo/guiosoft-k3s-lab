@@ -10,7 +10,7 @@ help:
 	@echo "  make ansible-deps   Instala Ansible e collections necessárias"
 	@echo "  make preflight      Valida DNS, Tailscale, portas e serviços preservados"
 	@echo "  make bootstrap      Prepara o Debian para K3s (não instala o cluster)"
-	@echo "  make k3s            Instala/valida a versão fixada do K3s"
+	@echo "  make k3s            Instala/valida a versão fixada do K3s e configura kubectl"
 	@echo "  make cluster-status Mostra nodes, pods e services do cluster"
 	@echo "  make lab-deploy     Cria namespace e workload de teste"
 	@echo "  make lab-status     Mostra recursos do workload de teste"
@@ -37,21 +37,21 @@ k3s:
 	cd ansible && ansible-playbook -K playbooks/k3s.yml
 
 cluster-status:
-	sudo k3s kubectl get nodes -o wide
-	sudo k3s kubectl get pods -A -o wide
-	sudo k3s kubectl get services -A
+	kubectl get nodes -o wide
+	kubectl get pods -A -o wide
+	kubectl get services -A
 
 lab-deploy:
-	sudo k3s kubectl apply -f kubernetes/namespaces/lab.yaml
-	sudo k3s kubectl apply -f kubernetes/apps/k3s-test/
+	kubectl apply -f kubernetes/namespaces/lab.yaml
+	kubectl apply -f kubernetes/apps/k3s-test/
 
 lab-status:
-	sudo k3s kubectl get all -n lab -o wide
-	sudo k3s kubectl get ingress -n lab -o wide
+	kubectl get all -n lab -o wide
+	kubectl get ingress -n lab -o wide
 
 lab-test:
 	curl --fail --show-error --silent -H 'Host: k3s-test.guiosoft.info' http://127.0.0.1/
 
 lab-delete:
-	sudo k3s kubectl delete -f kubernetes/apps/k3s-test/ --ignore-not-found
-	sudo k3s kubectl delete -f kubernetes/namespaces/lab.yaml --ignore-not-found
+	kubectl delete -f kubernetes/apps/k3s-test/ --ignore-not-found
+	kubectl delete -f kubernetes/namespaces/lab.yaml --ignore-not-found
