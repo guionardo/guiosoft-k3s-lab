@@ -161,3 +161,18 @@ Para cada workload futuro:
 - [ ] scheduling, affinity, taints/tolerations e DaemonSets;
 - [ ] cordon/drain e simulação de indisponibilidade;
 - [ ] avaliar storage distribuído apenas quando houver benefício real.
+
+## Fase 10 — Documentação de estudo e publicação
+
+Ao final do projeto, consolidar a experiência em material independente do README operacional.
+
+- [ ] produzir uma documentação detalhada, cronológica e reproduzível do processo completo;
+- [ ] explicar objetivos, arquitetura inicial e arquitetura final;
+- [ ] registrar decisões arquiteturais, alternativas consideradas, trade-offs e motivos das escolhas;
+- [ ] incluir problemas encontrados, hipóteses incorretas, correções e troubleshooting relevante;
+- [ ] incluir evidências dos testes realizados e critérios usados para considerar cada etapa validada;
+- [ ] transformar a documentação em material de estudo sobre K3s/Kubernetes, IaC, storage, backup, Cloudflare e observabilidade;
+- [ ] manter referências e fontes oficiais usadas durante cada etapa;
+- [ ] produzir uma versão editorial em formato de artigo técnico para blog;
+- [ ] produzir uma versão condensada e adequada para publicação no LinkedIn;
+- [ ] revisar o material para remover secrets, IDs desnecessários e informações sensíveis antes da publicação.
