@@ -1,6 +1,6 @@
 # Estado atual e decisões de escopo
 
-Atualizado após o primeiro discovery e a limpeza manual inicial do host `guiosoft-info`.
+Atualizado após o primeiro discovery, a limpeza manual inicial e a validação pós-limpeza do host `guiosoft-info`.
 
 ## Host
 
@@ -12,13 +12,28 @@ Atualizado após o primeiro discovery e a limpeza manual inicial do host `guioso
 - Tailscale removido
 - K3s ainda não instalado
 
+## Validação pós-limpeza
+
+A validação manual confirmou:
+
+- `/etc/resolv.conf` voltou a ser gerenciado pelo `dhcpcd` da interface `enp2s0`;
+- DNS configurado com gateway LAN e resolvers públicos;
+- resolução de `deb.debian.org` funcionando;
+- rota default via `192.168.88.1` pela interface `enp2s0`;
+- endereço LAN do host `192.168.88.9` preservado;
+- apenas o stack Firecrawl permanece ativo no Docker entre os workloads relevantes;
+- portas TCP 80 e 443 estão livres;
+- Tailscale não aparece mais entre interfaces/rotas/serviços observados.
+
 ## Serviços atuais
 
 Após a limpeza manual, apenas o stack `firecrawl` permanece entre os containers relevantes para este laboratório.
 
 ### firecrawl
 
-Deve ser preservado durante a implantação do K3s. Qualquer migração futura será uma decisão separada.
+Deve ser preservado durante a implantação do K3s. Atualmente utiliza externamente a porta TCP `3002`; PostgreSQL, Redis, RabbitMQ e Playwright permanecem internos à rede Docker.
+
+Qualquer migração futura será uma decisão separada.
 
 ### escoteirando-suite
 
@@ -34,14 +49,7 @@ Situação pendente de confirmação. Não remover configuração nem hostname r
 
 ## Tailscale
 
-Tailscale já foi desinstalado manualmente.
-
-Antes do bootstrap do K3s, validar:
-
-- `/etc/resolv.conf` não referencia mais os resolvers do Tailscale;
-- resolução DNS externa funciona normalmente;
-- rota default e IP LAN permanecem corretos;
-- acesso SSH administrativo funciona sem depender de Tailscale.
+Tailscale já foi desinstalado manualmente e a rede/DNS foram validados após a remoção.
 
 ## Cloudflare
 
@@ -81,4 +89,4 @@ Pod de teste
 
 ## Próximo passo
 
-Validar o estado pós-limpeza do host e então iniciar o bootstrap Ansible para preparação do Debian e instalação do K3s, preservando Docker/Firecrawl e o Cloudflare Tunnel atual.
+Executar o preflight Ansible com `become`, depois o bootstrap base e somente então instalar K3s, preservando Docker/Firecrawl e o Cloudflare Tunnel atual.
