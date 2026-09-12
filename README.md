@@ -48,7 +48,7 @@ O backup do K3s foi validado manualmente, por restore rehearsal não destrutivo 
 
 A camada off-host usa Restic sobre Cloudflare R2. O bucket `guiosoft-k3s-backups` é gerenciado por uma stack Terraform separada, as credenciais runtime ficam cifradas com SOPS + age, o round-trip real Restic -> R2 -> restore foi validado por SHA-256 e o `k3s-backup.service` foi validado executando a cadeia completa local -> Restic -> R2 com `restic check` remoto.
 
-A frente ativa é Disaster Recovery. O readiness check foi validado com sucesso e agora existe um rehearsal isolado que restaura o snapshot `k3s-control-plane` diretamente do R2 para staging temporário, validando archive, checksum, token e integridade SQLite sem escrever em `/var/lib/rancher/k3s` nem alterar o cluster ativo.
+A frente ativa é Disaster Recovery. `make dr-readiness` e `make dr-r2-rehearsal` já foram validados. Também existe agora um fluxo guardado para exportar o backup diretamente do R2, marcar um host isolado de rehearsal e restaurar nele `server/db` + `server/token` sem permitir execução acidental no hostname/IP de produção.
 
 ## Divisão de responsabilidades
 
@@ -122,6 +122,9 @@ make restic-r2-status
 make restic-r2-check
 make dr-readiness
 make dr-r2-rehearsal
+make dr-r2-export DEST=/secure/dr-export
+make dr-target-init
+make dr-restore FILE=/secure/dr-export/k3s-....tar.gz
 make tf-cloudflare-plan
 make tf-r2-plan
 ```
@@ -174,23 +177,29 @@ restaurar SQLite + server token
 K3s restaurado
 ```
 
-Pré-validação:
+As duas validações não destrutivas já estão concluídas:
 
 ```bash
 make dr-readiness
-```
-
-Esse target é somente leitura e já foi validado no host atual.
-
-A etapa seguinte é um restore ainda não destrutivo, mas usando o R2 como única fonte do artefato:
-
-```bash
 make dr-r2-rehearsal
 ```
 
-Ele restaura o snapshot remoto para staging temporário isolado e reutiliza o verificador do backup para confirmar SHA-256, presença do server token, metadata SQLite e `PRAGMA integrity_check`. O staging é removido automaticamente e o K3s ativo não é alterado.
+Para o próximo passo, o projeto agora fornece:
 
-O restore destrutivo será implementado somente para um ambiente explicitamente separado de DR.
+```bash
+make dr-r2-export DEST=/secure/dr-export
+```
+
+para obter do R2 um archive/checksum previamente verificado. No host/VM **isolado** de rehearsal:
+
+```bash
+make dr-target-init
+make dr-restore FILE=/secure/dr/k3s-guiosoft-info-TIMESTAMP.tar.gz
+```
+
+`dr-target-init` recusa o hostname e o IP de produção. `dr-restore` exige esse marker, uma confirmação explícita adicional, valida o archive, para o K3s do alvo, preserva uma safety copy do estado inicial da VM, restaura `server/db` e `server/token`, reinicia o K3s e aguarda `/readyz`.
+
+Existe um inventário de exemplo em `ansible/inventory/dr.example.yml`. O próximo marco é provisionar uma VM/host separado e executar esse restore completo.
 
 Detalhes em [`docs/disaster-recovery.md`](docs/disaster-recovery.md).
 
@@ -249,7 +258,7 @@ A evolução atual foi baseada em:
 - discovery read-only executado no host Debian;
 - validações reais do cluster K3s, Traefik, Cloudflare Tunnel, `kubectl`, PVC/local-path, SOPS + age e backup/restore executadas no próprio servidor;
 - reprovisionamento controlado do PVC descartável e validação do novo path em `/mnt/store1/k3s/local-path`;
-- validação do readiness check de disaster recovery no host atual;
+- validação de `dr-readiness` e do restore isolado diretamente do R2;
 - documentação oficial do K3s para `default-local-storage-path`, datastore SQLite e backup/restore;
 - documentação do Rancher `local-path-provisioner`;
 - documentação oficial do SOPS e age;
