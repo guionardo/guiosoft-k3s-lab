@@ -40,7 +40,8 @@ Objetivo: entender o estado atual, eliminar dependências desnecessárias e prep
 - [x] importar Tunnel existente, configuração remota e wildcard DNS para o state;
 - [x] validar `terraform plan` sem mudanças inesperadas (`No changes`);
 - [x] estratégia SOPS + age instalada e validada com round-trip e fluxo de Kubernetes Secret cifrado;
-- [x] Makefile para operações comuns.
+- [x] Makefile para operações comuns;
+- [x] role Ansible para Helm pinado e verificado por SHA-256.
 
 ## Fase 2 — K3s
 
@@ -125,12 +126,19 @@ Para qualquer workload escolhido futuramente:
 
 ## Fase 6 — Observabilidade
 
-- [ ] métricas do cluster;
-- [ ] Prometheus;
-- [ ] Grafana;
+- [x] definir stack inicial com `kube-prometheus-stack` pinado;
+- [x] adicionar namespace `monitoring` e values conservadores para o homelab;
+- [x] adicionar instalação Helm idempotente via `make observability-install`;
+- [x] manter Grafana sem Ingress na primeira etapa;
+- [ ] executar `make tools` e validar Helm no host;
+- [ ] instalar a stack de observabilidade no cluster;
+- [ ] validar métricas do cluster e targets Prometheus;
+- [ ] validar Grafana e dashboards padrão;
+- [ ] revisar consumo de CPU, memória e storage após estabilização;
+- [ ] revisar alertas incompatíveis/ruidosos no K3s;
 - [ ] logs com Loki;
-- [ ] dashboards de recursos;
-- [ ] alertas essenciais.
+- [ ] dashboards adicionais de recursos/workloads;
+- [ ] alertas essenciais customizados.
 
 ## Fase 7 — GitOps
 
@@ -154,7 +162,7 @@ Objetivo: reconstruir um servidor a partir de Debian limpo + Git + backups.
 - [x] implementar restore destrutivo somente para alvo explicitamente marcado como DR, com confirmação adicional e safety copy do estado inicial do alvo;
 - [x] adicionar inventário Ansible de exemplo para um host DR separado;
 - [ ] garantir cópia off-host independente da identidade privada age;
-- [ ] provisionar/automatizar um host ou VM isolado para rehearsal;
+- [ ] provisionar/automatizar um host ou VM isolado para rehearsal — adiado até existir hardware/VM disponível;
 - [ ] restaurar K3s em ambiente separado;
 - [ ] restaurar infraestrutura Kubernetes;
 - [ ] restaurar dados de aplicações quando existirem;
