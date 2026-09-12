@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: help discovery ansible-deps preflight bootstrap tools k3s storage storage-test storage-test-status storage-test-recreate storage-test-placement storage-test-reprovision storage-test-delete backup-create backup-list backup-verify backup-install backup-status backup-run backup-prune backup-inventory restic-test restic-r2-secret restic-r2-install restic-r2-test restic-r2-sync restic-r2-status restic-r2-check dr-readiness dr-r2-rehearsal dr-r2-export dr-target-init dr-restore observability-install observability-status observability-validate observability-tracing-install observability-tracing-status observability-grafana otel-go-demo-build otel-go-demo-deploy otel-go-demo-install otel-go-demo-status otel-go-demo-test otel-go-demo-delete firewall-audit cluster-status lab-deploy lab-status lab-test lab-delete secrets-test secret-edit secret-view secret-validate secret-apply tf-cloudflare-discovery tf-cloudflare-init tf-cloudflare-fmt tf-cloudflare-validate tf-cloudflare-import tf-cloudflare-plan tf-r2-init tf-r2-fmt tf-r2-validate tf-r2-plan tf-r2-apply
+.PHONY: help discovery ansible-deps preflight bootstrap tools k3s kubeconfig-external storage storage-test storage-test-status storage-test-recreate storage-test-placement storage-test-reprovision storage-test-delete backup-create backup-list backup-verify backup-install backup-status backup-run backup-prune backup-inventory restic-test restic-r2-secret restic-r2-install restic-r2-test restic-r2-sync restic-r2-status restic-r2-check dr-readiness dr-r2-rehearsal dr-r2-export dr-target-init dr-restore observability-install observability-status observability-validate observability-tracing-install observability-tracing-status observability-grafana otel-go-demo-build otel-go-demo-deploy otel-go-demo-install otel-go-demo-status otel-go-demo-test otel-go-demo-delete firewall-audit cluster-status lab-deploy lab-status lab-test lab-delete secrets-test secret-edit secret-view secret-validate secret-apply tf-cloudflare-discovery tf-cloudflare-init tf-cloudflare-fmt tf-cloudflare-validate tf-cloudflare-import tf-cloudflare-plan tf-r2-init tf-r2-fmt tf-r2-validate tf-r2-plan tf-r2-apply
 
 help:
 	@echo "guiosoft-k3s-lab"
@@ -12,6 +12,7 @@ help:
 	@echo "  make bootstrap             Prepara Debian e ferramentas de IaC para K3s"
 	@echo "  make tools                 Instala/valida Terraform, SOPS, age, restic e Helm"
 	@echo "  make k3s                   Instala/valida K3s, kubectl e local-path dedicado"
+	@echo "  make kubeconfig-external   Exibe kubeconfig admin usando o InternalIP do servidor"
 	@echo "  make storage               Prepara layout persistente sem mover ou apagar dados"
 	@echo "  make storage-test          Cria PVC + Deployment para testar persistência"
 	@echo "  make storage-test-status   Mostra PVC/PV/Pod e o marker persistente"
@@ -91,6 +92,9 @@ tools:
 
 k3s:
 	cd ansible && ansible-playbook -K playbooks/k3s.yml
+
+kubeconfig-external:
+	@K3S_EXTERNAL_ADDRESS="$(ADDRESS)" K3S_EXTERNAL_PORT="$(PORT)" bash scripts/kubeconfig-external.sh
 
 storage:
 	cd ansible && ansible-playbook -K playbooks/storage.yml
