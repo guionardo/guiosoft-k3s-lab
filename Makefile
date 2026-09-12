@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: help discovery ansible-deps preflight bootstrap k3s cluster-status lab-deploy lab-status lab-test lab-delete
+.PHONY: help discovery ansible-deps preflight bootstrap k3s firewall-audit cluster-status lab-deploy lab-status lab-test lab-delete
 
 help:
 	@echo "guiosoft-k3s-lab"
@@ -11,6 +11,7 @@ help:
 	@echo "  make preflight      Valida DNS, Tailscale, portas e serviços preservados"
 	@echo "  make bootstrap      Prepara o Debian para K3s (não instala o cluster)"
 	@echo "  make k3s            Instala/valida a versão fixada do K3s e configura kubectl"
+	@echo "  make firewall-audit Audita firewall/listeners após K3s sem alterar regras"
 	@echo "  make cluster-status Mostra nodes, pods e services do cluster"
 	@echo "  make lab-deploy     Cria namespace e workload de teste"
 	@echo "  make lab-status     Mostra recursos do workload de teste"
@@ -35,6 +36,9 @@ bootstrap:
 
 k3s:
 	cd ansible && ansible-playbook -K playbooks/k3s.yml
+
+firewall-audit:
+	cd ansible && ansible-playbook -K playbooks/firewall-audit.yml
 
 cluster-status:
 	kubectl get nodes -o wide
