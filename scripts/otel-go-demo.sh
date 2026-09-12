@@ -157,7 +157,7 @@ metrics_test() {
   kubectl get configmap -n monitoring otel-go-demo-grafana-dashboard >/dev/null
   kubectl get service -n monitoring "$PROM_SERVICE" >/dev/null
 
-  local app_log prom_log app_pf prom_pf metrics query response value rules_json dashboard_json
+  local app_log prom_log app_pf prom_pf metrics query response value rules_json dashboard_json alert_name rules_ok
   app_log="$(mktemp)"
   prom_log="$(mktemp)"
   app_pf=""
@@ -253,13 +253,34 @@ metrics_test() {
     printf '  %-86s %s\n' "$query" "$value"
   done
 
-  rules_json="$(curl --fail --silent "http://127.0.0.1:${PROM_PORT}/api/v1/rules?type=alert")"
-  for alert_name in OtelGoDemoHighErrorRate OtelGoDemoHighP95Latency OtelGoDemoDownstreamErrors; do
-    jq -e --arg name "$alert_name" '.. | objects | select(.name? == $name)' <<<"$rules_json" >/dev/null || {
-      echo "error: Prometheus did not load alert rule $alert_name" >&2
-      return 1
-    }
+  # PrometheusRule is reconciled asynchronously by the Prometheus Operator.
+  # The Kubernetes object may exist before the generated rule file has reached
+  # Prometheus, so poll the rules API instead of treating the first lookup as final.
+  rules_ok=false
+  for _ in $(seq 1 18); do
+    rules_json="$(curl --fail --silent "http://127.0.0.1:${PROM_PORT}/api/v1/rules?type=alert" || true)"
+    if [[ -n "$rules_json" ]]; then
+      rules_ok=true
+      for alert_name in OtelGoDemoHighErrorRate OtelGoDemoHighP95Latency OtelGoDemoDownstreamErrors; do
+        if ! jq -e --arg name "$alert_name" '.. | objects | select(.name? == $name)' <<<"$rules_json" >/dev/null 2>&1; then
+          rules_ok=false
+          break
+        fi
+      done
+      [[ "$rules_ok" == true ]] && break
+    fi
+    sleep 5
   done
+
+  if [[ "$rules_ok" != true ]]; then
+    echo "error: Prometheus did not load the otel-go-demo alert rules within the reconciliation window" >&2
+    echo "PrometheusRule object:" >&2
+    kubectl get prometheusrule -n monitoring otel-go-demo -o yaml >&2 || true
+    echo >&2
+    echo "Prometheus rule selector:" >&2
+    kubectl get prometheus -n monitoring -o jsonpath='{range .items[*]}{.metadata.name}{" selector="}{.spec.ruleSelector}{" namespaceSelector="}{.spec.ruleNamespaceSelector}{"\n"}{end}' >&2 || true
+    return 1
+  fi
 
   dashboard_json="$(kubectl get configmap -n monitoring otel-go-demo-grafana-dashboard -o jsonpath='{.data.otel-go-demo\.json}')"
   jq -e '.uid == "otel-go-demo-metrics" and (.panels | length) >= 7' <<<"$dashboard_json" >/dev/null || {
