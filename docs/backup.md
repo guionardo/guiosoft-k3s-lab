@@ -2,7 +2,14 @@
 
 ## Escopo atual
 
-O cluster atual é single-node e usa o datastore SQLite padrão do K3s. A estratégia desta fase cobre o backup do estado do control plane e do server token, com validação de integridade, agendamento via systemd e retenção local conservadora.
+O cluster atual é single-node e usa o datastore SQLite padrão do K3s. A estratégia desta fase cobre:
+
+- backup local verificável do datastore e do server token;
+- restore rehearsal não destrutivo;
+- agendamento via systemd;
+- retenção local;
+- cópia off-host cifrada com Restic para Cloudflare R2;
+- retenção remota gerenciada pelo próprio Restic.
 
 O staging local usa:
 
@@ -12,195 +19,161 @@ O staging local usa:
 
 que aponta para o disco físico de backup local já reservado no layout de storage.
 
-## O que precisa ser preservado
+## Backup local
 
-Para K3s com SQLite, a documentação oficial orienta copiar o diretório:
+Para K3s com SQLite, preservamos:
 
 ```text
 /var/lib/rancher/k3s/server/db/
-```
-
-Além do datastore, o token do servidor também deve ser preservado:
-
-```text
 /var/lib/rancher/k3s/server/token
 ```
 
-O mesmo token é necessário no restore porque ele participa da proteção de dados confidenciais mantidos no datastore.
+O script `scripts/k3s-backup.sh` exige root, confirma SQLite, aborta se detectar embedded etcd, inclui o server token, gera archive `0600`, cria SHA-256 portátil e valida tar + checksum antes de reportar sucesso.
 
-## Backup local
-
-O script:
-
-```text
-scripts/k3s-backup.sh
-```
-
-é deliberadamente conservador. Ele:
-
-1. exige execução como root;
-2. confirma a presença de `server/db/state.db`;
-3. aborta se detectar embedded etcd;
-4. recusa continuar se não encontrar o server token;
-5. copia o diretório do datastore e o token para staging temporário;
-6. gera um arquivo `metadata.txt` sem secrets;
-7. cria um `tar.gz` protegido com modo `0600`;
-8. cria SHA-256 portátil, referenciando apenas o nome do arquivo para continuar válido após cópia off-host;
-9. valida a leitura do tar e o checksum antes de reportar sucesso.
-
-Execute manualmente:
+Operações:
 
 ```bash
 make backup-create
 make backup-list
-```
-
-O arquivo de backup contém o server token e portanto deve ser tratado como secret. Ele nunca deve ser adicionado ao Git.
-
-## Restore rehearsal não destrutivo
-
-O fluxo foi validado no host com:
-
-```bash
 make backup-verify
 ```
 
-Por padrão ele seleciona o backup local mais recente. Também é possível informar um arquivo específico:
+O restore rehearsal foi validado no host. Ele extrai em staging temporário, verifica token, metadata, SHA-256 e executa `PRAGMA integrity_check` em modo somente leitura sem alterar o K3s ativo.
 
-```bash
-make backup-verify FILE=/srv/k3s/backups/k3s/k3s-host-TIMESTAMP.tar.gz
+## Agendamento local
+
+O role Ansible `backup` instala:
+
+```text
+/usr/local/sbin/k3s-backup
+/usr/local/sbin/k3s-backup-prune
+/usr/local/sbin/restic-r2-sync
+/etc/systemd/system/k3s-backup.service
+/etc/systemd/system/k3s-backup.timer
 ```
 
-O script `scripts/k3s-backup-verify.sh`:
-
-1. valida o SHA-256 sem depender do caminho original do backup;
-2. extrai o arquivo em um diretório temporário isolado;
-3. confirma `server/db/state.db`;
-4. confirma que não há embedded etcd inesperado;
-5. confirma a presença de um server token não vazio;
-6. valida `metadata.txt` como `datastore=sqlite`;
-7. abre a cópia restaurada do SQLite em modo somente leitura;
-8. executa `PRAGMA integrity_check` e exige resultado `ok`;
-9. remove o staging temporário automaticamente.
-
-Esse teste **não modifica** `/var/lib/rancher/k3s`, não para o serviço K3s e não substitui o teste completo de disaster recovery. Ele prova que o artefato pode ser reidratado, que o token necessário está presente e que a cópia SQLite restaurada é estruturalmente íntegra.
-
-## Agendamento via systemd
-
-O agendamento foi instalado e validado no host com:
-
-```bash
-make backup-install
-make backup-status
-make backup-run
-```
-
-O playbook `ansible/playbooks/backup.yml` instala o role `backup`, que:
-
-- valida que o disco de backup continua montado antes de configurar qualquer automação;
-- instala os scripts em `/usr/local/sbin`;
-- cria `k3s-backup.service` como `oneshot`;
-- cria e habilita `k3s-backup.timer`;
-- executa o prune somente depois de um backup ter sido criado com sucesso;
-- mantém o diretório de backup em modo `0700`.
-
-A política padrão está em `ansible/inventory/group_vars/all.yml`:
+A política padrão é:
 
 ```yaml
-k3s_backup_dir: /srv/k3s/backups/k3s
 k3s_backup_keep: 14
 k3s_backup_on_calendar: "*-*-* 03:15:00"
 k3s_backup_randomized_delay: 15m
 ```
 
-O horário segue o timezone local do servidor. `Persistent=true` faz o systemd executar uma ocorrência perdida após o host voltar a ficar disponível. O atraso aleatório reduz a necessidade de um horário rígido e evita concentrar futuras rotinas exatamente no mesmo minuto.
+O timer usa `Persistent=true` e já foi validado no host.
 
-## Retenção local
+## Cloudflare R2 + Restic
 
-O script `scripts/k3s-backup-prune.sh` mantém, por padrão, os 14 archives mais recentes.
+O bucket R2 é criado por uma stack Terraform separada em `terraform/r2/`. A separação evita misturar permissões administrativas do R2 com a stack Cloudflare de DNS/Tunnel.
 
-A retenção possui proteções intencionais:
+O bucket usado atualmente é:
 
-- exige execução como root;
-- exige `K3S_BACKUP_KEEP >= 2`;
-- ordena os archives por data de modificação;
-- remove archive e checksum como um par;
-- **não remove** um archive antigo que esteja sem seu `.sha256`, deixando-o para inspeção manual.
-
-A existência de retenção local não transforma `/srv/k3s/backups` em backup definitivo: o disco continua no mesmo servidor físico.
-
-## Preparação para backup off-host com restic
-
-O próximo nível de proteção usa `restic` como camada de transporte, criptografia e retenção no destino externo. O role Ansible `restic` instala a ferramenta junto com `make tools`.
-
-Antes de configurar qualquer destino externo, existe um smoke test totalmente local:
-
-```bash
-make tools
-make restic-test
+```text
+guiosoft-k3s-backups
 ```
 
-O `scripts/restic-smoke-test.sh` cria um repositório temporário, gera uma senha aleatória descartável, envia o backup K3s mais recente para esse repositório, executa `restic check`, restaura o snapshot e compara o archive restaurado byte a byte com o original. Todo o repositório temporário e a senha são removidos ao final.
+O Restic usa o endpoint S3-compatible do R2. A credencial de runtime é `Object Read & Write`, restrita ao bucket.
 
-Esse teste não é backup off-host. Ele apenas valida que a cadeia restic funciona corretamente no servidor antes de introduzir credenciais ou um destino externo.
+As credenciais R2 e a senha do repositório Restic ficam em:
 
-O restic suporta, entre outros backends, repositórios SFTP. Para automação, a documentação recomenda fornecer o repositório por `RESTIC_REPOSITORY`/`RESTIC_REPOSITORY_FILE` e a senha por `RESTIC_PASSWORD_FILE` ou mecanismo equivalente, evitando colocar a senha diretamente na linha de comando.
+```text
+secrets/restic-r2.sops.yaml
+```
 
-O destino off-host ainda precisa ser escolhido. Critérios mínimos:
+somente em formato SOPS + age. O plaintext runtime é instalado como `root:root` e `0600` em:
 
-- estar fisicamente fora deste servidor;
-- usar criptografia do próprio restic;
-- credenciais fora do Git e com permissões restritas;
-- permitir restore independente do disco local de `/mnt/store2`;
-- ter retenção e `restic check` periódicos;
-- ser validado com um restore real de pelo menos um archive K3s.
+```text
+/etc/k3s-backup/restic.repository
+/etc/k3s-backup/restic.password
+/etc/k3s-backup/r2.env
+```
+
+Fluxo operacional:
+
+```bash
+make restic-r2-secret
+make restic-r2-install
+make restic-r2-test
+```
+
+O round-trip real Restic -> R2 -> restore foi validado com comparação SHA-256 byte a byte.
+
+## Automação off-host
+
+`scripts/restic-r2-sync.sh` é chamado pelo mesmo `k3s-backup.service` depois do backup local e do prune local.
+
+Sequência:
+
+```text
+k3s-backup.timer
+      ↓
+k3s-backup.service
+      ↓
+cria backup SQLite + token
+      ↓
+valida archive/checksum
+      ↓
+retém os 14 archives locais mais recentes
+      ↓
+Restic envia archive + .sha256 para Cloudflare R2
+      ↓
+Restic aplica retenção remota e prune
+```
+
+A retenção remota padrão é:
+
+```yaml
+restic_r2_keep_daily: 14
+restic_r2_keep_weekly: 8
+restic_r2_keep_monthly: 12
+```
+
+O prune remoto é feito pelo Restic, não por lifecycle arbitrário do bucket R2. Isso evita apagar objetos internos ainda referenciados por snapshots válidos.
+
+Targets operacionais:
+
+```bash
+make restic-r2-sync
+make restic-r2-status
+make restic-r2-check
+```
+
+O target `make backup-install` agora exige que a configuração runtime do Restic R2 já esteja instalada quando `restic_r2_enabled: true`. Isso impede habilitar silenciosamente um timer que não conseguiria produzir backup off-host.
+
+## Validação pendente desta etapa
+
+A implementação já está pronta. Falta validar no host o fluxo completo usando exatamente o serviço agendado:
+
+```bash
+make backup-install
+make backup-run
+make restic-r2-status
+make backup-status
+```
+
+Essa validação deve comprovar que uma única execução do `k3s-backup.service` cria o backup local e também produz o snapshot R2.
 
 ## Restore real do K3s
 
-O restore completo do SQLite exige restaurar o conteúdo de `server/db/` e o mesmo server token. Como isso altera o estado ativo do control plane, o teste deve ser executado em uma janela explícita de disaster recovery, idealmente em um host limpo ou após termos uma forma segura de reconstruir o servidor.
+O restore completo do SQLite exige restaurar o conteúdo de `server/db/` e o mesmo server token. Como isso altera o estado ativo do control plane, o teste deve ser executado em uma janela explícita de disaster recovery, idealmente em um host limpo ou reconstruído.
 
-Não automatizamos ainda essa substituição do datastore no host ativo.
+Ainda não automatizamos uma substituição destrutiva do datastore no host ativo.
 
-## O que este backup ainda não resolve
+## Dados de aplicações
 
-Esse backup cobre o datastore de controle do K3s. Ele **não** substitui backups dos dados das aplicações.
+O backup atual cobre o control plane K3s. Ele não substitui backups próprios de:
 
-PVCs, bancos de dados, uploads e outros dados persistentes precisam de políticas próprias. Para bancos de dados, a preferência será por backups nativos/lógicos consistentes com o mecanismo usado por cada workload, em vez de simplesmente arquivar arquivos de banco em execução.
+- PVCs;
+- bancos de dados;
+- uploads;
+- repositórios;
+- outros dados persistentes de workloads.
 
-Também permanecem pendentes:
-
-- destino off-host real;
-- credenciais do backend protegidas com SOPS/age ou arquivos root-only;
-- retenção remota;
-- restore completo do K3s em ambiente reconstruído;
-- restore de dados de aplicações;
-- testes periódicos de restore completo.
-
-## Política de evolução
-
-A sequência adotada é:
-
-```text
-backup manual verificável
-    ↓
-restore rehearsal não destrutivo
-    ↓
-agendamento systemd
-    ↓
-retenção local
-    ↓
-restic local round-trip
-    ↓
-restic off-host
-    ↓
-restore completo em ambiente reconstruído
-    ↓
-testes periódicos de restore
-```
+Para bancos de dados, a preferência continua sendo backup nativo/lógico consistente com cada engine.
 
 ## Futuro multi-node
 
-O script atual aborta quando encontra embedded etcd. Quando o laboratório evoluir para múltiplos servidores K3s, a estratégia deverá mudar para `k3s etcd-snapshot` e seguir o fluxo de snapshot/restore do datastore embedded etcd.
+O script atual aborta quando encontra embedded etcd. Quando o laboratório evoluir para múltiplos servidores K3s, a estratégia deverá mudar para `k3s etcd-snapshot` e o fluxo oficial de snapshot/restore do embedded etcd.
 
 ## Fontes
 
@@ -208,5 +181,7 @@ O script atual aborta quando encontra embedded etcd. Quando o laboratório evolu
 - K3s — Cluster Datastore: https://docs.k3s.io/datastore
 - K3s — High Availability Embedded etcd: https://docs.k3s.io/datastore/ha-embedded
 - restic — Preparing a new repository: https://restic.readthedocs.io/en/latest/030_preparing_a_new_repo.html
-- restic — Installation: https://restic.readthedocs.io/en/latest/020_installation.html
+- restic — Removing backup snapshots: https://restic.readthedocs.io/en/latest/060_forget.html
+- Cloudflare R2 — S3-compatible API: https://developers.cloudflare.com/r2/api/s3/api/
+- Cloudflare R2 — API tokens: https://developers.cloudflare.com/r2/api/tokens/
 - systemd.timer — https://www.freedesktop.org/software/systemd/man/latest/systemd.timer.html
