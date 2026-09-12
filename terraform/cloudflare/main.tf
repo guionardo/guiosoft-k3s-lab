@@ -1,5 +1,5 @@
 locals {
-  zone_name   = "guiosoft.info"
+  zone_name    = "guiosoft.info"
   tunnel_cname = "${var.cloudflare_tunnel_id}.cfargotunnel.com"
 }
 
@@ -20,12 +20,14 @@ resource "cloudflare_zero_trust_tunnel_cloudflared_config" "homelab" {
   config = {
     ingress = [
       {
-        hostname = "cockpit.guiosoft.info"
-        service  = "http://localhost:9090"
+        hostname       = "cockpit.guiosoft.info"
+        service        = "http://localhost:9090"
+        origin_request = {}
       },
       {
-        hostname = "*.guiosoft.info"
-        service  = "http://127.0.0.1:80"
+        hostname       = "*.guiosoft.info"
+        service        = "http://127.0.0.1:80"
+        origin_request = {}
       },
       {
         service = "http_status:404"
