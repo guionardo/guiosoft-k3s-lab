@@ -1,0 +1,4 @@
+creation_rules:
+  - path_regex: .*\.sops\.ya?ml$
+    age:
+      - age1zt8e5n3g6dc4962jaggnhvq37e9yge42agyqncss5fy9kd3g0g5q23p6nf
