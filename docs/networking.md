@@ -77,6 +77,17 @@ Se o teste local funcionar e o externo não, investigar primeiro Cloudflare DNS/
 
 O wildcard DNS/Tunnel facilita a publicação, mas também significa que qualquer hostname não coberto por um registro específico pode alcançar o Traefik.
 
+A política validada é **default deny por ausência de rota**: somente hostnames com um Ingress explícito respondem com uma aplicação. Um hostname sob `*.guiosoft.info` sem Ingress correspondente chega ao Traefik e recebe `404 page not found`.
+
+Essa resposta foi validada nos dois caminhos:
+
+```text
+https://nao-existe-k3s.guiosoft.info/ -> Cloudflare -> Tunnel -> Traefik -> HTTP 404
+Host: nao-existe-k3s.guiosoft.info   -> 127.0.0.1:80 -> Traefik -> HTTP 404
+```
+
+Não deve ser criado um catch-all Ingress público apenas para substituir esse 404. Isso preserva uma propriedade útil: criar DNS via wildcard não publica uma aplicação por si só.
+
 Por isso:
 
 - somente aplicações com Ingress explícito devem responder;
