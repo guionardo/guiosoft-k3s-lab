@@ -45,7 +45,7 @@ scripts/k3s-backup.sh
 5. copia o diretório do datastore e o token para staging temporário;
 6. gera um arquivo `metadata.txt` sem secrets;
 7. cria um `tar.gz` protegido com modo `0600`;
-8. cria SHA-256 do arquivo;
+8. cria SHA-256 portátil, referenciando apenas o nome do arquivo para continuar válido após cópia off-host;
 9. valida a leitura do tar e o checksum antes de reportar sucesso.
 
 Execute:
@@ -56,6 +56,40 @@ make backup-list
 ```
 
 O arquivo de backup contém o server token e portanto deve ser tratado como secret. Ele nunca deve ser adicionado ao Git.
+
+## Restore rehearsal não destrutivo
+
+Antes de interromper o cluster para um restore real, existe um teste intermediário:
+
+```bash
+make backup-verify
+```
+
+Por padrão ele seleciona o backup local mais recente. Também é possível informar um arquivo específico:
+
+```bash
+make backup-verify FILE=/srv/k3s/backups/k3s/k3s-host-TIMESTAMP.tar.gz
+```
+
+O script `scripts/k3s-backup-verify.sh`:
+
+1. valida o SHA-256 sem depender do caminho original do backup;
+2. extrai o arquivo em um diretório temporário isolado;
+3. confirma `server/db/state.db`;
+4. confirma que não há embedded etcd inesperado;
+5. confirma a presença de um server token não vazio;
+6. valida `metadata.txt` como `datastore=sqlite`;
+7. abre a cópia restaurada do SQLite em modo somente leitura;
+8. executa `PRAGMA integrity_check` e exige resultado `ok`;
+9. remove o staging temporário automaticamente.
+
+Esse teste **não modifica** `/var/lib/rancher/k3s`, não para o serviço K3s e não substitui o teste completo de disaster recovery. Ele prova que o artefato pode ser reidratado, que o token necessário está presente e que a cópia SQLite restaurada é estruturalmente íntegra.
+
+## Restore real do K3s
+
+O restore completo do SQLite exige restaurar o conteúdo de `server/db/` e o mesmo server token. Como isso altera o estado ativo do control plane, o teste deve ser executado em uma janela explícita de disaster recovery, idealmente em um host limpo ou após termos uma forma segura de reconstruir o servidor.
+
+Não automatizamos ainda essa substituição do datastore no host de produção do laboratório.
 
 ## O que este backup ainda não resolve
 
@@ -69,7 +103,7 @@ Também permanecem pendentes:
 - execução agendada;
 - cópia off-host;
 - proteção/criptografia do destino off-host;
-- validação real de restore do K3s;
+- restore completo do K3s em ambiente reconstruído;
 - restore de dados de aplicações.
 
 ## Política de evolução
@@ -79,7 +113,7 @@ A sequência adotada é:
 ```text
 backup manual verificável
     ↓
-restore testado
+restore rehearsal não destrutivo
     ↓
 automação/agendamento
     ↓
@@ -87,10 +121,12 @@ retenção
     ↓
 off-host
     ↓
+restore completo em ambiente reconstruído
+    ↓
 testes periódicos de restore
 ```
 
-Não habilitaremos remoção automática de backups antigos antes de termos confirmado o fluxo de criação e restauração.
+Não habilitaremos remoção automática de backups antigos antes de termos confirmado o fluxo de criação e reidratação do artefato.
 
 ## Futuro multi-node
 
