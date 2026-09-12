@@ -25,7 +25,8 @@ No host atual já foram validados:
 - Restic sobre Cloudflare R2;
 - retenção remota;
 - `restic check`;
-- restore R2 -> local com comparação SHA-256 byte a byte.
+- restore R2 -> local com comparação SHA-256 byte a byte;
+- readiness check de DR com todos os pré-requisitos atuais acessíveis.
 
 Isso prova a qualidade do artefato de backup, mas ainda não prova a reconstrução completa de um servidor perdido.
 
@@ -61,7 +62,41 @@ O check é somente leitura. Ele valida:
 - existência de backup local recente;
 - restore rehearsal do backup local.
 
-O comando não altera o cluster nem o repositório Restic.
+Esse check já foi validado com sucesso no host atual. O comando não altera o cluster nem o repositório Restic.
+
+## Rehearsal isolado a partir do R2
+
+Antes de restaurar um K3s real em uma VM, existe uma etapa intermediária que usa **somente o snapshot remoto** como fonte do artefato:
+
+```bash
+make dr-r2-rehearsal
+```
+
+O fluxo:
+
+```text
+Cloudflare R2 / Restic
+        ↓
+restore do snapshot k3s-control-plane
+        ↓
+staging temporário isolado
+        ↓
+archive + .sha256 restaurados
+        ↓
+SHA-256
+        ↓
+server token presente
+        ↓
+metadata SQLite
+        ↓
+PRAGMA integrity_check
+        ↓
+limpeza automática do staging
+```
+
+O script `scripts/dr-r2-restore-rehearsal.sh` não usa os archives locais como fonte, não escreve em `/var/lib/rancher/k3s` e não altera o cluster. Todo o conteúdo restaurado é colocado em um diretório temporário abaixo da área de backup e removido ao final.
+
+Essa etapa comprova que o artefato necessário para DR pode ser obtido exclusivamente do destino off-host e continua estruturalmente válido. Ela ainda não substitui o restore completo em uma máquina separada.
 
 ## Rehearsal em ambiente separado
 
