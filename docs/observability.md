@@ -20,7 +20,8 @@ UI      -> Grafana
 - Grafana Loki community chart: `18.5.0` (Loki `3.7.3`);
 - Grafana Alloy chart: `1.12.1` (Alloy `v1.19.2`);
 - Go demo toolchain: `1.27.1`;
-- OpenTelemetry Go: `1.46.0`.
+- OpenTelemetry Go: `1.46.0`;
+- Prometheus Go client: `1.24.1`.
 
 As versões são explícitas para manter rebuilds reproduzíveis.
 
@@ -64,6 +65,52 @@ tempo health: OK
 loki health: OK
 Observability validation: OK
 ```
+
+### Métricas customizadas do demo Go
+
+Os dois serviços do demo expõem `/metrics` e são descobertos pelo Prometheus por meio de `ServiceMonitor`.
+
+Principais famílias:
+
+```text
+otel_demo_http_requests_total
+otel_demo_http_request_duration_seconds
+otel_demo_requests_in_flight
+otel_demo_downstream_requests_total
+otel_demo_downstream_request_duration_seconds
+otel_demo_downstream_errors_total
+```
+
+As labels foram mantidas deliberadamente com baixa cardinalidade (`service`, `method`, `path` e `status`). IDs de request, trace IDs e URLs arbitrárias não são usados como labels.
+
+Validação:
+
+```bash
+make otel-go-demo-install
+make otel-go-demo-metrics-test
+```
+
+O teste abre port-forwards temporários para a aplicação e Prometheus, gera tráfego em `/work` e exige que Prometheus retorne valores positivos para requests do frontend, buckets de latência, chamadas downstream e requests recebidas pelo segundo serviço.
+
+### Nota: métricas vetoriais são criadas sob demanda
+
+Durante a primeira execução do teste apareceu um falso negativo:
+
+```text
+error: custom HTTP metric is not exposed by /metrics
+```
+
+A causa não era ausência do endpoint. Em `client_golang`, coletores como `CounterVec` e `HistogramVec` só passam a expor séries concretas depois que uma combinação de labels é observada pela primeira vez. Antes do primeiro request, portanto, a família customizada pode não aparecer no output de `/metrics`.
+
+O teste foi corrigido para:
+
+1. confirmar primeiro que `/metrics` é um endpoint Prometheus válido usando métricas padrão `go_*`;
+2. gerar tráfego real;
+3. consultar `/metrics` novamente e então exigir as famílias `otel_demo_*`;
+4. esperar o próximo scrape do Prometheus;
+5. validar as séries via PromQL.
+
+Esse comportamento é importante para interpretar corretamente endpoints Prometheus e evitar diagnosticar como falha uma métrica vetorial ainda sem valores de labels materializados.
 
 ## Baseline de recursos
 
@@ -253,7 +300,7 @@ Loki log -> TraceID -> Tempo trace
 Tempo trace -> tracesToLogs -> Loki logs
 ```
 
-Como datasources provisionados podem exigir reload/restart do Grafana após uma mudança na configuração, existem targets explícitos:
+Como datasources provisionados podem exigir reload/restart do Grafana após uma mudança na configuração, existem agora targets explícitos:
 
 ```bash
 make observability-grafana-reload
@@ -262,7 +309,7 @@ make observability-grafana-datasources
 
 `observability-grafana-reload` reinicia o StatefulSet/Deployment do Grafana e depois valida os datasources. `observability-grafana-datasources` consulta a API do Grafana via port-forward local e exige a presença dos UIDs `prometheus`, `tempo` e `loki`.
 
-A correlação no backend e o health dos três datasources estão validados; falta somente validar visualmente os links no Grafana Explore.
+A correlação no backend e o health dos três datasources estão validados; a navegação visual Loki -> Tempo e Tempo -> Loki também foi validada no Grafana Explore.
 
 ## Acesso ao Grafana
 
@@ -292,17 +339,18 @@ make observability-grafana ADDRESS=192.168.88.9 PORT=3000
 
 ## Próximas etapas
 
-1. abrir Grafana e validar visualmente Loki -> TraceID -> Tempo;
-2. validar também Tempo -> tracesToLogs -> Loki;
-3. revisar dashboards padrão;
-4. revisar alertas ruidosos/incompatíveis com K3s;
-5. repetir a medição de capacidade após alguns dias de retenção e uso normal;
-6. adicionar dashboards/alertas customizados essenciais;
-7. avaliar exemplars/span metrics quando fizer sentido;
-8. somente depois avaliar publicação protegida do Grafana.
+1. validar em runtime as métricas customizadas do demo;
+2. revisar dashboards padrão;
+3. revisar alertas ruidosos/incompatíveis com K3s;
+4. repetir a medição de capacidade após alguns dias de retenção e uso normal;
+5. adicionar dashboards/alertas customizados essenciais;
+6. avaliar exemplars/span metrics quando fizer sentido;
+7. somente depois avaliar publicação protegida do Grafana.
 
 ## Fontes
 
+- https://github.com/prometheus/client_golang
+- https://prometheus-operator.dev/docs/developer/getting-started/
 - https://grafana.com/docs/loki/latest/setup/install/helm/
 - https://grafana.com/docs/loki/latest/setup/install/helm/install-monolithic/
 - https://grafana.com/docs/loki/latest/operations/storage/filesystem/
