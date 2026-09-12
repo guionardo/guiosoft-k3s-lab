@@ -44,14 +44,15 @@ Objetivo: entender o estado atual, eliminar dependências desnecessárias e prep
 - [x] executar bootstrap do Debian;
 - [x] instalar `v1.36.4+k3s1` via Ansible;
 - [ ] configurar kubectl para uso administrativo sem `sudo k3s kubectl`;
-- [ ] validar node/CoreDNS/Traefik/local-path após estabilização inicial;
+- [x] validar node/CoreDNS/Traefik/local-path após estabilização inicial;
 - [ ] criar namespaces base;
 - [ ] deploy de workload de teste;
 - [ ] documentar troubleshooting básico.
 
 ## Fase 3 — Networking e Cloudflare
 
-- [ ] validar Traefik internamente;
+- [x] validar Traefik internamente;
+- [ ] validar Ingress local com workload de teste;
 - [ ] manter inicialmente o `cloudflared` atual no host;
 - [ ] publicar hostname de teste dedicado, como `k3s-test.guiosoft.info`;
 - [ ] validar caminho Cloudflare -> Traefik -> Ingress -> Service -> Pod;
