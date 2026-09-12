@@ -54,11 +54,13 @@ O Disaster Recovery já possui readiness check, restore rehearsal isolado via R2
 
 A frente ativa agora é observabilidade. O `kube-prometheus-stack` está instalado e saudável com Prometheus, Alertmanager, Grafana, kube-state-metrics e node-exporter. Tempo `2.2.3` e OpenTelemetry Collector chart `0.172.1` também foram instalados e validados em `Running`, com PVC Tempo de 5 GiB em `local-path`. Grafana, Tempo e Collector permanecem sem Ingress público.
 
-O workload Go instrumentado com OpenTelemetry foi validado ponta a ponta: uma requisição gera `trace_id`, o trace atravessa aplicação -> Collector -> Tempo e o teste automatizado consegue recuperá-lo diretamente pela API do Tempo.
+O primeiro workload Go instrumentado com OpenTelemetry já foi validado ponta a ponta: uma requisição gera `trace_id`, o trace atravessa aplicação -> Collector -> Tempo e o teste automatizado consegue recuperá-lo diretamente pela API do Tempo.
 
 A fundação de logs também está operacional. Loki community chart `18.5.0` roda em modo `Monolithic`, Grafana Alloy chart `1.12.1` coleta logs dos Pods pela Kubernetes API e envia ao Loki, e `make observability-logging-test` já confirmou uma linha de log contendo exatamente o mesmo `trace_id` da requisição. A correlação de backend logs <-> traces está, portanto, validada; resta revisar a navegação visual no Grafana.
 
-O Grafana agora tem provisioning validado para os três datasources principais: Prometheus, Tempo e Loki. O fluxo de reload + validação consulta a API do Grafana sem expor credenciais e confirma os UIDs esperados. O `make observability-validate` também passa a incluir essa checagem de datasources além dos scrape targets Prometheus.
+O Grafana tem provisioning validado para os três datasources principais: Prometheus, Tempo e Loki. O fluxo de reload + validação consulta a API do Grafana e confirma os UIDs esperados. O `make observability-validate` também inclui essa checagem de datasources além dos scrape targets Prometheus.
+
+O demo de tracing evoluiu para dois processos. `otel-go-demo` chama `otel-go-downstream` por HTTP interno e injeta W3C `traceparent`; o downstream extrai o contexto e cria spans no mesmo trace. O teste `make otel-go-demo-test` agora só passa quando o Tempo devolve o mesmo trace contendo os dois `service.name`. Essa nova etapa está implementada e aguarda validação runtime no cluster.
 
 ## Divisão de responsabilidades
 
@@ -166,7 +168,7 @@ request
             mesmo trace_id
 ```
 
-O teste automatizado:
+O teste automatizado de logs:
 
 ```bash
 make observability-logging-test
@@ -188,13 +190,37 @@ Para forçar reload do provisioning e validar novamente:
 make observability-grafana-reload
 ```
 
-O próximo bloco operacional é revisar métricas e saúde da stack completa:
+O demo distribuído agora usa:
+
+```text
+client
+  |
+  v
+otel-go-demo
+  |
+  | W3C traceparent
+  v
+otel-go-downstream
+  |
+  +--> ambos enviam OTLP --> Collector --> Tempo
+```
+
+Para construir, instalar e validar essa propagação:
+
+```bash
+make otel-go-demo-install
+make otel-go-demo-test
+```
+
+O teste exige uma chamada downstream bem-sucedida e consulta o trace no Tempo até encontrar os dois serviços `otel-go-demo` e `otel-go-downstream` dentro do mesmo `trace_id`.
+
+O próximo bloco operacional também continua sendo revisar métricas e saúde da stack completa:
 
 ```bash
 make observability-validate
 ```
 
-Esse target agora verifica Pods/PVCs, scrape targets e query `up` do Prometheus, provisioning dos datasources Grafana e uso atual de recursos quando `metrics-server` estiver disponível.
+Esse target verifica Pods/PVCs, scrape targets e query `up` do Prometheus, provisioning dos datasources Grafana e uso atual de recursos quando `metrics-server` estiver disponível.
 
 Depois, revisar visualmente no Grafana:
 
@@ -215,7 +241,7 @@ Para acesso temporário pela LAN administrativa:
 make observability-grafana ADDRESS=192.168.88.9
 ```
 
-Detalhes em [`docs/observability.md`](docs/observability.md).
+Detalhes em [`docs/observability.md`](docs/observability.md) e [`docs/otel-go-demo.md`](docs/otel-go-demo.md).
 
 ## Disaster Recovery
 
@@ -261,6 +287,7 @@ A evolução atual foi baseada em:
 - validação real de um trace OpenTelemetry ponta a ponta aplicação -> Collector -> Tempo;
 - validação real de logs `otel-go-demo -> Alloy -> Loki` e correlação pelo mesmo `trace_id`;
 - validação real do provisioning Prometheus/Tempo/Loki pela API do Grafana;
+- documentação oficial do OpenTelemetry sobre propagação de contexto e W3C Trace Context;
 - documentação oficial do K3s para cluster access, storage, datastore e backup/restore;
 - documentação oficial do Kubernetes sobre kubeconfig e `kubectl`;
 - documentação oficial do Grafana Loki para Helm, modo Monolithic, TSDB, filesystem e retenção;
@@ -273,6 +300,8 @@ A evolução atual foi baseada em:
 
 Referências relevantes:
 
+- https://opentelemetry.io/docs/concepts/context-propagation/
+- https://www.w3.org/TR/trace-context/
 - https://grafana.com/docs/grafana/latest/administration/provisioning/#data-sources
 - https://grafana.com/docs/loki/latest/setup/install/helm/
 - https://grafana.com/docs/loki/latest/setup/install/helm/install-monolithic/
