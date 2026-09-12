@@ -90,8 +90,8 @@ Para qualquer workload escolhido futuramente:
 - [x] validar o role `storage` no host;
 - [x] configurar novos volumes `local-path` para `/mnt/store1/k3s/local-path`;
 - [x] adicionar workload automatizado para teste de PVC/persistência;
-- [ ] validar no host criação do PVC e localização física do PV;
-- [ ] validar persistência após recriação do Pod;
+- [x] validar no host criação do PVC e localização física do PV;
+- [x] validar persistência após recriação do Pod;
 - [ ] estratégia para bancos de dados;
 - [ ] backup automatizado;
 - [ ] backup externo/off-host;
