@@ -22,14 +22,15 @@ ansible-deps:
 	sudo apt-get install -y ansible-core
 	cd ansible && ansible-galaxy collection install -r requirements.yml
 
+# -K asks interactively for the local sudo/become password.
 preflight:
-	cd ansible && ansible-playbook playbooks/preflight.yml
+	cd ansible && ansible-playbook -K playbooks/preflight.yml
 
 bootstrap:
-	cd ansible && ansible-playbook playbooks/bootstrap.yml
+	cd ansible && ansible-playbook -K playbooks/bootstrap.yml
 
 k3s:
-	cd ansible && ansible-playbook playbooks/k3s.yml
+	cd ansible && ansible-playbook -K playbooks/k3s.yml
 
 cluster-status:
 	sudo k3s kubectl get nodes -o wide
