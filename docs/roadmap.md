@@ -114,10 +114,10 @@ Para cada workload futuro:
 - [x] adicionar `tracesToLogsV2` Tempo -> Loki;
 - [x] adaptar demo Go para escrever `trace_id` nos logs;
 - [x] adicionar `make observability-logging-install/status/test`;
-- [ ] instalar Loki + Alloy no cluster;
-- [ ] validar Pods e PVC Loki;
-- [ ] validar ingestão Alloy -> Loki;
-- [ ] validar `make observability-logging-test` com o mesmo `trace_id` do trace;
+- [x] instalar Loki + Alloy no cluster;
+- [x] validar Loki/Alloy operacionais e gateway acessível;
+- [x] validar ingestão Alloy -> Loki;
+- [x] validar `make observability-logging-test` usando o mesmo `trace_id` da requisição;
 - [ ] validar navegação Loki log -> Tempo trace e Tempo trace -> Loki logs no Grafana.
 
 ### Capacidade
