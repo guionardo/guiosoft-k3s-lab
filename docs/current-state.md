@@ -1,6 +1,6 @@
 # Estado atual e decisões de escopo
 
-Atualizado após o primeiro discovery, a limpeza manual inicial e a validação pós-limpeza do host `guiosoft-info`.
+Atualizado após discovery, limpeza manual do host, instalação do K3s e validação do acesso externo via Cloudflare Tunnel.
 
 ## Host
 
@@ -10,28 +10,56 @@ Atualizado após o primeiro discovery, a limpeza manual inicial e a validação 
 - Docker/containerd ativos
 - Cloudflare Tunnel ativo via systemd
 - Tailscale removido
-- K3s ainda não instalado
+- K3s `v1.36.4+k3s1` instalado e operacional
 
 ## Validação pós-limpeza
 
 A validação manual confirmou:
 
-- `/etc/resolv.conf` voltou a ser gerenciado pelo `dhcpcd` da interface `enp2s0`;
-- DNS configurado com gateway LAN e resolvers públicos;
-- resolução de `deb.debian.org` funcionando;
-- rota default via `192.168.88.1` pela interface `enp2s0`;
-- endereço LAN do host `192.168.88.9` preservado;
+- `/etc/resolv.conf` gerenciado pelo `dhcpcd` da interface `enp2s0`;
+- resolução DNS externa funcionando;
+- rota default pela interface LAN preservada;
 - apenas o stack Firecrawl permanece ativo no Docker entre os workloads relevantes;
-- portas TCP 80 e 443 estão livres;
 - Tailscale não aparece mais entre interfaces/rotas/serviços observados.
+
+Após a instalação do K3s, as portas TCP 80 e 443 passaram a ser utilizadas pelo Traefik/ServiceLB, conforme esperado.
+
+## Cluster K3s
+
+O cluster single-node está operacional com:
+
+- node em estado `Ready`;
+- CoreDNS em execução;
+- metrics-server em execução;
+- local-path-provisioner em execução;
+- Traefik em execução;
+- ServiceLB do Traefik publicado no endereço LAN do host.
+
+O namespace `lab` contém um workload de teste baseado em `traefik/whoami`, publicado por Service e Ingress no hostname:
+
+```text
+k3s-test.guiosoft.info
+```
+
+O caminho local foi validado com sucesso:
+
+```text
+127.0.0.1:80
+    ↓
+Traefik
+    ↓
+Ingress
+    ↓
+Service
+    ↓
+Pod
+```
 
 ## Serviços atuais
 
-Após a limpeza manual, apenas o stack `firecrawl` permanece entre os containers relevantes para este laboratório.
-
 ### firecrawl
 
-Deve ser preservado durante a implantação do K3s. Atualmente utiliza externamente a porta TCP `3002`; PostgreSQL, Redis, RabbitMQ e Playwright permanecem internos à rede Docker.
+Deve ser preservado durante a evolução do laboratório. Atualmente utiliza externamente a porta TCP `3002`; PostgreSQL, Redis, RabbitMQ e Playwright permanecem internos à rede Docker.
 
 Qualquer migração futura será uma decisão separada.
 
@@ -45,7 +73,7 @@ Removido do host e fora do escopo deste laboratório.
 
 ### OpenShip
 
-Situação pendente de confirmação. Não remover configuração nem hostname relacionado até decisão explícita.
+A publicação do OpenShip foi removida do Cloudflare. A situação local do serviço ainda pode ser verificada separadamente antes de qualquer limpeza adicional no host.
 
 ## Tailscale
 
@@ -53,40 +81,58 @@ Tailscale já foi desinstalado manualmente e a rede/DNS foram validados após a 
 
 ## Cloudflare
 
-Os seguintes hostnames não são mais necessários e podem ser removidos do Cloudflare:
+O `cloudflared` atual continua executando no host durante esta fase da migração.
 
-- `traefik.guiosoft.info`
-- `git.guiosoft.info`
-- `git-ssh.guiosoft.info`
-
-O hostname relacionado ao OpenShip deve permanecer até confirmação.
-
-A remoção dos hostnames deve ser feita inicialmente no painel/configuração atual do Cloudflare e posteriormente refletida no Terraform quando o gerenciamento do Cloudflare for trazido para Infrastructure as Code.
-
-## Diretriz para o primeiro workload K3s
-
-Não reutilizar `traefik.guiosoft.info` como hostname de teste. O Traefik será um componente interno do cluster, não um serviço que precise ser publicado diretamente na Internet.
-
-Quando chegarmos ao teste externo, criaremos um hostname dedicado e descartável, por exemplo:
+A configuração de ingress relevante do Tunnel utiliza:
 
 ```text
-k3s-test.guiosoft.info
+*.guiosoft.info -> http://127.0.0.1:80
 ```
 
-O fluxo esperado será:
+O uso explícito de `127.0.0.1` é intencional. `localhost` resolvia primeiro para `::1`, onde não havia listener na porta 80, causando falha do origin no `cloudflared`.
+
+O wildcard DNS `*.guiosoft.info`, que anteriormente apontava para um endereço IPv4 de origin legado, foi alterado para apontar para o Cloudflare Tunnel.
+
+Hostnames com registros DNS específicos continuam podendo apontar para outros Tunnels e têm precedência sobre o wildcard.
+
+Com isso, novos hostnames sem registro DNS específico podem chegar ao Traefik do K3s por meio do wildcard e ser roteados por Ingress.
+
+O fluxo externo foi validado com HTTP 200:
 
 ```text
-Cloudflare Tunnel atual
-        ↓
+Internet
+    ↓
+Cloudflare
+    ↓
+Cloudflare Tunnel
+    ↓
+cloudflared no host
+    ↓
+127.0.0.1:80
+    ↓
 Traefik no K3s
-        ↓
+    ↓
 Ingress
-        ↓
+    ↓
 Service
-        ↓
-Pod de teste
+    ↓
+Pod
 ```
+
+O teste `https://k3s-test.guiosoft.info/` retornou a resposta do workload `whoami`, incluindo os headers encaminhados pelo Cloudflare e pelo Traefik.
+
+## Diretriz para publicação de novos workloads
+
+Para aplicações públicas que sigam o caminho padrão do cluster, o objetivo é que a publicação exija principalmente um Ingress Kubernetes para um hostname `*.guiosoft.info`.
+
+Antes de ampliar esse padrão para workloads reais, ainda devem ser definidos:
+
+- comportamento para hostnames desconhecidos;
+- padrão de Ingress;
+- distinção entre aplicações públicas e privadas;
+- estratégia de TLS/origin e headers confiáveis;
+- gerenciamento gradual dos recursos Cloudflare por Terraform.
 
 ## Próximo passo
 
-Executar o preflight Ansible com `become`, depois o bootstrap base e somente então instalar K3s, preservando Docker/Firecrawl e o Cloudflare Tunnel atual.
+Com o caminho externo validado, os próximos itens de base são configurar `kubectl` administrativo sem depender de `sudo k3s kubectl`, documentar troubleshooting básico e definir o padrão de Ingress antes de iniciar a migração de workloads reais.
