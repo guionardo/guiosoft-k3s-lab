@@ -38,6 +38,7 @@ install -d -m 0700 "${BACKUP_ROOT}"
 TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 HOST="$(hostname -s)"
 ARCHIVE="${BACKUP_ROOT}/k3s-${HOST}-${TIMESTAMP}.tar.gz"
+ARCHIVE_NAME="$(basename "${ARCHIVE}")"
 CHECKSUM="${ARCHIVE}.sha256"
 TMPDIR="$(mktemp -d "${BACKUP_ROOT}/.backup-${TIMESTAMP}.XXXXXX")"
 trap 'rm -rf "${TMPDIR}"' EXIT
@@ -59,12 +60,20 @@ install -m 0600 "${TOKEN_FILE}" "${TMPDIR}/server/token"
 # The archive contains the K3s server token and must be treated as a secret.
 tar -C "${TMPDIR}" -czf "${ARCHIVE}" server metadata.txt
 chmod 0600 "${ARCHIVE}"
-sha256sum "${ARCHIVE}" > "${CHECKSUM}"
+
+# Store only the archive basename so the pair remains verifiable after being copied off-host.
+(
+  cd "${BACKUP_ROOT}"
+  sha256sum "${ARCHIVE_NAME}" > "${ARCHIVE_NAME}.sha256"
+)
 chmod 0600 "${CHECKSUM}"
 
 # Verify that the newly written archive is readable before reporting success.
 tar -tzf "${ARCHIVE}" >/dev/null
-sha256sum -c "${CHECKSUM}" >/dev/null
+(
+  cd "${BACKUP_ROOT}"
+  sha256sum -c "${ARCHIVE_NAME}.sha256" >/dev/null
+)
 
 printf 'K3s SQLite backup created:\n  %s\n  %s\n' "${ARCHIVE}" "${CHECKSUM}"
 echo "This is local staging only; an off-host copy and a restore test are still required."
