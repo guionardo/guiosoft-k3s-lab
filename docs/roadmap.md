@@ -20,7 +20,8 @@ Objetivo: entender o estado atual, eliminar dependências desnecessárias e prep
 - [ ] remover do Cloudflare `git.guiosoft.info`;
 - [ ] remover do Cloudflare `git-ssh.guiosoft.info`;
 - [x] remover publicação do OpenShip no Cloudflare;
-- [ ] validar firewall após bootstrap do cluster;
+- [x] validar firewall após bootstrap do cluster;
+- [x] documentar postura atual do firewall e listeners expostos;
 - [x] consolidar estado atual em documentação versionada.
 
 ## Fase 1 — Infrastructure as Code
@@ -29,10 +30,11 @@ Objetivo: entender o estado atual, eliminar dependências desnecessárias e prep
 - [x] role `base`;
 - [ ] role `storage`;
 - [x] role `k3s`;
-- [ ] role `firewall`;
+- [ ] role `firewall` — implementar somente após classificar serviços LAN/cluster/loopback;
 - [x] playbook `preflight.yml`;
 - [x] playbook `bootstrap.yml`;
 - [x] playbook `k3s.yml`;
+- [x] audit read-only pós-K3s de firewall e serviços preservados;
 - [ ] Terraform Cloudflare;
 - [ ] estratégia SOPS + age;
 - [x] Makefile para operações comuns.
