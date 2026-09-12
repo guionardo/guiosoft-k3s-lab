@@ -2,26 +2,35 @@
 
 ## Objetivo
 
-Validar tracing ponta a ponta no cluster usando uma aplicação Go pequena e totalmente descartável:
+Validar tracing distribuído ponta a ponta no cluster com dois serviços Go descartáveis:
 
 ```text
 HTTP request
    |
    v
-otel-go-demo (Go)
+otel-go-demo
    |
-   | OTLP gRPC
+   | W3C tracecontext
    v
-OpenTelemetry Collector
+otel-go-downstream
    |
-   v
-Tempo
-   |
-   v
-Grafana Explore
+   +--------------------+
+                        |
+              OTLP gRPC para ambos
+                        |
+                        v
+          OpenTelemetry Collector
+                        |
+                        v
+                      Tempo
+                        |
+                        v
+                 Grafana Explore
 ```
 
-A aplicação gera um span HTTP raiz e spans filhos artificiais para representar validação, consulta a banco, processamento de negócio e chamada externa. O endpoint `/work` devolve o `trace_id` gerado para permitir validação determinística no Tempo.
+O serviço `otel-go-demo` recebe `/work`, cria o span servidor raiz, executa etapas internas e chama `otel-go-downstream` em `/process`. Antes da chamada HTTP ele injeta o contexto W3C `traceparent`; o downstream extrai esse contexto e cria seu próprio span servidor no mesmo trace.
+
+Os dois serviços enviam spans ao OpenTelemetry Collector e escrevem o mesmo `trace_id` nos logs, permitindo validar simultaneamente tracing distribuído e correlação com Loki.
 
 ## Versões
 
@@ -30,9 +39,24 @@ A aplicação gera um span HTTP raiz e spans filhos artificiais para representar
 
 As dependências são pinadas em `kubernetes/apps/otel-go-demo/app/go.mod`.
 
+## Componentes
+
+A mesma imagem local é reutilizada com configurações diferentes:
+
+```text
+otel-go-demo
+  SERVICE_NAME=otel-go-demo
+  DOWNSTREAM_URL=http://otel-go-downstream.lab.svc.cluster.local:8080/process
+
+otel-go-downstream
+  SERVICE_NAME=otel-go-downstream
+```
+
+O downstream permanece somente como `ClusterIP` e não possui Ingress.
+
 ## Por que a imagem é local
 
-O laboratório ainda não depende de registry para workloads experimentais. O fluxo usa o Docker já existente no host apenas para construir a imagem e depois importa o resultado diretamente no containerd interno do K3s:
+O laboratório ainda não depende de registry para workloads experimentais. O fluxo usa o Docker do host para construir a imagem e importa o resultado diretamente no containerd interno do K3s:
 
 ```text
 Docker build
@@ -43,10 +67,10 @@ Docker save
 sudo k3s ctr images import
    |
    v
-K3s Pod (imagePullPolicy: Never)
+K3s Pods (imagePullPolicy: Never)
 ```
 
-Isso mantém o teste independente de Docker Hub/GHCR e evita adicionar credenciais de registry apenas para o workload didático.
+Como a tag local `:dev` é reutilizada, o script força rollout dos dois Deployments após cada import para garantir que o binário recém-construído seja realmente executado.
 
 ## Operação
 
@@ -60,8 +84,9 @@ O target:
 
 1. constrói `guiosoft/otel-go-demo:dev`;
 2. importa a imagem no containerd do K3s;
-3. aplica Deployment e Service no namespace `lab`;
-4. aguarda rollout.
+3. aplica os Deployments/Services `otel-go-demo` e `otel-go-downstream`;
+4. força rollout dos dois Deployments;
+5. aguarda ambos ficarem disponíveis.
 
 Status:
 
@@ -69,55 +94,71 @@ Status:
 make otel-go-demo-status
 ```
 
-Validar trace ponta a ponta:
+Validar trace distribuído:
 
 ```bash
 make otel-go-demo-test
 ```
 
-A validação não publica nenhum endpoint externamente. Ela abre dois `kubectl port-forward` temporários somente em loopback:
+A validação abre port-forwards temporários somente em loopback para o frontend e para Tempo. Em seguida:
 
-- aplicação: `127.0.0.1:18080`;
-- Tempo: `127.0.0.1:13200`.
-
-Em seguida chama `/work`, extrai o `trace_id` da resposta e consulta `/api/traces/<trace_id>` diretamente no Tempo. O teste somente termina com sucesso quando o trace reaparece no backend.
+1. chama `/work`;
+2. exige que a resposta confirme `downstream=ok`;
+3. extrai o `trace_id`;
+4. consulta `/api/traces/<trace_id>` diretamente no Tempo;
+5. só passa quando o trace contém recursos com `service.name=otel-go-demo` **e** `service.name=otel-go-downstream`.
 
 Saída esperada:
 
 ```text
-Trace generated: <32 hex chars>
-Tempo trace lookup: OK
+Distributed trace generated: <32 hex chars>
+Tempo distributed trace lookup: OK
 Trace ID: <same trace id>
-Open Grafana -> Explore -> Tempo and search this trace ID.
+Services in trace:
+- otel-go-demo
+- otel-go-downstream
 ```
 
-Remover o workload:
+Esse teste demonstra propagação real de contexto entre processos diferentes, não apenas spans filhos dentro do mesmo processo.
+
+Remover os workloads:
 
 ```bash
 make otel-go-demo-delete
 ```
 
+## Logs e correlação
+
+Os dois serviços escrevem `trace_id` nos logs. Alloy coleta esses logs e Loki os indexa. Assim o mesmo trace pode ser navegado entre:
+
+```text
+Tempo trace
+   <-> trace_id <->
+Loki logs de otel-go-demo e otel-go-downstream
+```
+
 ## Segurança e exposição
 
 - não existe Ingress;
-- Service é apenas `ClusterIP`;
+- Services são apenas `ClusterIP`;
+- a chamada frontend -> downstream permanece dentro do cluster;
 - OTLP é enviado somente ao Collector interno;
 - port-forwards usados pelo teste escutam apenas em loopback por padrão;
-- nenhum token ou secret é necessário para o demo.
+- nenhum token ou Secret é necessário para o demo.
 
 ## Próximos passos
 
-Depois do primeiro trace validado:
-
-1. visualizar o trace no Grafana Explore;
-2. validar a árvore de spans e tempos artificiais;
-3. adicionar propagação entre dois serviços para demonstrar trace distribuído real;
-4. posteriormente correlacionar `trace_id` com Loki;
-5. avaliar exemplars Prometheus -> Tempo.
+1. validar em runtime o novo fluxo distribuído com `make otel-go-demo-install && make otel-go-demo-test`;
+2. visualizar no Grafana Explore a árvore envolvendo os dois `service.name`;
+3. revisar a navegação Tempo -> logs e Loki -> trace para ambos os serviços;
+4. avaliar exemplars Prometheus -> Tempo;
+5. adicionar métricas de aplicação quando houver benefício didático.
 
 ## Fontes
 
 - OpenTelemetry Go: https://opentelemetry.io/docs/languages/go/
+- OpenTelemetry context propagation: https://opentelemetry.io/docs/concepts/context-propagation/
+- W3C Trace Context: https://www.w3.org/TR/trace-context/
 - OpenTelemetry Go packages: https://pkg.go.dev/go.opentelemetry.io/otel
 - OTLP exporter for Go: https://pkg.go.dev/go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc
 - Go releases: https://go.dev/doc/devel/release
