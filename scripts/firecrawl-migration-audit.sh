@@ -61,6 +61,21 @@ while IFS= read -r name; do
 done < <(jq -r '.[].Names' <<<"$containers_json")
 
 echo
+echo "Mounted data usage (read-only, measured inside containers):"
+while IFS= read -r name; do
+  [[ -n "$name" ]] || continue
+  while IFS=$'\t' read -r mount_type destination; do
+    [[ "$mount_type" == "volume" ]] || continue
+    [[ -n "$destination" ]] || continue
+    if usage="$(docker exec "$name" du -sh "$destination" 2>/dev/null | awk '{print $1}')" && [[ -n "$usage" ]]; then
+      printf -- '- %s %s: %s\n' "$name" "$destination" "$usage"
+    else
+      printf -- '- %s %s: unavailable (du missing or permission denied)\n' "$name" "$destination"
+    fi
+  done < <(docker inspect "$name" | jq -r '.[0].Mounts[]? | [.Type, .Destination] | @tsv')
+done < <(jq -r '.[].Names' <<<"$containers_json")
+
+echo
 echo "Persistent volumes attached to Firecrawl containers:"
 volume_names="$({
   while IFS= read -r name; do
@@ -94,10 +109,12 @@ fi
 
 echo
 echo "Migration interpretation:"
-echo "- PostgreSQL and Redis named volumes are stateful and require backup/restore validation before cutover."
-echo "- API, Playwright and RabbitMQ can be recreated, but RabbitMQ may contain in-flight queue state during cutover."
+echo "- PostgreSQL, Redis and RabbitMQ all have persistent Docker volume mounts in the current runtime."
+echo "- PostgreSQL is critical state; Redis and RabbitMQ still need cutover semantics decided before migration."
+echo "- API and Playwright are recreatable application/runtime components."
 echo "- Use image_id/repo_digest above to pin the Kubernetes staging images to the exact currently tested artifacts."
-echo "- Mount mapping above identifies any anonymous Docker volume before cleanup or migration decisions."
+echo "- Mount mapping above identifies anonymous Docker volumes before cleanup or migration decisions."
+echo "- Mounted data usage helps validate proposed PVC capacities without reading secret values."
 echo "- Do not run old and new Firecrawl stacks as active writers against copied state simultaneously."
 echo "- Secrets/environment values are intentionally not printed by this audit."
 echo
