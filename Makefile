@@ -1,23 +1,27 @@
 SHELL := /bin/bash
 
-.PHONY: help discovery ansible-deps preflight bootstrap k3s storage firewall-audit cluster-status lab-deploy lab-status lab-test lab-delete
+.PHONY: help discovery ansible-deps preflight bootstrap k3s storage storage-test storage-test-status storage-test-recreate storage-test-delete firewall-audit cluster-status lab-deploy lab-status lab-test lab-delete
 
 help:
 	@echo "guiosoft-k3s-lab"
 	@echo
 	@echo "Targets disponíveis:"
-	@echo "  make discovery      Executa discovery read-only deste host"
-	@echo "  make ansible-deps   Instala Ansible e collections necessárias"
-	@echo "  make preflight      Valida DNS, Tailscale, portas e serviços preservados"
-	@echo "  make bootstrap      Prepara o Debian para K3s (não instala o cluster)"
-	@echo "  make k3s            Instala/valida a versão fixada do K3s e configura kubectl"
-	@echo "  make storage        Prepara layout persistente sem mover ou apagar dados"
-	@echo "  make firewall-audit Audita firewall/listeners após K3s sem alterar regras"
-	@echo "  make cluster-status Mostra nodes, pods e services do cluster"
-	@echo "  make lab-deploy     Cria namespace e workload de teste"
-	@echo "  make lab-status     Mostra recursos do workload de teste"
-	@echo "  make lab-test       Testa o Ingress localmente via Traefik"
-	@echo "  make lab-delete     Remove o workload de teste"
+	@echo "  make discovery             Executa discovery read-only deste host"
+	@echo "  make ansible-deps          Instala Ansible e collections necessárias"
+	@echo "  make preflight             Valida DNS, Tailscale, portas e serviços preservados"
+	@echo "  make bootstrap             Prepara o Debian para K3s (não instala o cluster)"
+	@echo "  make k3s                   Instala/valida K3s, kubectl e local-path dedicado"
+	@echo "  make storage               Prepara layout persistente sem mover ou apagar dados"
+	@echo "  make storage-test          Cria PVC + Deployment para testar persistência"
+	@echo "  make storage-test-status   Mostra PVC/PV/Pod e o marker persistente"
+	@echo "  make storage-test-recreate Remove o Pod e valida persistência após recriação"
+	@echo "  make storage-test-delete   Remove workload e PVC de teste"
+	@echo "  make firewall-audit        Audita firewall/listeners após K3s sem alterar regras"
+	@echo "  make cluster-status        Mostra nodes, pods e services do cluster"
+	@echo "  make lab-deploy            Cria namespace e workload de teste"
+	@echo "  make lab-status            Mostra recursos do workload de teste"
+	@echo "  make lab-test              Testa o Ingress localmente via Traefik"
+	@echo "  make lab-delete            Remove o workload de teste"
 
 # Use sudo because some useful inventory information is only visible to root.
 discovery:
@@ -40,6 +44,32 @@ k3s:
 
 storage:
 	cd ansible && ansible-playbook -K playbooks/storage.yml
+
+storage-test:
+	kubectl apply -f kubernetes/namespaces/lab.yaml
+	kubectl apply -f kubernetes/storage/persistence-test.yaml
+	kubectl rollout status deployment/persistence-test -n lab --timeout=120s
+	$(MAKE) storage-test-status
+
+storage-test-status:
+	kubectl get pvc persistence-test -n lab -o wide
+	kubectl get pv -o wide
+	kubectl get pods -n lab -l app=persistence-test -o wide
+	@POD=$$(kubectl get pod -n lab -l app=persistence-test -o jsonpath='{.items[0].metadata.name}'); \
+	  echo "Marker from $$POD:"; \
+	  kubectl exec -n lab "$$POD" -- cat /data/marker.txt
+
+storage-test-recreate:
+	@OLD_POD=$$(kubectl get pod -n lab -l app=persistence-test -o jsonpath='{.items[0].metadata.name}'); \
+	  echo "Deleting $$OLD_POD"; \
+	  kubectl delete pod -n lab "$$OLD_POD" --wait=true; \
+	  kubectl wait -n lab --for=condition=Ready pod -l app=persistence-test --timeout=120s; \
+	  NEW_POD=$$(kubectl get pod -n lab -l app=persistence-test -o jsonpath='{.items[0].metadata.name}'); \
+	  echo "Recreated as $$NEW_POD"; \
+	  kubectl exec -n lab "$$NEW_POD" -- cat /data/marker.txt
+
+storage-test-delete:
+	kubectl delete -f kubernetes/storage/persistence-test.yaml --ignore-not-found
 
 firewall-audit:
 	cd ansible && ansible-playbook -K playbooks/firewall-audit.yml
