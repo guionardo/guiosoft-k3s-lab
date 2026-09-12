@@ -98,6 +98,8 @@ Para cada workload futuro:
 - [x] adicionar dashboard customizado `OTel Go Demo - Application Metrics`;
 - [x] adicionar regras `OtelGoDemoHighErrorRate`, `OtelGoDemoHighP95Latency` e `OtelGoDemoDownstreamErrors`;
 - [x] validar em runtime a reconciliação das regras customizadas pelo Prometheus Operator;
+- [x] implementar `make otel-go-demo-incident-test` com falha downstream controlada e restauração automática;
+- [ ] validar em runtime o incident drill completo: HTTP 502 -> métricas -> alerta pending/firing -> Loki -> Tempo -> recuperação;
 - [ ] revisar dashboards Grafana padrão;
 - [ ] revisar alertas ruidosos/incompatíveis com K3s.
 
