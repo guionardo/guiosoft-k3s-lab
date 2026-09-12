@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: help discovery ansible-deps preflight bootstrap tools k3s storage storage-test storage-test-status storage-test-recreate storage-test-placement storage-test-reprovision storage-test-delete backup-create backup-list backup-verify backup-install backup-status backup-run backup-prune backup-inventory restic-test restic-r2-secret restic-r2-install restic-r2-test restic-r2-sync restic-r2-status restic-r2-check dr-readiness dr-r2-rehearsal dr-r2-export dr-target-init dr-restore observability-install observability-status observability-validate observability-grafana firewall-audit cluster-status lab-deploy lab-status lab-test lab-delete secrets-test secret-edit secret-view secret-validate secret-apply tf-cloudflare-discovery tf-cloudflare-init tf-cloudflare-fmt tf-cloudflare-validate tf-cloudflare-import tf-cloudflare-plan tf-r2-init tf-r2-fmt tf-r2-validate tf-r2-plan tf-r2-apply
+.PHONY: help discovery ansible-deps preflight bootstrap tools k3s storage storage-test storage-test-status storage-test-recreate storage-test-placement storage-test-reprovision storage-test-delete backup-create backup-list backup-verify backup-install backup-status backup-run backup-prune backup-inventory restic-test restic-r2-secret restic-r2-install restic-r2-test restic-r2-sync restic-r2-status restic-r2-check dr-readiness dr-r2-rehearsal dr-r2-export dr-target-init dr-restore observability-install observability-status observability-validate observability-tracing-install observability-tracing-status observability-grafana firewall-audit cluster-status lab-deploy lab-status lab-test lab-delete secrets-test secret-edit secret-view secret-validate secret-apply tf-cloudflare-discovery tf-cloudflare-init tf-cloudflare-fmt tf-cloudflare-validate tf-cloudflare-import tf-cloudflare-plan tf-r2-init tf-r2-fmt tf-r2-validate tf-r2-plan tf-r2-apply
 
 help:
 	@echo "guiosoft-k3s-lab"
@@ -42,6 +42,8 @@ help:
 	@echo "  make observability-install Instala/atualiza Prometheus, Alertmanager e Grafana"
 	@echo "  make observability-status  Mostra release, pods, services, PVCs e targets básicos"
 	@echo "  make observability-validate Valida Pods/PVCs e targets Prometheus sem alterar estado"
+	@echo "  make observability-tracing-install Instala Tempo e OpenTelemetry Collector"
+	@echo "  make observability-tracing-status Mostra releases/pods/services/PVCs de tracing"
 	@echo "  make observability-grafana Mostra senha admin e abre port-forward local na porta 3000"
 	@echo "  make firewall-audit        Audita firewall/listeners após K3s sem alterar regras"
 	@echo "  make cluster-status        Mostra nodes, pods e services do cluster"
@@ -229,6 +231,20 @@ observability-status:
 
 observability-validate:
 	bash scripts/observability-validate.sh
+
+observability-tracing-install:
+	bash scripts/tracing-install.sh
+	$(MAKE) observability-install
+	$(MAKE) observability-tracing-status
+
+observability-tracing-status:
+	@helm list -n monitoring | grep -E '^(tempo|otel-collector|NAME)' || true
+	@echo
+	kubectl get pods -n monitoring -o wide | grep -E 'tempo|otel-collector|NAME' || true
+	@echo
+	kubectl get services -n monitoring | grep -E 'tempo|otel-collector|NAME' || true
+	@echo
+	kubectl get pvc -n monitoring -o wide | grep -E 'tempo|NAME' || true
 
 observability-grafana:
 	@echo "Grafana admin password:"
