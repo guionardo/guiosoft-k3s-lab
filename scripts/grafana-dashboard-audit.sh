@@ -80,16 +80,24 @@ echo "K3s-specific review candidates:"
 jq -r '.[] | select((.title | test("etcd|scheduler|controller manager|proxy"; "i"))) | "- \(.title) (uid=\(.uid))"' <<<"$search_json" || true
 
 echo
+echo "Platform-specific dashboards:"
+for title in 'Node Exporter / AIX' 'Node Exporter / MacOS'; do
+  if jq -e --arg title "$title" '.[] | select(.title == $title)' <<<"$search_json" >/dev/null; then
+    echo "- present but not applicable to this Linux host: $title"
+  fi
+done
+
+echo
 echo "Dashboard health check:"
 errors=0
 while IFS=$'\t' read -r uid title; do
   [[ -n "$uid" ]] || continue
   if dashboard_json="$(curl --fail --silent --user "$user:$password" "http://127.0.0.1:${LOCAL_PORT}/api/dashboards/uid/${uid}" 2>/dev/null)"; then
     panels="$(jq '[.dashboard.panels[]?] | length' <<<"$dashboard_json")"
-    datasource_errors="$(jq '[.. | objects | .datasource? | select(type == "object") | .uid? | select(. != null and . != "-- Mixed --" and . != "grafana" and . != "prometheus" and . != "loki" and . != "tempo" and . != "alertmanager")] | unique | length' <<<"$dashboard_json")"
+    datasource_errors="$(jq '[.. | objects | .datasource? | select(type == "object") | .uid? | select(. != null and . != "-- Mixed --" and . != "grafana" and . != "prometheus" and . != "loki" and . != "tempo" and . != "alertmanager" and . != "$datasource" and . != "${datasource}")] | unique | length' <<<"$dashboard_json")"
     if (( datasource_errors > 0 )); then
       echo "- WARN: $title ($uid): unexpected datasource UID references"
-      jq -r '[.. | objects | .datasource? | select(type == "object") | .uid? | select(. != null and . != "-- Mixed --" and . != "grafana" and . != "prometheus" and . != "loki" and . != "tempo" and . != "alertmanager")] | unique[] | "    - \(.)"' <<<"$dashboard_json"
+      jq -r '[.. | objects | .datasource? | select(type == "object") | .uid? | select(. != null and . != "-- Mixed --" and . != "grafana" and . != "prometheus" and . != "loki" and . != "tempo" and . != "alertmanager" and . != "$datasource" and . != "${datasource}")] | unique[] | "    - \(.)"' <<<"$dashboard_json"
       errors=$((errors + 1))
     else
       echo "- OK: $title ($uid): ${panels} top-level panels"
@@ -107,4 +115,5 @@ else
   echo "Dashboard audit: OK"
 fi
 
+echo "Datasource template variables such as \$datasource and \${datasource} are expected and are not treated as broken UID references."
 echo "This command is read-only and does not modify Grafana dashboards or provisioning."
