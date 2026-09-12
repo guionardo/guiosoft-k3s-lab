@@ -50,7 +50,9 @@ A camada off-host usa Restic sobre Cloudflare R2. O bucket `guiosoft-k3s-backups
 
 O Disaster Recovery já possui readiness check, restore rehearsal isolado via R2 e um fluxo guardado para restore destrutivo em outro host. O teste completo em uma VM/segundo host ficou adiado até existir uma máquina disponível; o servidor atual não será usado como alvo destrutivo.
 
-A frente ativa agora é observabilidade. O `kube-prometheus-stack` já está instalado e saudável com Prometheus, Alertmanager, Grafana, kube-state-metrics e node-exporter. A arquitetura de tracing foi adicionada com Grafana Tempo em single-binary mode e OpenTelemetry Collector como ponto central OTLP. Loki continua planejado para completar métricas + logs + traces. Grafana, Tempo e Collector permanecem sem Ingress público nesta etapa.
+A frente ativa agora é observabilidade. O `kube-prometheus-stack` está instalado e saudável com Prometheus, Alertmanager, Grafana, kube-state-metrics e node-exporter. Tempo `2.2.3` e OpenTelemetry Collector chart `0.172.1` também foram instalados e validados em `Running`, com PVC Tempo de 5 GiB em `local-path`. Grafana, Tempo e Collector permanecem sem Ingress público.
+
+O repositório também contém um workload Go instrumentado com OpenTelemetry para validar o fluxo real aplicação -> Collector -> Tempo. Ele usa Go `1.27.1`, OpenTelemetry Go `1.46.0`, retorna o `trace_id` da requisição e possui um teste automatizado que consulta esse mesmo trace diretamente no Tempo antes de depender da UI do Grafana.
 
 ## Divisão de responsabilidades
 
@@ -132,6 +134,10 @@ make observability-validate
 make observability-tracing-install
 make observability-tracing-status
 make observability-grafana
+make otel-go-demo-install
+make otel-go-demo-status
+make otel-go-demo-test
+make otel-go-demo-delete
 make tf-cloudflare-plan
 make tf-r2-plan
 ```
@@ -166,7 +172,7 @@ Para dados de aplicações, `make backup-inventory` é somente leitura e serve p
 
 ## Observabilidade
 
-A arquitetura alvo agora cobre os três sinais principais:
+A arquitetura alvo cobre os três sinais principais:
 
 ```text
 Metrics -> Prometheus
@@ -175,9 +181,9 @@ Traces  -> OpenTelemetry Collector -> Tempo
 UI      -> Grafana
 ```
 
-A base de métricas usa `kube-prometheus-stack`. O tracing foi preparado com Tempo single-binary, PVC `local-path` de 5 GiB, retenção inicial de 72h e OpenTelemetry Collector como endpoint OTLP central. O Grafana recebe um datasource Tempo declarativo.
+A base de métricas usa `kube-prometheus-stack`. O tracing usa Tempo single-binary com PVC `local-path` de 5 GiB, retenção inicial de 72h e OpenTelemetry Collector como endpoint OTLP central. O Grafana recebe um datasource Tempo declarativo.
 
-Fluxo:
+Fluxo da infraestrutura:
 
 ```bash
 make tools
@@ -187,15 +193,22 @@ make observability-tracing-install
 make observability-tracing-status
 ```
 
+Fluxo do primeiro trace real:
+
+```bash
+make otel-go-demo-install
+make otel-go-demo-test
+```
+
+O demo é construído localmente com Docker, importado no containerd do K3s com `k3s ctr images import` e executado com `imagePullPolicy: Never`, evitando a dependência de um registry apenas para esse workload didático. O teste usa port-forward temporário em loopback, gera uma requisição, captura o `trace_id` retornado e valida que o mesmo trace pode ser recuperado pela API do Tempo.
+
 Grafana usa PVC de 2 GiB e não recebe Ingress nesta fase. Para acesso local:
 
 ```bash
 make observability-grafana
 ```
 
-O próximo marco de tracing é instrumentar um workload Go simples e validar o caminho aplicação -> OTLP -> Collector -> Tempo -> Grafana. Depois será adicionado Loki e a correlação metrics -> traces -> logs.
-
-Detalhes em [`docs/observability.md`](docs/observability.md).
+Detalhes em [`docs/observability.md`](docs/observability.md) e [`docs/otel-go-demo.md`](docs/otel-go-demo.md).
 
 ## Disaster Recovery
 
@@ -266,8 +279,8 @@ A evolução atual foi baseada em:
 - validações reais do cluster K3s, Traefik, Cloudflare Tunnel, `kubectl`, PVC/local-path, SOPS + age e backup/restore executadas no próprio servidor;
 - reprovisionamento controlado do PVC descartável e validação do novo path em `/mnt/store1/k3s/local-path`;
 - validação de `dr-readiness` e do restore isolado diretamente do R2;
-- validação real do `kube-prometheus-stack` no cluster atual;
-- documentação oficial do K3s para `default-local-storage-path`, datastore SQLite e backup/restore;
+- validação real do `kube-prometheus-stack`, Tempo e OpenTelemetry Collector no cluster atual;
+- documentação oficial do K3s para `default-local-storage-path`, datastore SQLite, backup/restore e containerd integrado;
 - documentação do Rancher `local-path-provisioner`;
 - documentação oficial do SOPS e age;
 - documentação oficial do systemd para timers persistentes;
@@ -276,8 +289,9 @@ A evolução atual foi baseada em:
 - documentação oficial do Cloudflare Terraform Provider v5;
 - documentação oficial do Helm para instalação e releases;
 - chart e documentação oficial do `prometheus-community/kube-prometheus-stack`;
-- documentação oficial do Grafana Tempo e Grafana Community Helm charts;
-- documentação oficial do OpenTelemetry Collector e seu Helm chart;
+- documentação oficial do Grafana Tempo e sua API;
+- documentação oficial do OpenTelemetry Collector, OpenTelemetry Go e seu exporter OTLP gRPC;
+- release history oficial do Go para `1.27.1`;
 - documentação versionada em `docs/` e nas stacks `terraform/cloudflare/` e `terraform/r2/`.
 
 Nenhum dado persistente existente foi movido como parte da etapa de storage e nenhum secret plaintext deve ser mantido no Git.
