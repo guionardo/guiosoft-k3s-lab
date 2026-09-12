@@ -12,6 +12,12 @@ make observability-validate
 
 O script consulta a API `/api/v1/alerts` do Prometheus de forma read-only e lista estado, nome, severidade e contexto do alerta.
 
+Para investigar throttling de CPU sem alterar estado:
+
+```bash
+make observability-cpu-throttling-audit
+```
+
 ## Primeira auditoria runtime
 
 Com 15/15 targets `up`, foram encontrados quatro alertas ativos:
@@ -79,11 +85,25 @@ CPUThrottlingHigh   pending
 
 `KubeProxyDown` desapareceu como esperado. Isso confirma que o ajuste removeu somente o falso positivo específico do perfil K3s, sem degradar os targets existentes.
 
-### CPUThrottlingHigh — investigação direcionada
+### CPUThrottlingHigh — evidência de burst limitado por CFS
 
-Classificação atual: **informativo / investigar antes de alterar**.
+Classificação: **ajuste de resource limit justificado por medição**.
 
-Após o ajuste de kube-proxy, o alerta permaneceu `pending` para o container `node-exporter`. Na mesma amostra:
+A auditoria específica retornou:
+
+```text
+rule threshold: >25%
+rule for: 900s (15m)
+5m throttling ratio: 44.08%
+5m average CPU usage: ~0.00577 cores (~5.8m)
+CPU request: 20m
+CPU limit: 200m
+alert state: pending
+```
+
+O ponto importante é a combinação de **throttling muito alto** com **uso médio muito baixo**. O node estava longe de saturação e o processo consumia, em média, uma fração pequena do limite configurado. Isso é compatível com bursts curtos atingindo o hard CPU limit e sendo limitados por CFS, mesmo com CPU livre no host.
+
+Na mesma amostra:
 
 ```text
 node CPU total: ~1130m / 18%
@@ -91,23 +111,44 @@ node memory:    ~7265 MiB / 45%
 node-exporter:  ~7m CPU / 11 MiB
 ```
 
-O container possui um limite explícito de CPU de `200m`. Uso médio baixo não exclui throttling: bursts curtos podem atingir a quota CFS mesmo quando a média de CPU observada pelo `kubectl top` é pequena.
+Kubernetes aplica `limits.cpu` por throttling via CFS/cgroups. Um container pode, portanto, ser throttled mesmo quando o node possui CPU ociosa. Para este homelab single-node, o node-exporter é um componente leve e essencial para observabilidade; não há benefício prático em cortar seus bursts curtos em `200m` quando o próprio host tem ampla folga.
 
-Para evitar alterar limites ou regras por suposição, foi adicionado um diagnóstico read-only:
+A decisão adotada foi:
 
-```bash
-make observability-cpu-throttling-audit
+- manter `requests.cpu: 20m` para scheduling/QoS;
+- manter `requests.memory: 32Mi`;
+- manter `limits.memory: 128Mi`;
+- **remover apenas `limits.cpu: 200m`**.
+
+Configuração resultante:
+
+```yaml
+prometheus-node-exporter:
+  resources:
+    requests:
+      cpu: 20m
+      memory: 32Mi
+    limits:
+      memory: 128Mi
 ```
 
-Ele mostra:
+A regra `CPUThrottlingHigh` permanece habilitada. O objetivo não é esconder o alerta; é remover a causa artificial detectada e depois revalidar o comportamento real.
 
-- expressão efetiva da regra `CPUThrottlingHigh` carregada no Prometheus;
-- razão de períodos throttled nos últimos 5 minutos;
-- uso médio de CPU no mesmo período;
-- requests e limits de CPU configurados;
-- estado atual do alerta.
+Próxima validação:
 
-A decisão sobre aumentar/remover o CPU limit do node-exporter só será tomada depois dessa evidência.
+```bash
+git pull
+make observability-install
+make observability-cpu-throttling-audit
+make observability-validate
+```
+
+Critério de sucesso:
+
+- ausência de CPU limit efetivo no node-exporter;
+- razão de throttling cair substancialmente após o rollout;
+- `CPUThrottlingHigh` deixar de permanecer `pending`/`firing` depois da janela de avaliação;
+- nenhum impacto negativo nos demais workloads nem no consumo global do node.
 
 ## Critério adotado
 
@@ -119,7 +160,8 @@ Para cada alerta:
 2. verificar se há target saudável correspondente;
 3. separar alertas sintéticos/operacionais (`Watchdog`, `InfoInhibitor`) de falhas reais;
 4. comparar o alerta com métricas atuais de recursos;
-5. somente então alterar regras ou limites.
+5. medir a expressão efetiva da regra quando necessário;
+6. somente então alterar regras ou limites.
 
 Isso evita transformar a observabilidade em um sistema silencioso apenas para obter uma tela sem alertas.
 
@@ -128,4 +170,6 @@ Isso evita transformar a observabilidade em um sistema silencioso apenas para ob
 - kube-prometheus-stack values e regras: https://github.com/prometheus-community/helm-charts/tree/main/charts/kube-prometheus-stack
 - Prometheus alerting rules: https://prometheus.io/docs/prometheus/latest/configuration/alerting_rules/
 - Prometheus Operator: https://prometheus-operator.dev/
+- Kubernetes resource management: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+- Kubernetes CPU management/CFS quota: https://kubernetes.io/docs/tasks/administer-cluster/cpu-management-policies/
 - K3s networking: https://docs.k3s.io/networking/basic-network-options
