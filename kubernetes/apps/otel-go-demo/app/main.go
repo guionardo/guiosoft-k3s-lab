@@ -118,6 +118,8 @@ func workHandler(w http.ResponseWriter, r *http.Request) {
 	simulateStage(ctx, tracer, "external.call", 30, 90)
 
 	traceID := span.SpanContext().TraceID().String()
+	log.Printf("request completed service=%s method=%s path=%s trace_id=%s", serviceName, r.Method, r.URL.Path, traceID)
+
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("X-Trace-ID", traceID)
 	_ = json.NewEncoder(w).Encode(map[string]any{
