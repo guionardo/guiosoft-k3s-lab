@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: help discovery ansible-deps preflight bootstrap tools k3s storage storage-test storage-test-status storage-test-recreate storage-test-delete backup-create backup-list backup-verify backup-install backup-status backup-run backup-prune restic-test firewall-audit cluster-status lab-deploy lab-status lab-test lab-delete secrets-test secret-edit secret-view secret-validate secret-apply tf-cloudflare-discovery tf-cloudflare-init tf-cloudflare-fmt tf-cloudflare-validate tf-cloudflare-import tf-cloudflare-plan
+.PHONY: help discovery ansible-deps preflight bootstrap tools k3s storage storage-test storage-test-status storage-test-recreate storage-test-delete backup-create backup-list backup-verify backup-install backup-status backup-run backup-prune restic-test firewall-audit cluster-status lab-deploy lab-status lab-test lab-delete secrets-test secret-edit secret-view secret-validate secret-apply tf-cloudflare-discovery tf-cloudflare-init tf-cloudflare-fmt tf-cloudflare-validate tf-cloudflare-import tf-cloudflare-plan tf-r2-init tf-r2-fmt tf-r2-validate tf-r2-plan tf-r2-apply
 
 help:
 	@echo "guiosoft-k3s-lab"
@@ -42,6 +42,11 @@ help:
 	@echo "  make tf-cloudflare-validate Valida configuração Terraform"
 	@echo "  make tf-cloudflare-import  Importa recursos existentes para o state local"
 	@echo "  make tf-cloudflare-plan    Mostra plano Cloudflare sem aplicar mudanças"
+	@echo "  make tf-r2-init            Inicializa stack Terraform dedicada ao bucket R2"
+	@echo "  make tf-r2-fmt             Valida formatação da stack R2"
+	@echo "  make tf-r2-validate        Valida configuração Terraform do R2"
+	@echo "  make tf-r2-plan            Mostra plano do bucket R2 sem aplicar mudanças"
+	@echo "  make tf-r2-apply           Cria/atualiza o bucket R2 após revisão explícita do plano"
 
 # Use sudo because some useful inventory information is only visible to root.
 discovery:
@@ -192,3 +197,18 @@ tf-cloudflare-import:
 
 tf-cloudflare-plan:
 	cd terraform/cloudflare && terraform plan
+
+tf-r2-init:
+	cd terraform/r2 && terraform init
+
+tf-r2-fmt:
+	cd terraform/r2 && terraform fmt -check -recursive
+
+tf-r2-validate:
+	cd terraform/r2 && terraform validate
+
+tf-r2-plan:
+	cd terraform/r2 && terraform plan
+
+tf-r2-apply:
+	cd terraform/r2 && terraform apply
