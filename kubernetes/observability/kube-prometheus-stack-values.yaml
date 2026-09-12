@@ -79,6 +79,28 @@ grafana:
       jsonData:
         nodeGraph:
           enabled: true
+        tracesToLogsV2:
+          datasourceUid: loki
+          spanStartTimeShift: -5m
+          spanEndTimeShift: 5m
+          mappedTags:
+            - key: service.name
+              value: app
+          filterByTraceID: true
+          filterBySpanID: false
+    - name: Loki
+      uid: loki
+      type: loki
+      access: proxy
+      url: http://loki-gateway.monitoring.svc.cluster.local
+      jsonData:
+        maxLines: 1000
+        derivedFields:
+          - datasourceUid: tempo
+            matcherRegex: "trace_id=([0-9a-f]{32})"
+            name: TraceID
+            url: '$${__value.raw}'
+            urlDisplayLabel: View Trace
 
 prometheus-node-exporter:
   resources:
