@@ -1,6 +1,6 @@
 # Estado atual e decisões de escopo
 
-Atualizado após o primeiro discovery do host `guiosoft-info`.
+Atualizado após o primeiro discovery e a limpeza manual inicial do host `guiosoft-info`.
 
 ## Host
 
@@ -9,49 +9,43 @@ Atualizado após o primeiro discovery do host `guiosoft-info`.
 - 16 GB RAM
 - Docker/containerd ativos
 - Cloudflare Tunnel ativo via systemd
-- Tailscale instalado e ativo
+- Tailscale removido
 - K3s ainda não instalado
 
-## Serviços encontrados
+## Serviços atuais
 
-O discovery identificou, entre outros, os seguintes stacks Docker Compose:
+Após a limpeza manual, apenas o stack `firecrawl` permanece entre os containers relevantes para este laboratório.
 
-- `escoteirando-suite`
-- `firecrawl`
-- `gitea`
+### firecrawl
 
-### Decisões
+Deve ser preservado durante a implantação do K3s. Qualquer migração futura será uma decisão separada.
 
-#### escoteirando-suite
+### escoteirando-suite
 
-Fora do escopo deste laboratório. Não será migrado para K3s e não deve influenciar o desenho do cluster.
+Removido do host e fora do escopo deste laboratório.
 
-#### gitea
+### gitea
 
-Fora do escopo deste laboratório. Não será migrado para K3s.
+Removido do host e fora do escopo deste laboratório.
 
-#### firecrawl
-
-Permanece relevante para o estado atual do servidor e deve ser preservado durante a implantação do K3s. Qualquer migração futura será uma decisão separada.
-
-#### OpenShip
+### OpenShip
 
 Situação pendente de confirmação. Não remover configuração nem hostname relacionado até decisão explícita.
 
 ## Tailscale
 
-Foi decidido remover Tailscale do servidor. A remoção deve ser feita como uma etapa explícita e verificável antes do bootstrap do K3s.
+Tailscale já foi desinstalado manualmente.
 
-Antes da remoção, confirmar que:
+Antes do bootstrap do K3s, validar:
 
-- nenhum acesso administrativo depende exclusivamente do Tailscale;
-- não há serviços consumindo o IP `100.x` do host;
-- nenhum DNS interno necessário depende do MagicDNS;
-- `/etc/resolv.conf` voltará a ser gerenciado corretamente pela configuração normal do host após a remoção.
+- `/etc/resolv.conf` não referencia mais os resolvers do Tailscale;
+- resolução DNS externa funciona normalmente;
+- rota default e IP LAN permanecem corretos;
+- acesso SSH administrativo funciona sem depender de Tailscale.
 
 ## Cloudflare
 
-Os seguintes hostnames encontrados no histórico/configuração não são mais necessários e podem ser removidos do Cloudflare:
+Os seguintes hostnames não são mais necessários e podem ser removidos do Cloudflare:
 
 - `traefik.guiosoft.info`
 - `git.guiosoft.info`
@@ -84,3 +78,7 @@ Service
         ↓
 Pod de teste
 ```
+
+## Próximo passo
+
+Validar o estado pós-limpeza do host e então iniciar o bootstrap Ansible para preparação do Debian e instalação do K3s, preservando Docker/Firecrawl e o Cloudflare Tunnel atual.
