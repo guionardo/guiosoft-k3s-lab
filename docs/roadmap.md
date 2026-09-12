@@ -91,6 +91,10 @@ Para cada workload futuro:
 - [x] provisionar automaticamente datasources Prometheus, Tempo e Loki no Grafana;
 - [x] validar reload/provisioning dos datasources Grafana;
 - [x] executar/revisar `make observability-validate`: 13/13 scrape targets `up`, query `up` com 13 séries, datasources Prometheus/Tempo/Loki com health `OK`, Pods Ready e PVCs Bound;
+- [x] instrumentar o demo Go com counters, histograms e gauge Prometheus de baixa cardinalidade;
+- [x] adicionar `ServiceMonitor` para `otel-go-demo` e `otel-go-downstream`;
+- [x] adicionar `make otel-go-demo-metrics-test` com geração de tráfego e queries à API do Prometheus;
+- [ ] validar em runtime as métricas customizadas do demo;
 - [ ] revisar dashboards Grafana padrão;
 - [ ] revisar alertas ruidosos/incompatíveis com K3s.
 
@@ -106,7 +110,7 @@ Para cada workload futuro:
 - [x] implementar segundo serviço Go e propagação W3C `traceparent` entre processos;
 - [x] adaptar `make otel-go-demo-test` para exigir os dois `service.name` no mesmo trace;
 - [x] validar em runtime o trace distribuído `otel-go-demo -> otel-go-downstream`;
-- [ ] validar trace visualmente no Grafana Explore.
+- [x] validar trace visualmente no Grafana Explore.
 
 ### Logs
 
@@ -122,7 +126,7 @@ Para cada workload futuro:
 - [x] validar Loki/Alloy operacionais e gateway acessível;
 - [x] validar ingestão Alloy -> Loki;
 - [x] validar `make observability-logging-test` usando o mesmo `trace_id` da requisição;
-- [ ] validar navegação Loki log -> Tempo trace e Tempo trace -> Loki logs no Grafana.
+- [x] validar navegação Loki log -> Tempo trace e Tempo trace -> Loki logs no Grafana.
 
 ### Capacidade
 
