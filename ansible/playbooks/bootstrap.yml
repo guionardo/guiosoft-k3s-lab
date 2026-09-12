@@ -1,0 +1,10 @@
+---
+- import_playbook: preflight.yml
+
+- name: Prepare Debian host for K3s
+  hosts: k3s_servers
+  become: true
+  gather_facts: true
+
+  roles:
+    - role: base
