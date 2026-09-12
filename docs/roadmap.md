@@ -96,9 +96,10 @@ Para qualquer workload escolhido futuramente:
 - [x] validar persistência após recriação do Pod;
 - [ ] estratégia para bancos de dados;
 - [x] implementar backup local manual verificável do datastore SQLite + server token;
-- [ ] validar criação do backup no host;
-- [ ] executar restore real do K3s a partir de backup;
-- [ ] automatizar/agendar backup após restore validado;
+- [x] validar criação do backup no host;
+- [ ] validar restore rehearsal não destrutivo do backup;
+- [ ] executar restore completo do K3s a partir de backup em ambiente de disaster recovery;
+- [ ] automatizar/agendar backup após validação do restore rehearsal;
 - [ ] definir retenção;
 - [ ] backup externo/off-host;
 - [ ] testes periódicos de restore.
