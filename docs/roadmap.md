@@ -103,8 +103,10 @@ Para cada workload futuro:
 - [x] PVC Tempo de 5 GiB `Bound`;
 - [x] workload Go instrumentado;
 - [x] validar trace real aplicação -> Collector -> Tempo por `trace_id`;
-- [ ] validar trace visualmente no Grafana Explore;
-- [ ] demonstrar propagação distribuída entre dois serviços.
+- [x] implementar segundo serviço Go e propagação W3C `traceparent` entre processos;
+- [x] adaptar `make otel-go-demo-test` para exigir os dois `service.name` no mesmo trace;
+- [ ] validar em runtime o trace distribuído `otel-go-demo -> otel-go-downstream`;
+- [ ] validar trace visualmente no Grafana Explore.
 
 ### Logs
 
