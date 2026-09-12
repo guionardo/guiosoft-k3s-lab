@@ -64,27 +64,29 @@ Para cada workload futuro:
 ### Firecrawl — primeiro workload real
 
 - [x] auditar stack Docker Compose atual sem expor secrets;
-- [x] confirmar os cinco containers, rede privada, porta publicada, limites e volumes principais;
-- [x] documentar estratégia de migração incremental e rollback;
-- [x] criar scaffold Kubernetes com namespace, ConfigMap, Services, Deployments e PVCs;
-- [x] manter scaffold sem Ingress público até decisão explícita de autenticação/acesso;
-- [x] adicionar validação read-only por Kustomize + `kubectl --dry-run=client`;
-- [x] expor auditoria/validação/status por targets do Makefile;
-- [ ] validar em runtime o scaffold com `make firecrawl-k8s-validate`;
-- [x] identificar `repo_digest`/image ID exatos das imagens atuais e piná-las no scaffold de staging;
+- [x] confirmar os cinco containers, rede privada, porta publicada, limites e volumes;
 - [x] associar o volume Docker anônimo ao RabbitMQ em `/var/lib/rabbitmq`;
-- [x] adicionar PVC RabbitMQ no scaffold para preservar estado operacional entre recriações de Pod;
-- [ ] criar Secret real cifrado com SOPS + age a partir do `.env` atual, sem plaintext no Git;
-- [ ] medir tamanho/uso dos volumes atuais e confirmar capacidade dos PVCs propostos;
-- [ ] definir health check HTTP definitivo da API ou aceitar explicitamente probe TCP inicial;
-- [ ] decidir tratamento do estado Redis no cutover;
-- [ ] decidir tratamento da fila/estado RabbitMQ no cutover;
-- [ ] ensaiar dump/restore do `nuq-postgres`;
-- [ ] subir staging K3s com dados descartáveis e validar comunicação interna;
-- [ ] definir autenticação antes de qualquer hostname público de staging;
-- [ ] validar logs/métricas e comportamento funcional no K3s;
-- [ ] executar cutover controlado com janela de rollback;
-- [ ] remover Docker Compose somente após estabilidade e backup/restore validados.
+- [x] identificar os `repo_digest` exatos das cinco imagens em execução;
+- [x] pinçar as imagens Kubernetes pelos digests observados em produção;
+- [x] documentar estratégia incremental e rollback;
+- [x] criar scaffold Kubernetes com namespace, ConfigMap, Services e Deployments;
+- [x] classificar PostgreSQL/NuQ, Redis e RabbitMQ como efêmeros nesta primeira fase;
+- [x] substituir PVCs Firecrawl por `emptyDir` no perfil atual;
+- [x] criar Ingress público `firecrawl.guiosoft.info` via Traefik;
+- [x] manter apenas a API externamente publicada; backends continuam `ClusterIP`;
+- [x] atualizar validação read-only para exigir Ingress, imagens por digest e ausência de PVCs Firecrawl;
+- [x] criar helper para gerar Secret SOPS diretamente do `.env` local sem imprimir valores;
+- [ ] validar em runtime o scaffold com `make firecrawl-k8s-validate`;
+- [ ] gerar `firecrawl-secrets.sops.yaml` a partir do `.env` local;
+- [ ] validar/aplicar o Secret com os targets genéricos SOPS;
+- [ ] subir a stack K3s e validar readiness/comunicação interna;
+- [ ] validar rota local Traefik usando `Host: firecrawl.guiosoft.info`;
+- [ ] validar `https://firecrawl.guiosoft.info` pelo Cloudflare Tunnel;
+- [ ] executar requests funcionais reais de scrape/crawl;
+- [ ] observar logs e recursos no Prometheus/Grafana/Loki;
+- [ ] decidir se autenticação/rate limiting adicional será necessária para uso público;
+- [ ] parar Docker Compose antigo após período de confiança;
+- [ ] remover Docker Compose somente após estabilidade suficiente.
 
 ## Fase 5 — Storage e backup
 
@@ -92,6 +94,7 @@ Para cada workload futuro:
 - [x] role de storage não destrutivo;
 - [x] `local-path` abaixo de `/mnt/store1/k3s/local-path`;
 - [x] teste de PVC/persistência e reprovisionamento no path correto;
+- [x] documentar que capacidade de PVC `local-path` não representa pré-alocação/reserva física nem quota rígida no filesystem atual;
 - [x] backup local verificável do SQLite + server token;
 - [x] restore rehearsal não destrutivo;
 - [x] systemd timer + retenção local;
@@ -102,6 +105,7 @@ Para cada workload futuro:
 - [x] cadeia automatizada local -> R2 e `restic check`;
 - [x] inventário read-only de PVC/PV;
 - [ ] validar round-trip local do Restic;
+- [ ] adicionar alerta de pouco espaço livre para `/mnt/store1` quando houver necessidade operacional;
 - [ ] estratégia para bancos de dados e PVCs de aplicações reais;
 - [ ] restore completo em host/VM DR;
 - [ ] testes periódicos de restore.
