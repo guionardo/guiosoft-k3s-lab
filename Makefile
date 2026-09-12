@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: help discovery ansible-deps preflight bootstrap tools k3s storage storage-test storage-test-status storage-test-recreate storage-test-placement storage-test-reprovision storage-test-delete backup-create backup-list backup-verify backup-install backup-status backup-run backup-prune backup-inventory restic-test restic-r2-secret restic-r2-install restic-r2-test restic-r2-sync restic-r2-status restic-r2-check dr-readiness dr-r2-rehearsal dr-r2-export dr-target-init dr-restore firewall-audit cluster-status lab-deploy lab-status lab-test lab-delete secrets-test secret-edit secret-view secret-validate secret-apply tf-cloudflare-discovery tf-cloudflare-init tf-cloudflare-fmt tf-cloudflare-validate tf-cloudflare-import tf-cloudflare-plan tf-r2-init tf-r2-fmt tf-r2-validate tf-r2-plan tf-r2-apply
+.PHONY: help discovery ansible-deps preflight bootstrap tools k3s storage storage-test storage-test-status storage-test-recreate storage-test-placement storage-test-reprovision storage-test-delete backup-create backup-list backup-verify backup-install backup-status backup-run backup-prune backup-inventory restic-test restic-r2-secret restic-r2-install restic-r2-test restic-r2-sync restic-r2-status restic-r2-check dr-readiness dr-r2-rehearsal dr-r2-export dr-target-init dr-restore observability-install observability-status observability-grafana firewall-audit cluster-status lab-deploy lab-status lab-test lab-delete secrets-test secret-edit secret-view secret-validate secret-apply tf-cloudflare-discovery tf-cloudflare-init tf-cloudflare-fmt tf-cloudflare-validate tf-cloudflare-import tf-cloudflare-plan tf-r2-init tf-r2-fmt tf-r2-validate tf-r2-plan tf-r2-apply
 
 help:
 	@echo "guiosoft-k3s-lab"
@@ -10,7 +10,7 @@ help:
 	@echo "  make ansible-deps          Instala Ansible e collections necessárias"
 	@echo "  make preflight             Valida DNS, Tailscale, portas e serviços preservados"
 	@echo "  make bootstrap             Prepara Debian e ferramentas de IaC para K3s"
-	@echo "  make tools                 Instala/valida Terraform, SOPS, age e restic"
+	@echo "  make tools                 Instala/valida Terraform, SOPS, age, restic e Helm"
 	@echo "  make k3s                   Instala/valida K3s, kubectl e local-path dedicado"
 	@echo "  make storage               Prepara layout persistente sem mover ou apagar dados"
 	@echo "  make storage-test          Cria PVC + Deployment para testar persistência"
@@ -39,6 +39,9 @@ help:
 	@echo "  make dr-r2-export DEST=... Exporta do R2 um par archive/checksum verificado"
 	@echo "  make dr-target-init        Marca explicitamente este host como alvo isolado de rehearsal"
 	@echo "  make dr-restore FILE=...   Restaura K3s apenas em alvo DR marcado e confirmado"
+	@echo "  make observability-install Instala/atualiza Prometheus, Alertmanager e Grafana"
+	@echo "  make observability-status  Mostra release, pods, services, PVCs e targets básicos"
+	@echo "  make observability-grafana Mostra senha admin e abre port-forward local na porta 3000"
 	@echo "  make firewall-audit        Audita firewall/listeners após K3s sem alterar regras"
 	@echo "  make cluster-status        Mostra nodes, pods e services do cluster"
 	@echo "  make lab-deploy            Cria namespace e workload de teste"
@@ -62,7 +65,6 @@ help:
 	@echo "  make tf-r2-plan            Mostra plano do bucket R2 sem aplicar mudanças"
 	@echo "  make tf-r2-apply           Cria/atualiza o bucket R2 após revisão explícita do plano"
 
-# Use sudo because some useful inventory information is only visible to root.
 discovery:
 	sudo bash scripts/discovery.sh
 
@@ -71,7 +73,6 @@ ansible-deps:
 	sudo apt-get install -y ansible-core
 	cd ansible && ansible-galaxy collection install -r requirements.yml
 
-# -K asks interactively for the local sudo/become password.
 preflight:
 	cd ansible && ansible-playbook -K playbooks/preflight.yml
 
@@ -121,7 +122,6 @@ storage-test-placement:
 	    *) echo "ERROR: expected path below /mnt/store1/k3s/local-path" >&2; exit 1 ;; \
 	  esac
 
-# Destructive only to the disposable lab/persistence-test PVC and its marker.
 storage-test-reprovision:
 	@echo "Reprovisioning disposable lab/persistence-test PVC; its test marker will be deleted."
 	kubectl delete -f kubernetes/storage/persistence-test.yaml --ignore-not-found --wait=true
@@ -210,6 +210,27 @@ dr-target-init:
 dr-restore:
 	@test -n "$(FILE)" || (echo "Use somente no alvo isolado: make dr-restore FILE=/path/k3s-backup.tar.gz" >&2; exit 2)
 	sudo DR_RESTORE_CONFIRM=restore-isolated-k3s bash scripts/dr-restore-k3s.sh "$(FILE)"
+
+observability-install:
+	bash scripts/observability-install.sh
+	$(MAKE) observability-status
+
+observability-status:
+	@helm list -n monitoring
+	@echo
+	kubectl get pods -n monitoring -o wide
+	@echo
+	kubectl get services -n monitoring
+	@echo
+	kubectl get pvc -n monitoring -o wide
+	@echo
+	@kubectl get prometheus,alertmanager -n monitoring 2>/dev/null || true
+
+observability-grafana:
+	@echo "Grafana admin password:"
+	@kubectl get secret -n monitoring kube-prometheus-stack-grafana -o jsonpath='{.data.admin-password}' | base64 -d; echo
+	@echo "Open http://127.0.0.1:3000 (Ctrl-C to stop port-forward)"
+	kubectl port-forward -n monitoring svc/kube-prometheus-stack-grafana 3000:80
 
 firewall-audit:
 	cd ansible && ansible-playbook -K playbooks/firewall-audit.yml
