@@ -99,7 +99,7 @@ Para cada workload futuro:
 - [x] adicionar regras `OtelGoDemoHighErrorRate`, `OtelGoDemoHighP95Latency` e `OtelGoDemoDownstreamErrors`;
 - [x] validar em runtime a reconciliação das regras customizadas pelo Prometheus Operator;
 - [x] implementar `make otel-go-demo-incident-test` com falha downstream controlada e restauração automática;
-- [ ] validar em runtime o incident drill completo: HTTP 502 -> métricas -> alerta pending/firing -> Loki -> Tempo -> recuperação;
+- [x] validar em runtime o incident drill completo: HTTP 502 -> métricas -> alerta pending/firing -> Loki -> Tempo -> recuperação;
 - [ ] revisar dashboards Grafana padrão;
 - [ ] revisar alertas ruidosos/incompatíveis com K3s.
 
@@ -137,7 +137,7 @@ Para cada workload futuro:
 
 - [x] registrar baseline inicial de recursos com a stack completa: node em ~782m CPU (13%) e ~8331 MiB RAM (52%); maiores consumidores observados foram Grafana ~440 MiB e Prometheus ~337 MiB;
 - [ ] revisar consumo novamente após período maior de retenção/carga;
-- [ ] adicionar dashboards/alertas customizados essenciais;
+- [x] adicionar dashboard/alertas customizados essenciais para o demo de aplicação;
 - [ ] adicionar exemplars/span metrics quando houver benefício real.
 
 ## Fase 7 — GitOps
