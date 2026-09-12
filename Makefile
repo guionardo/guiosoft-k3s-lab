@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: help discovery ansible-deps preflight bootstrap tools k3s storage storage-test storage-test-status storage-test-recreate storage-test-delete firewall-audit cluster-status lab-deploy lab-status lab-test lab-delete secrets-test secret-edit secret-view secret-validate secret-apply tf-cloudflare-discovery tf-cloudflare-init tf-cloudflare-fmt tf-cloudflare-validate tf-cloudflare-import tf-cloudflare-plan
+.PHONY: help discovery ansible-deps preflight bootstrap tools k3s storage storage-test storage-test-status storage-test-recreate storage-test-delete backup-create backup-list firewall-audit cluster-status lab-deploy lab-status lab-test lab-delete secrets-test secret-edit secret-view secret-validate secret-apply tf-cloudflare-discovery tf-cloudflare-init tf-cloudflare-fmt tf-cloudflare-validate tf-cloudflare-import tf-cloudflare-plan
 
 help:
 	@echo "guiosoft-k3s-lab"
@@ -17,6 +17,8 @@ help:
 	@echo "  make storage-test-status   Mostra PVC/PV/Pod e o marker persistente"
 	@echo "  make storage-test-recreate Remove o Pod e valida persistência após recriação"
 	@echo "  make storage-test-delete   Remove workload e PVC de teste"
+	@echo "  make backup-create         Cria backup local do datastore SQLite + token do K3s"
+	@echo "  make backup-list           Lista backups locais e checksums do K3s"
 	@echo "  make firewall-audit        Audita firewall/listeners após K3s sem alterar regras"
 	@echo "  make cluster-status        Mostra nodes, pods e services do cluster"
 	@echo "  make lab-deploy            Cria namespace e workload de teste"
@@ -85,6 +87,12 @@ storage-test-recreate:
 
 storage-test-delete:
 	kubectl delete -f kubernetes/storage/persistence-test.yaml --ignore-not-found
+
+backup-create:
+	sudo bash scripts/k3s-backup.sh
+
+backup-list:
+	sudo find /srv/k3s/backups/k3s -maxdepth 1 -type f \( -name 'k3s-*.tar.gz' -o -name 'k3s-*.tar.gz.sha256' \) -printf '%TY-%Tm-%Td %TH:%TM %10s %p\n' 2>/dev/null | sort || true
 
 firewall-audit:
 	cd ansible && ansible-playbook -K playbooks/firewall-audit.yml
