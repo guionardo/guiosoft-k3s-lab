@@ -125,12 +125,69 @@ deploy() {
   status
 }
 
+test_path() {
+  need kubectl
+  need curl
+
+  echo "Firecrawl runtime validation"
+  echo
+
+  for deployment in nuq-postgres redis rabbitmq playwright-service firecrawl-api; do
+    desired="$(kubectl get deployment -n "$NAMESPACE" "$deployment" -o jsonpath='{.spec.replicas}')"
+    available="$(kubectl get deployment -n "$NAMESPACE" "$deployment" -o jsonpath='{.status.availableReplicas}')"
+    available="${available:-0}"
+    if [[ "$available" != "$desired" ]]; then
+      echo "error: deployment/$deployment available=$available desired=$desired" >&2
+      return 1
+    fi
+    echo "deployment/$deployment: ready ($available/$desired)"
+  done
+
+  endpoint_count="$(kubectl get endpoints -n "$NAMESPACE" firecrawl-api -o jsonpath='{range .subsets[*].addresses[*]}{.ip}{"\n"}{end}' 2>/dev/null | sed '/^$/d' | wc -l)"
+  if (( endpoint_count < 1 )); then
+    echo "error: service/firecrawl-api has no ready endpoints" >&2
+    return 1
+  fi
+  echo "service/firecrawl-api: $endpoint_count ready endpoint(s)"
+
+  echo
+  echo "Testing local Traefik path with Host: $EXPECTED_HOST"
+  local_body="$(mktemp)"
+  trap 'rm -f "$local_body"' RETURN
+  local_code="$(curl --silent --show-error --connect-timeout 5 --max-time 15 -o "$local_body" -w '%{http_code}' -H "Host: $EXPECTED_HOST" http://127.0.0.1/)"
+  if [[ "$local_code" != "200" ]] || ! grep -Fq 'Firecrawl API' "$local_body"; then
+    echo "error: local Traefik request failed validation (HTTP $local_code)" >&2
+    echo "Response body follows:" >&2
+    cat "$local_body" >&2
+    return 1
+  fi
+  echo "local Traefik -> Ingress -> Service -> API: HTTP 200 / Firecrawl API"
+
+  echo
+  echo "Testing public Cloudflare path: https://$EXPECTED_HOST/"
+  public_body="$(mktemp)"
+  trap 'rm -f "$local_body" "$public_body"' RETURN
+  public_code="$(curl --silent --show-error --connect-timeout 10 --max-time 30 -o "$public_body" -w '%{http_code}' "https://$EXPECTED_HOST/")"
+  if [[ "$public_code" != "200" ]] || ! grep -Fq 'Firecrawl API' "$public_body"; then
+    echo "error: public Cloudflare request failed validation (HTTP $public_code)" >&2
+    echo "Response body follows:" >&2
+    cat "$public_body" >&2
+    return 1
+  fi
+  echo "Cloudflare -> Tunnel -> Traefik -> Service -> API: HTTP 200 / Firecrawl API"
+
+  echo
+  echo "Firecrawl ingress path validation: OK"
+  echo "No scrape/crawl job was submitted by this test."
+}
+
 case "$ACTION" in
   validate) validate ;;
   status) status ;;
   deploy) deploy ;;
+  test) test_path ;;
   *)
-    echo "Usage: $0 {validate|status|deploy}" >&2
+    echo "Usage: $0 {validate|status|deploy|test}" >&2
     exit 2
     ;;
 esac
