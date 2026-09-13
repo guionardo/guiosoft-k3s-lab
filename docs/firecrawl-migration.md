@@ -203,13 +203,7 @@ make firecrawl-k8s-status
 
 ## Primeiro deploy K3s
 
-O helper agora possui a ação:
-
-```bash
-bash scripts/firecrawl-k8s.sh deploy
-```
-
-Ela verifica namespace e Secret antes de alterar recursos, executa novamente a validação do scaffold, aplica `kubectl apply -k kubernetes/apps/firecrawl` e aguarda o rollout dos cinco Deployments:
+O primeiro deploy real foi executado com sucesso. Os cinco Deployments ficaram `Ready`:
 
 ```text
 nuq-postgres
@@ -219,7 +213,57 @@ playwright-service
 firecrawl-api
 ```
 
+O helper responsável é:
+
+```bash
+bash scripts/firecrawl-k8s.sh deploy
+```
+
+Ele verifica namespace e Secret antes de alterar recursos, executa novamente a validação do scaffold, aplica `kubectl apply -k kubernetes/apps/firecrawl` e aguarda o rollout dos cinco Deployments.
+
 O Docker Compose atual não é parado nem alterado por esse deploy e continua disponível como rollback.
+
+## Validação de tráfego e scrape funcional
+
+O helper possui duas validações separadas:
+
+```bash
+bash scripts/firecrawl-k8s.sh test
+bash scripts/firecrawl-k8s.sh scrape-test
+```
+
+`test` não cria jobs. Ele confirma:
+
+- todos os Deployments disponíveis;
+- endpoint pronto no Service `firecrawl-api`;
+- `GET /` local via Traefik usando `Host: firecrawl.guiosoft.info`;
+- `GET /` público via Cloudflare Tunnel.
+
+`scrape-test` executa primeiro essa validação de caminho e, em seguida, envia um request real:
+
+```http
+POST /v1/scrape
+Content-Type: application/json
+```
+
+Payload padrão:
+
+```json
+{
+  "url": "https://example.com",
+  "formats": ["markdown"]
+}
+```
+
+O teste exige HTTP 200, `success=true` e conteúdo Markdown não vazio. Ao final também mostra `kubectl top pods` quando o metrics-server possui dados e exibe somente warnings/errors recentes da API para facilitar troubleshooting.
+
+É possível trocar o alvo sem editar o script:
+
+```bash
+FIRECRAWL_SCRAPE_URL=https://www.example.org bash scripts/firecrawl-k8s.sh scrape-test
+```
+
+Nenhum Secret é exibido e o Docker Compose antigo permanece intocado.
 
 ## Estratégia de implantação
 
@@ -230,16 +274,16 @@ Sequência atualizada:
 3. decidir persistência inicial — **concluído: PostgreSQL, Redis e RabbitMQ efêmeros**;
 4. pin das imagens por digest — **concluído**;
 5. criar Ingress `firecrawl.guiosoft.info` — **concluído em código**;
-6. validar render/dry-run do scaffold no host;
+6. validar render/dry-run do scaffold no host — **concluído**;
 7. gerar Secret SOPS a partir do `.env` local — **concluído**;
 8. validar o Secret por dry-run — **concluído**;
 9. criar namespace `firecrawl` — **concluído**;
 10. aplicar o Secret cifrado via SOPS — **concluído**;
-11. subir stack K3s — **próximo passo**;
-12. validar comunicação interna e readiness;
-13. validar API localmente pelo Traefik usando Host header;
-14. validar `https://firecrawl.guiosoft.info` via Cloudflare;
-15. validar funcionalmente requests reais do Firecrawl;
+11. subir stack K3s — **concluído; cinco Deployments Ready**;
+12. validar comunicação interna e readiness — **concluído no rollout**;
+13. validar API localmente pelo Traefik usando Host header — **próximo teste**;
+14. validar `https://firecrawl.guiosoft.info` via Cloudflare — **próximo teste**;
+15. validar funcionalmente request real `/v1/scrape` — **logo depois do teste de rota**;
 16. observar logs e consumo de recursos;
 17. parar o Docker Compose antigo após período de confiança;
 18. manter rollback simples enquanto a nova instalação estiver em observação.
@@ -267,5 +311,6 @@ Como o estado K3s atual é efêmero, não há necessidade de sincronizar dados d
 - Firecrawl self-hosting: https://github.com/firecrawl/firecrawl/blob/main/SELF_HOST.md
 - Firecrawl environment example: https://github.com/firecrawl/firecrawl/blob/main/apps/api/.env.example
 - Firecrawl upstream: https://github.com/firecrawl/firecrawl
+- Firecrawl scrape endpoint examples in upstream repository: `POST /v1/scrape` with JSON payload containing `url` and `formats`
 - Kubernetes `emptyDir`: https://kubernetes.io/docs/concepts/storage/volumes/#emptydir
 - K3s storage: https://docs.k3s.io/add-ons/storage
