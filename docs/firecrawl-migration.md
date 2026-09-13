@@ -71,7 +71,7 @@ O Ingress usa:
 ingressClassName: traefik
 ```
 
-Fluxo esperado:
+Fluxo validado:
 
 ```text
 Internet
@@ -95,9 +95,15 @@ Nenhum PostgreSQL, Redis, RabbitMQ ou Playwright é publicado externamente; todo
 
 ### Segurança da API pública
 
-O Ingress não adiciona autenticação por si só. Se a API Firecrawl em execução não exigir credencial de cliente, `firecrawl.guiosoft.info` será utilizável por qualquer pessoa que conheça o endpoint, podendo consumir CPU, memória e integrações externas configuradas.
+O Ingress não adiciona autenticação por si só. No runtime atual, a API registrou:
 
-A publicação pública foi aceita para este ambiente, mas autenticação/rate limiting via aplicação ou Cloudflare continua sendo uma opção futura se o uso anônimo não for desejado.
+```text
+You're bypassing authentication
+```
+
+Isso está coerente com `USE_DB_AUTHENTICATION=false`: o warning não representa uma falha de runtime, mas confirma que o endpoint público opera sem autenticação de aplicação nesta configuração.
+
+Consequência: `firecrawl.guiosoft.info` pode ser utilizado por qualquer cliente que alcance o endpoint, podendo consumir CPU, memória e integrações externas configuradas. Autenticação/rate limiting via aplicação ou Cloudflare permanece uma decisão pendente antes de considerar a exposição pública como definitiva.
 
 ## Recursos Kubernetes
 
@@ -225,7 +231,7 @@ O Docker Compose atual não é parado nem alterado por esse deploy e continua di
 
 ## Validação de tráfego e scrape funcional
 
-O helper possui duas validações separadas:
+O helper possui duas validações principais:
 
 ```bash
 bash scripts/firecrawl-k8s.sh test
@@ -239,6 +245,8 @@ bash scripts/firecrawl-k8s.sh scrape-test
 - `GET /` local via Traefik usando `Host: firecrawl.guiosoft.info`;
 - `GET /` público via Cloudflare Tunnel.
 
+Esse caminho foi validado em runtime com HTTP 200 tanto localmente quanto via Cloudflare.
+
 `scrape-test` executa primeiro essa validação de caminho e, em seguida, envia um request real:
 
 ```http
@@ -246,24 +254,45 @@ POST /v1/scrape
 Content-Type: application/json
 ```
 
-Payload padrão:
+O teste funcional real foi executado contra `https://www.guiosoft.info` e retornou:
 
-```json
-{
-  "url": "https://example.com",
-  "formats": ["markdown"]
-}
+```text
+HTTP 200
+success=true
+markdown length=712
 ```
 
-O teste exige HTTP 200, `success=true` e conteúdo Markdown não vazio. Ao final também mostra `kubectl top pods` quando o metrics-server possui dados e exibe somente warnings/errors recentes da API para facilitar troubleshooting.
+Portanto, o caminho completo aplicação -> fila/dependências -> scraping -> resposta HTTP foi validado com dados reais.
 
-É possível trocar o alvo sem editar o script:
+Baseline imediatamente após esse scrape:
+
+```text
+firecrawl-api       ~19m CPU   ~2826 MiB RAM
+nuq-postgres        ~14m CPU   ~110 MiB RAM
+playwright-service  ~48m CPU   ~268 MiB RAM
+rabbitmq            ~197m CPU  ~224 MiB RAM
+redis               ~5m CPU    ~9 MiB RAM
+```
+
+A API é claramente o maior consumidor de memória nesta amostra. Essa medição isolada não é suficiente para concluir vazamento ou necessidade de tuning, mas justifica acompanhar o comportamento ao longo do tempo e sob mais carga antes do cutover definitivo.
+
+## Observação de estabilidade
+
+Foi adicionada uma ação read-only:
 
 ```bash
-FIRECRAWL_SCRAPE_URL=https://www.example.org bash scripts/firecrawl-k8s.sh scrape-test
+bash scripts/firecrawl-k8s.sh observe
 ```
 
-Nenhum Secret é exibido e o Docker Compose antigo permanece intocado.
+Ela mostra:
+
+- replicas desejadas/Ready/Available;
+- status, idade e restart count dos Pods;
+- consumo atual via `kubectl top`;
+- eventos Kubernetes do tipo Warning;
+- warnings/errors recentes de PostgreSQL, Redis, RabbitMQ, Playwright e API.
+
+O comando não gera scrape, não reinicia recursos e não altera o Docker Compose. Ele serve para comparar consumo e estabilidade ao longo do período de observação antes do cutover.
 
 ## Estratégia de implantação
 
@@ -273,20 +302,21 @@ Sequência atualizada:
 2. identificar imagens/digests e volumes — **concluído**;
 3. decidir persistência inicial — **concluído: PostgreSQL, Redis e RabbitMQ efêmeros**;
 4. pin das imagens por digest — **concluído**;
-5. criar Ingress `firecrawl.guiosoft.info` — **concluído em código**;
+5. criar Ingress `firecrawl.guiosoft.info` — **concluído**;
 6. validar render/dry-run do scaffold no host — **concluído**;
 7. gerar Secret SOPS a partir do `.env` local — **concluído**;
 8. validar o Secret por dry-run — **concluído**;
 9. criar namespace `firecrawl` — **concluído**;
 10. aplicar o Secret cifrado via SOPS — **concluído**;
 11. subir stack K3s — **concluído; cinco Deployments Ready**;
-12. validar comunicação interna e readiness — **concluído no rollout**;
-13. validar API localmente pelo Traefik usando Host header — **próximo teste**;
-14. validar `https://firecrawl.guiosoft.info` via Cloudflare — **próximo teste**;
-15. validar funcionalmente request real `/v1/scrape` — **logo depois do teste de rota**;
-16. observar logs e consumo de recursos;
-17. parar o Docker Compose antigo após período de confiança;
-18. manter rollback simples enquanto a nova instalação estiver em observação.
+12. validar comunicação interna e readiness — **concluído**;
+13. validar API localmente pelo Traefik usando Host header — **concluído**;
+14. validar `https://firecrawl.guiosoft.info` via Cloudflare — **concluído**;
+15. validar funcionalmente request real `/v1/scrape` — **concluído**;
+16. observar logs, restarts e consumo de recursos por um período maior — **em andamento**;
+17. decidir política de autenticação/rate limiting da API pública;
+18. parar o Docker Compose antigo após período de confiança;
+19. remover Docker Compose somente após estabilidade suficiente.
 
 Como não haverá migração de dados persistentes do Firecrawl nesta fase, o cutover fica significativamente mais simples: não existe sincronização de banco antigo/novo nem risco de divergência de writes entre bancos.
 
