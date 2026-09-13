@@ -274,7 +274,7 @@ rabbitmq            ~197m CPU  ~224 MiB RAM
 redis               ~5m CPU    ~9 MiB RAM
 ```
 
-A API é claramente o maior consumidor de memória nesta amostra. Essa medição isolada não é suficiente para concluir vazamento ou necessidade de tuning, mas justifica acompanhar o comportamento ao longo do tempo e sob mais carga antes do cutover definitivo.
+A API é claramente o maior consumidor de memória nesta amostra. A comparação com `docker stats` mostrou que esse perfil é compatível com o runtime Docker existente, no qual a API também é o maior consumidor e opera na faixa de múltiplos GiB com limite de 4 GiB. Portanto, não há evidência atual de overhead anormal introduzido pelo K3s.
 
 ## Observação de estabilidade
 
@@ -293,6 +293,32 @@ Ela mostra:
 - warnings/errors recentes de PostgreSQL, Redis, RabbitMQ, Playwright e API.
 
 O comando não gera scrape, não reinicia recursos e não altera o Docker Compose. Ele serve para comparar consumo e estabilidade ao longo do período de observação antes do cutover.
+
+## Investigação dos restarts iniciais da API
+
+A primeira observação mostrou dois restarts históricos do `firecrawl-api`. O estado anterior do container confirmou:
+
+```text
+reason: Error
+exit code: 1
+```
+
+Não houve `OOMKilled`. O log anterior mostrou que um worker NuQ tentou conectar ao RabbitMQ em `:5672` antes de o broker estar aceitando conexões e recebeu `ECONNREFUSED`; o harness do Firecrawl encerrou o conjunto de processos e o Kubernetes reiniciou o container.
+
+Isso caracteriza uma **corrida de inicialização entre Deployments**, não falta de memória nem falha persistente do Firecrawl. Readiness probes impedem tráfego para um Pod não pronto, mas não impõem ordem de startup entre Deployments independentes.
+
+Para tornar o bootstrap determinístico, o Deployment `firecrawl-api` agora possui um `initContainer` que reutiliza a mesma imagem Firecrawl já pinada por digest e aguarda conectividade TCP com:
+
+```text
+nuq-postgres:5432
+redis:6379
+rabbitmq:5672
+playwright-service:3000
+```
+
+Somente depois dessas dependências aceitarem conexão o container principal da API é iniciado. Não foi introduzida imagem auxiliar adicional nem tag flutuante.
+
+Após aplicar essa mudança, um novo Pod deve iniciar com `RESTARTS=0`; essa validação é o próximo critério antes do cutover.
 
 ## Estratégia de implantação
 
@@ -313,10 +339,12 @@ Sequência atualizada:
 13. validar API localmente pelo Traefik usando Host header — **concluído**;
 14. validar `https://firecrawl.guiosoft.info` via Cloudflare — **concluído**;
 15. validar funcionalmente request real `/v1/scrape` — **concluído**;
-16. observar logs, restarts e consumo de recursos por um período maior — **em andamento**;
-17. decidir política de autenticação/rate limiting da API pública;
-18. parar o Docker Compose antigo após período de confiança;
-19. remover Docker Compose somente após estabilidade suficiente.
+16. investigar restarts iniciais — **concluído: corrida de startup com RabbitMQ, sem OOM**;
+17. aplicar e validar `initContainer` de espera das dependências — **próximo passo**;
+18. observar logs, restarts e consumo de recursos por um período maior;
+19. implementar autenticação/rate limiting para a API pública;
+20. parar o Docker Compose antigo após período de confiança;
+21. remover Docker Compose somente após estabilidade suficiente.
 
 Como não haverá migração de dados persistentes do Firecrawl nesta fase, o cutover fica significativamente mais simples: não existe sincronização de banco antigo/novo nem risco de divergência de writes entre bancos.
 
@@ -342,5 +370,6 @@ Como o estado K3s atual é efêmero, não há necessidade de sincronizar dados d
 - Firecrawl environment example: https://github.com/firecrawl/firecrawl/blob/main/apps/api/.env.example
 - Firecrawl upstream: https://github.com/firecrawl/firecrawl
 - Firecrawl scrape endpoint examples in upstream repository: `POST /v1/scrape` with JSON payload containing `url` and `formats`
+- Kubernetes init containers: https://kubernetes.io/docs/concepts/workloads/pods/init-containers/
 - Kubernetes `emptyDir`: https://kubernetes.io/docs/concepts/storage/volumes/#emptydir
 - K3s storage: https://docs.k3s.io/add-ons/storage
