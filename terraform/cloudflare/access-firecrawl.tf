@@ -31,7 +31,7 @@ resource "cloudflare_zero_trust_access_application" "firecrawl" {
   policies = [
     {
       name       = "Allow Hermes and OpenCode service tokens"
-      decision   = "service_auth"
+      decision   = "non_identity"
       precedence = 1
       include = [
         {
