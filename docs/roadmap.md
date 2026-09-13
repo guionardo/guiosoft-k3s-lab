@@ -84,10 +84,14 @@ Para cada workload futuro:
 - [x] validar `https://firecrawl.guiosoft.info` pelo Cloudflare Tunnel;
 - [x] executar request funcional real `POST /v1/scrape` com `success=true` e Markdown retornado;
 - [x] registrar baseline pós-scrape: API ~2826 MiB, PostgreSQL ~110 MiB, Playwright ~268 MiB, RabbitMQ ~224 MiB, Redis ~9 MiB;
+- [x] comparar baseline com Docker e confirmar perfil de memória compatível, sem evidência de overhead anormal do K3s;
 - [x] registrar que a API emite `You're bypassing authentication` com `USE_DB_AUTHENTICATION=false`; tratar como decisão de segurança, não falha de runtime;
 - [x] adicionar observação read-only de readiness, restarts, eventos, recursos e warnings/errors por componente;
+- [x] investigar os dois restarts iniciais da API: `exit code 1`, sem OOM, causados por `ECONNREFUSED` ao RabbitMQ durante corrida de startup;
+- [x] adicionar `initContainer` na API para aguardar PostgreSQL, Redis, RabbitMQ e Playwright antes de iniciar o harness Firecrawl;
+- [ ] reaplicar o Deployment e validar novo Pod da API com `RESTARTS=0`;
 - [ ] observar estabilidade e consumo por um período maior antes do cutover definitivo;
-- [ ] decidir se autenticação/rate limiting adicional será necessária para uso público;
+- [ ] implementar autenticação/rate limiting para a API pública;
 - [ ] parar Docker Compose antigo após período de confiança;
 - [ ] remover Docker Compose somente após estabilidade suficiente.
 
