@@ -43,7 +43,7 @@ O acesso `kubectl` a partir de outra máquina da LAN também foi validado usando
 
 O layout persistente em `/srv/k3s` foi validado no host. Novos volumes `local-path` foram reprovisionados e confirmados fisicamente abaixo de `/mnt/store1/k3s/local-path`. No perfil atual do `local-path`, a capacidade declarada de um PVC não pré-aloca nem reserva fisicamente todo esse espaço no ext4 do host e também não funciona como quota rígida por diretório; por isso o espaço livre real de `/mnt/store1` deve ser monitorado independentemente da soma nominal dos PVCs.
 
-A infraestrutura Cloudflare está declarada em Terraform usando o provider v5. O Tunnel existente, sua configuração remota e o wildcard DNS foram importados para o state local e o `terraform plan` foi validado com `No changes`.
+A infraestrutura Cloudflare está declarada em Terraform usando o provider v5. O Tunnel existente, sua configuração remota e o wildcard DNS foram importados para o state local e o `terraform plan` foi validado com `No changes`. A aplicação Cloudflare Access do Firecrawl e dois Service Tokens independentes para Hermes e OpenCode também foram criados por Terraform.
 
 SOPS + age estão instalados via Ansible. A identidade age é criada de forma idempotente somente quando ausente, a configuração pública do recipient está versionada em `.sops.yaml`, e o fluxo de encrypt/decrypt e de Kubernetes Secrets cifrados foi validado.
 
@@ -65,7 +65,9 @@ O dashboard declarativo `OTel Go Demo - Application Metrics` e as regras `OtelGo
 
 O controlled incident drill também foi validado em runtime. O target `make otel-go-demo-incident-test` reduziu temporariamente o downstream descartável para zero replicas, produziu HTTP 502 preservando o `trace_id`, confirmou a detecção nas métricas e no alerta, localizou o mesmo incidente no Loki e no Tempo, restaurou automaticamente a escala original e confirmou a recuperação da chamada frontend -> downstream.
 
-A Fase 4 começou com o **Firecrawl como primeiro workload real**. O stack Docker Compose atual foi auditado sem expor secrets: cinco containers, rede privada `firecrawl_backend`, API publicada em `3002`, volumes identificados e imagens efetivas pinadas por digest no scaffold Kubernetes. Para a primeira versão K3s, PostgreSQL/NuQ, Redis e RabbitMQ foram deliberadamente classificados como efêmeros e usam `emptyDir`, sem PVCs Firecrawl. A API será publicada por Traefik em `firecrawl.guiosoft.info`, aproveitando o wildcard Cloudflare Tunnel já existente; os backends permanecem somente em `ClusterIP`. O Docker Compose atual continua disponível durante a validação inicial.
+A Fase 4 usa o **Firecrawl como primeiro workload real**. A versão K3s foi implantada com os cinco componentes Ready, scrape funcional real validado e imagens pinadas por digest. PostgreSQL/NuQ, Redis e RabbitMQ foram deliberadamente classificados como efêmeros e usam `emptyDir`, sem PVCs Firecrawl. Uma corrida de startup com RabbitMQ foi corrigida com `initContainer`, e o novo Pod da API foi validado com `RESTARTS=0`.
+
+`firecrawl.guiosoft.info` está protegido por Cloudflare Access Service Auth. Hermes e OpenCode possuem Service Tokens separados; requests sem credencial recebem HTTP 401, enquanto ambos os tokens foram validados com `POST /v1/scrape` funcional. O Docker Compose antigo continua ativo somente como rollback durante o cutover final.
 
 ## Divisão de responsabilidades
 
@@ -74,6 +76,7 @@ Terraform
 ├── Cloudflare
 │   ├── DNS
 │   ├── Tunnel
+│   ├── Access / Service Tokens
 │   ├── rotas/public hostnames
 │   └── bucket R2 de backup
 └── infraestrutura externa futura
@@ -245,11 +248,11 @@ Detalhes em [`docs/observability.md`](docs/observability.md), [`docs/otel-go-dem
 
 ## Firecrawl
 
-O primeiro workload real escolhido para migração é o Firecrawl, atualmente executado por Docker Compose no mesmo host.
+O primeiro workload real escolhido para migração é o Firecrawl. A versão Kubernetes já está funcionalmente validada; o Docker Compose antigo permanece temporariamente como rollback.
 
 O perfil Kubernetes atual tomou duas decisões explícitas:
 
-- `firecrawl-api` terá Ingress público em `https://firecrawl.guiosoft.info`;
+- `firecrawl-api` é publicado em `https://firecrawl.guiosoft.info` por Traefik e protegido por Cloudflare Access;
 - PostgreSQL/NuQ, Redis e RabbitMQ são efêmeros nesta etapa e usam `emptyDir`, sem PVCs.
 
 Todas as imagens estão pinadas pelos digests observados no runtime Docker atual. O Ingress publica somente a API; PostgreSQL, Redis, RabbitMQ e Playwright continuam internos ao namespace.
@@ -260,6 +263,11 @@ Operações atuais:
 make firecrawl-migration-audit
 make firecrawl-k8s-validate
 make firecrawl-k8s-status
+bash scripts/firecrawl-k8s.sh deploy
+bash scripts/firecrawl-k8s.sh test
+bash scripts/firecrawl-k8s.sh scrape-test
+bash scripts/firecrawl-k8s.sh observe
+bash scripts/firecrawl-access-test.sh
 ```
 
 `make firecrawl-k8s-validate` é read-only: renderiza Kustomize, executa dry-run client-side, exige o Ingress `firecrawl.guiosoft.info`, confirma que as imagens estão pinadas por digest e que não existem PVCs Firecrawl neste perfil.
@@ -272,7 +280,13 @@ make secret-validate FILE=kubernetes/apps/firecrawl/firecrawl-secrets.sops.yaml
 make secret-apply FILE=kubernetes/apps/firecrawl/firecrawl-secrets.sops.yaml
 ```
 
-O `.env` real nunca deve ser versionado. O Ingress não adiciona autenticação por si só; se a API Firecrawl não exigir credencial de cliente, o endpoint será publicamente utilizável e poderá consumir os recursos/integrações configurados.
+O `.env` real nunca deve ser versionado.
+
+A autenticação pública é feita por Cloudflare Access Service Auth, com um Service Token por agente. O Firecrawl mantém `USE_DB_AUTHENTICATION=false` nesta fase; o warning de bypass de autenticação nativa é esperado porque a borda Cloudflare é a camada autoritativa. A validação confirmou HTTP 401 sem token e scrape autenticado com sucesso para Hermes e OpenCode.
+
+Os Client Secrets dos Service Tokens existem também no state local do Terraform e devem ser tratados como segredo. Nunca devem ser adicionados ao Git, logs ou exemplos de documentação.
+
+O próximo passo de cutover é parar, mas ainda não remover, o Docker Compose antigo. Depois disso, o K3s deve ser observado sozinho antes da remoção definitiva de containers/volumes antigos.
 
 Detalhes em [`docs/firecrawl-migration.md`](docs/firecrawl-migration.md) e a semântica de PVC/local-path em [`docs/storage.md`](docs/storage.md).
 
@@ -307,6 +321,7 @@ Detalhes em [`docs/disaster-recovery.md`](docs/disaster-recovery.md).
 Este repositório é público. Nunca versionar:
 
 - tokens do Cloudflare;
+- Cloudflare Access Client Secrets;
 - credenciais R2 em plaintext;
 - senha do repositório Restic;
 - kubeconfig real;
@@ -314,6 +329,7 @@ Este repositório é público. Nunca versionar:
 - senhas;
 - arquivos `.env` com credenciais;
 - Secrets Kubernetes em texto puro;
+- Terraform state ou plans contendo secrets;
 - backups ou dumps de banco de dados;
 - relatórios de discovery sem revisão.
 
@@ -338,6 +354,8 @@ A evolução atual foi baseada em:
 - validação real das métricas customizadas `otel_demo_*` e das regras customizadas no Prometheus;
 - validação real do controlled incident drill cobrindo HTTP 502, métricas, alerta, Loki, Tempo e recuperação do downstream;
 - auditoria read-only do Docker Compose Firecrawl, identificação de volumes/digests e preparação do perfil K3s efêmero com Ingress público;
+- validação real do Firecrawl K3s com scrape funcional, correção da corrida de startup e `RESTARTS=0` após redeploy;
+- validação real do Cloudflare Access Service Auth: HTTP 401 sem Service Token e `/v1/scrape` autenticado com Hermes e OpenCode;
 - Prometheus Go client `v1.24.1` para métricas customizadas;
 - documentação oficial do Prometheus Operator sobre `ServiceMonitor` e `PrometheusRule`;
 - documentação oficial do Prometheus sobre alerting rules;
@@ -347,6 +365,7 @@ A evolução atual foi baseada em:
 - documentação oficial do Kubernetes sobre kubeconfig, `kubectl`, Persistent Volumes e `emptyDir`;
 - documentação oficial do Grafana Loki, Alloy, Tempo e provisioning de datasources;
 - documentação oficial do Firecrawl para self-hosting e configuração de ambiente;
+- documentação oficial do Cloudflare Access sobre políticas Service Auth e Service Tokens;
 - documentação oficial do Restic, Cloudflare R2, SOPS, age, Helm e systemd.
 
 Referências relevantes:
@@ -363,6 +382,8 @@ Referências relevantes:
 - https://grafana.com/docs/tempo/latest/
 - https://github.com/firecrawl/firecrawl/blob/main/SELF_HOST.md
 - https://github.com/firecrawl/firecrawl/blob/main/apps/api/.env.example
+- https://developers.cloudflare.com/cloudflare-one/access-controls/policies/common-policies/
+- https://developers.cloudflare.com/api/resources/zero_trust/subresources/access/subresources/service_tokens/
 - https://kubernetes.io/docs/concepts/storage/persistent-volumes/
 - https://kubernetes.io/docs/concepts/storage/volumes/#emptydir
 - https://docs.k3s.io/add-ons/storage
