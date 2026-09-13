@@ -21,6 +21,8 @@
 - [x] Helm pinado via Ansible;
 - [x] Terraform Cloudflare provider v5;
 - [x] importar Tunnel, configuração remota e wildcard DNS e obter `No changes`;
+- [x] criar por Terraform a aplicação Cloudflare Access do Firecrawl e dois Service Tokens independentes para Hermes e OpenCode;
+- [x] validar que Service Auth no provider/API usa `decision = "non_identity"`;
 - [x] SOPS + age com round-trip e fluxo de Kubernetes Secret cifrado;
 - [x] Makefile como interface operacional principal;
 - [ ] role `firewall` somente após classificação final dos serviços LAN/cluster/loopback.
@@ -46,6 +48,8 @@
 - [x] validar Cloudflare -> Tunnel -> Traefik -> Ingress -> Service -> Pod;
 - [x] definir padrão de Ingress e 404 para hosts desconhecidos;
 - [x] colocar Tunnel/config/wildcard sob Terraform;
+- [x] proteger `firecrawl.guiosoft.info` com Cloudflare Access Service Auth e tokens separados por agente;
+- [x] validar HTTP 401 sem token e acesso funcional autenticado com os tokens Hermes e OpenCode;
 - [ ] migrar `cloudflared` para Kubernetes somente depois das demais fundações.
 
 ## Fase 4 — Workloads
@@ -91,9 +95,13 @@ Para cada workload futuro:
 - [x] adicionar `initContainer` na API para aguardar PostgreSQL, Redis, RabbitMQ e Playwright antes de iniciar o harness Firecrawl;
 - [x] reaplicar o Deployment e validar novo Pod da API com `RESTARTS=0`; único evento transitório foi `Startup probe failed` enquanto a API ainda abria a porta 3002, sem reinício do container;
 - [x] classificar warnings de startup do RabbitMQ por conexões TCP encerradas e `AUTUMN_SECRET_KEY` ausente como transitórios/opcionais no perfil atual;
-- [ ] observar estabilidade e consumo por um período maior antes do cutover definitivo;
-- [ ] implementar autenticação/rate limiting para a API pública;
-- [ ] parar Docker Compose antigo após período de confiança;
+- [x] definir Cloudflare Access Service Auth como camada de autenticação da API para clientes máquina-a-máquina;
+- [x] manter `USE_DB_AUTHENTICATION=false` intencionalmente; autenticação autoritativa está na borda Cloudflare;
+- [x] criar Service Tokens separados para Hermes e OpenCode, com validade de 1 ano;
+- [x] validar `firecrawl-access-test`: sem credenciais recebe HTTP 401 e requests autenticados executam `/v1/scrape` com sucesso;
+- [ ] observar estabilidade e consumo por um período maior antes da remoção definitiva do runtime antigo;
+- [ ] parar Docker Compose antigo mantendo rollback simples;
+- [ ] observar K3s sozinho após o cutover;
 - [ ] remover Docker Compose somente após estabilidade suficiente.
 
 ## Fase 5 — Storage e backup
