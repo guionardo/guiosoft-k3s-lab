@@ -127,9 +127,11 @@ OpenCode -- Service Token próprio --/
 `terraform/cloudflare/access-firecrawl.tf` cria:
 
 - aplicação Access `Firecrawl Agents` para `firecrawl.guiosoft.info`;
-- policy inline com decisão `service_auth`;
+- policy inline de Service Auth usando `decision = "non_identity"`;
 - Service Token `firecrawl-hermes`;
 - Service Token `firecrawl-opencode`.
+
+Na UI/documentação do Cloudflare, essa ação é apresentada como **Service Auth**. No provider/API atuais, o valor correto da decisão é `non_identity`; `service_auth` não é um valor válido no schema do provider v5.24.
 
 Os tokens usam validade explícita de 1 ano (`8760h`). A aplicação responde com HTTP 401 quando uma requisição protegida não satisfaz a policy Service Auth.
 
@@ -189,6 +191,7 @@ Outros registros DNS específicos podem ser importados individualmente. Não dev
 ## Fontes
 
 - Cloudflare Terraform Provider v5.24: https://developers.cloudflare.com/api/terraform/
+- Cloudflare Access common policies / Service Auth (`decision = "non_identity"`): https://developers.cloudflare.com/cloudflare-one/access-controls/policies/common-policies/
 - Cloudflare Access Service Tokens: https://developers.cloudflare.com/cloudflare-one/access-controls/service-credentials/service-tokens/
 - Cloudflare provider `cloudflare_zero_trust_access_service_token`: https://registry.terraform.io/providers/cloudflare/cloudflare/latest/docs/resources/zero_trust_access_service_token
 - Cloudflare provider `cloudflare_zero_trust_access_application`: https://registry.terraform.io/providers/cloudflare/cloudflare/latest/docs/resources/zero_trust_access_application
