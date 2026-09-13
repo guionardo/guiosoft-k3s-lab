@@ -5,6 +5,7 @@ ACTION="${1:-validate}"
 APP_DIR="${FIRECRAWL_APP_DIR:-kubernetes/apps/firecrawl}"
 NAMESPACE="${FIRECRAWL_NAMESPACE:-firecrawl}"
 EXPECTED_HOST="${FIRECRAWL_HOST:-firecrawl.guiosoft.info}"
+SCRAPE_URL="${FIRECRAWL_SCRAPE_URL:-https://example.com}"
 
 need() {
   command -v "$1" >/dev/null || { echo "error: required command not found: $1" >&2; exit 1; }
@@ -181,13 +182,68 @@ test_path() {
   echo "No scrape/crawl job was submitted by this test."
 }
 
+scrape_test() {
+  need curl
+  need jq
+
+  test_path
+
+  echo
+  echo "Submitting functional scrape through public endpoint"
+  echo "Target URL: $SCRAPE_URL"
+
+  response="$(mktemp)"
+  trap 'rm -f "$response"' RETURN
+  code="$(curl --silent --show-error --connect-timeout 10 --max-time 120 \
+    -o "$response" \
+    -w '%{http_code}' \
+    -X POST "https://$EXPECTED_HOST/v1/scrape" \
+    -H 'Content-Type: application/json' \
+    --data "$(jq -cn --arg url "$SCRAPE_URL" '{url:$url,formats:["markdown"]}')")"
+
+  if [[ "$code" != "200" ]]; then
+    echo "error: scrape request returned HTTP $code" >&2
+    jq . "$response" 2>/dev/null || cat "$response" >&2
+    return 1
+  fi
+
+  if ! jq -e '.success == true' "$response" >/dev/null 2>&1; then
+    echo "error: scrape response did not report success=true" >&2
+    jq . "$response" >&2
+    return 1
+  fi
+
+  markdown_length="$(jq -r '(.data.markdown // "") | length' "$response")"
+  if (( markdown_length < 1 )); then
+    echo "error: scrape succeeded but returned empty markdown" >&2
+    jq . "$response" >&2
+    return 1
+  fi
+
+  echo "POST /v1/scrape: HTTP 200 / success=true"
+  echo "Returned markdown length: $markdown_length characters"
+
+  echo
+  echo "Pod resource usage after scrape:"
+  kubectl top pods -n "$NAMESPACE" 2>/dev/null || echo "metrics-server data unavailable"
+
+  echo
+  echo "Recent Firecrawl API warnings/errors (if any):"
+  kubectl logs -n "$NAMESPACE" deployment/firecrawl-api --since=5m 2>/dev/null | grep -Ei 'warn|error|failed|exception' | tail -n 20 || true
+
+  echo
+  echo "Firecrawl functional scrape validation: OK"
+  echo "Docker Compose remains untouched."
+}
+
 case "$ACTION" in
   validate) validate ;;
   status) status ;;
   deploy) deploy ;;
   test) test_path ;;
+  scrape-test) scrape_test ;;
   *)
-    echo "Usage: $0 {validate|status|deploy|test}" >&2
+    echo "Usage: $0 {validate|status|deploy|test|scrape-test}" >&2
     exit 2
     ;;
 esac
