@@ -76,14 +76,17 @@ Para cada workload futuro:
 - [x] manter apenas a API externamente publicada; backends continuam `ClusterIP`;
 - [x] atualizar validação read-only para exigir Ingress, imagens por digest e ausência de PVCs Firecrawl;
 - [x] criar helper para gerar Secret SOPS diretamente do `.env` local sem imprimir valores;
-- [ ] validar em runtime o scaffold com `make firecrawl-k8s-validate`;
-- [ ] gerar `firecrawl-secrets.sops.yaml` a partir do `.env` local;
-- [ ] validar/aplicar o Secret com os targets genéricos SOPS;
-- [ ] subir a stack K3s e validar readiness/comunicação interna;
-- [ ] validar rota local Traefik usando `Host: firecrawl.guiosoft.info`;
-- [ ] validar `https://firecrawl.guiosoft.info` pelo Cloudflare Tunnel;
-- [ ] executar requests funcionais reais de scrape/crawl;
-- [ ] observar logs e recursos no Prometheus/Grafana/Loki;
+- [x] validar em runtime o scaffold com `make firecrawl-k8s-validate`;
+- [x] gerar `firecrawl-secrets.sops.yaml` a partir do `.env` local;
+- [x] validar/aplicar o Secret com os targets genéricos SOPS;
+- [x] subir a stack K3s e validar os cinco Deployments `Ready`;
+- [x] validar rota local Traefik usando `Host: firecrawl.guiosoft.info`;
+- [x] validar `https://firecrawl.guiosoft.info` pelo Cloudflare Tunnel;
+- [x] executar request funcional real `POST /v1/scrape` com `success=true` e Markdown retornado;
+- [x] registrar baseline pós-scrape: API ~2826 MiB, PostgreSQL ~110 MiB, Playwright ~268 MiB, RabbitMQ ~224 MiB, Redis ~9 MiB;
+- [x] registrar que a API emite `You're bypassing authentication` com `USE_DB_AUTHENTICATION=false`; tratar como decisão de segurança, não falha de runtime;
+- [x] adicionar observação read-only de readiness, restarts, eventos, recursos e warnings/errors por componente;
+- [ ] observar estabilidade e consumo por um período maior antes do cutover definitivo;
 - [ ] decidir se autenticação/rate limiting adicional será necessária para uso público;
 - [ ] parar Docker Compose antigo após período de confiança;
 - [ ] remover Docker Compose somente após estabilidade suficiente.
