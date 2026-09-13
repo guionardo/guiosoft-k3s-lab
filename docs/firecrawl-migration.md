@@ -2,7 +2,7 @@
 
 ## Estado atual
 
-Firecrawl é o primeiro workload real escolhido para migração. Hoje ele roda em Docker Compose no host Debian e deve permanecer disponível até que a versão Kubernetes esteja validada.
+Firecrawl é o primeiro workload real escolhido para migração. Hoje ele roda em paralelo no Docker Compose e no K3s durante a fase final de cutover. A versão Kubernetes já foi validada funcionalmente e está protegida por Cloudflare Access; o Compose permanece disponível apenas como rollback até a próxima etapa.
 
 Componentes observados no runtime atual:
 
@@ -59,7 +59,7 @@ O consumo real cresce conforme arquivos são gravados. Isso permite overcommit e
 
 ## Publicação externa
 
-Foi aprovada a publicação direta da API em:
+A API é publicada em:
 
 ```text
 https://firecrawl.guiosoft.info
@@ -75,6 +75,8 @@ Fluxo validado:
 
 ```text
 Internet
+  ↓
+Cloudflare Access
   ↓
 Cloudflare *.guiosoft.info
   ↓
@@ -95,15 +97,56 @@ Nenhum PostgreSQL, Redis, RabbitMQ ou Playwright é publicado externamente; todo
 
 ### Segurança da API pública
 
-O Ingress não adiciona autenticação por si só. No runtime atual, a API registrou:
+O Firecrawl continua com:
+
+```text
+USE_DB_AUTHENTICATION=false
+```
+
+Por isso a aplicação ainda pode registrar:
 
 ```text
 You're bypassing authentication
 ```
 
-Isso está coerente com `USE_DB_AUTHENTICATION=false`: o warning não representa uma falha de runtime, mas confirma que o endpoint público opera sem autenticação de aplicação nesta configuração.
+Esse warning é esperado no perfil atual. A autenticação autoritativa foi deliberadamente movida para a borda Cloudflare, porque os consumidores são agentes máquina-a-máquina e não usuários humanos.
 
-Consequência: `firecrawl.guiosoft.info` pode ser utilizado por qualquer cliente que alcance o endpoint, podendo consumir CPU, memória e integrações externas configuradas. Autenticação/rate limiting via aplicação ou Cloudflare permanece uma decisão pendente antes de considerar a exposição pública como definitiva.
+Foi criada por Terraform uma aplicação Cloudflare Access para `firecrawl.guiosoft.info` usando **Service Auth**. No provider/API da Cloudflare, essa ação é representada por:
+
+```hcl
+decision = "non_identity"
+```
+
+Foram criados dois Service Tokens independentes:
+
+- `firecrawl-hermes`;
+- `firecrawl-opencode`.
+
+Cada agente usa os headers padrão:
+
+```text
+CF-Access-Client-Id
+CF-Access-Client-Secret
+```
+
+O header `Authorization` fica livre para uma eventual autenticação nativa futura do Firecrawl.
+
+O comportamento foi validado em runtime:
+
+```text
+sem Service Token -> HTTP 401
+Hermes token      -> POST /v1/scrape com sucesso
+OpenCode token    -> POST /v1/scrape com sucesso
+```
+
+O helper `scripts/firecrawl-access-test.sh` executa a validação sem imprimir credenciais. Os Client Secrets e o API Token Cloudflare nunca devem ser versionados; os secrets dos Service Tokens também existem no state local do Terraform, portanto esse state deve ser tratado como material sensível.
+
+Durante a configuração houve dois problemas de autorização úteis para troubleshooting:
+
+1. um API Token Cloudflare com validade incorreta retornou HTTP 401 durante o refresh de Tunnel/DNS;
+2. depois de corrigida a validade, a ausência de `Access: Service Tokens Write` causou HTTP 403 `auth.forbidden` na criação dos Service Tokens.
+
+A correção foi manter um token de IaC com escopo mínimo suficiente para Tunnel, DNS, Access Apps/Policies e Access Service Tokens.
 
 ## Recursos Kubernetes
 
@@ -245,7 +288,7 @@ bash scripts/firecrawl-k8s.sh scrape-test
 - `GET /` local via Traefik usando `Host: firecrawl.guiosoft.info`;
 - `GET /` público via Cloudflare Tunnel.
 
-Esse caminho foi validado em runtime com HTTP 200 tanto localmente quanto via Cloudflare.
+Esse caminho foi validado em runtime com HTTP 200 tanto localmente quanto via Cloudflare antes da ativação do Access. Após a ativação do Access, requests públicos sem Service Token passam a receber HTTP 401, como esperado.
 
 `scrape-test` executa primeiro essa validação de caminho e, em seguida, envia um request real:
 
@@ -292,7 +335,7 @@ Ela mostra:
 - eventos Kubernetes do tipo Warning;
 - warnings/errors recentes de PostgreSQL, Redis, RabbitMQ, Playwright e API.
 
-O comando não gera scrape, não reinicia recursos e não altera o Docker Compose. Ele serve para comparar consumo e estabilidade ao longo do período de observação antes do cutover.
+O comando não gera scrape, não reinicia recursos e não altera o Docker Compose. Ele serve para comparar consumo e estabilidade ao longo do período de observação antes da remoção definitiva do runtime antigo.
 
 ## Investigação dos restarts iniciais da API
 
@@ -307,7 +350,7 @@ Não houve `OOMKilled`. O log anterior mostrou que um worker NuQ tentou conectar
 
 Isso caracteriza uma **corrida de inicialização entre Deployments**, não falta de memória nem falha persistente do Firecrawl. Readiness probes impedem tráfego para um Pod não pronto, mas não impõem ordem de startup entre Deployments independentes.
 
-Para tornar o bootstrap determinístico, o Deployment `firecrawl-api` agora possui um `initContainer` que reutiliza a mesma imagem Firecrawl já pinada por digest e aguarda conectividade TCP com:
+Para tornar o bootstrap determinístico, o Deployment `firecrawl-api` possui um `initContainer` que reutiliza a mesma imagem Firecrawl já pinada por digest e aguarda conectividade TCP com:
 
 ```text
 nuq-postgres:5432
@@ -318,7 +361,7 @@ playwright-service:3000
 
 Somente depois dessas dependências aceitarem conexão o container principal da API é iniciado. Não foi introduzida imagem auxiliar adicional nem tag flutuante.
 
-Após aplicar essa mudança, um novo Pod deve iniciar com `RESTARTS=0`; essa validação é o próximo critério antes do cutover.
+A correção foi validada em runtime: após o redeploy, todos os Pods ficaram `Running/Ready` com `RESTARTS=0`. Houve apenas um evento transitório de `Startup probe failed` enquanto a API ainda abria a porta 3002; a probe tentou novamente e o container não reiniciou. Warnings de conexões TCP encerradas no RabbitMQ durante bootstrap e `AUTUMN_SECRET_KEY` ausente foram classificados como transitórios/opcionais para o perfil atual.
 
 ## Estratégia de implantação
 
@@ -340,13 +383,31 @@ Sequência atualizada:
 14. validar `https://firecrawl.guiosoft.info` via Cloudflare — **concluído**;
 15. validar funcionalmente request real `/v1/scrape` — **concluído**;
 16. investigar restarts iniciais — **concluído: corrida de startup com RabbitMQ, sem OOM**;
-17. aplicar e validar `initContainer` de espera das dependências — **próximo passo**;
-18. observar logs, restarts e consumo de recursos por um período maior;
-19. implementar autenticação/rate limiting para a API pública;
-20. parar o Docker Compose antigo após período de confiança;
-21. remover Docker Compose somente após estabilidade suficiente.
+17. aplicar e validar `initContainer` de espera das dependências — **concluído; novo Pod com RESTARTS=0**;
+18. definir autenticação da API — **concluído: Cloudflare Access Service Auth**;
+19. criar Service Tokens por agente — **concluído: Hermes e OpenCode**;
+20. validar bloqueio sem token e scrape autenticado — **concluído: 401 sem credencial e sucesso com ambos os tokens**;
+21. parar o Docker Compose antigo mantendo possibilidade de rollback;
+22. observar estabilidade e consumo com apenas o K3s atendendo o serviço;
+23. remover Docker Compose somente após estabilidade suficiente.
 
 Como não haverá migração de dados persistentes do Firecrawl nesta fase, o cutover fica significativamente mais simples: não existe sincronização de banco antigo/novo nem risco de divergência de writes entre bancos.
+
+## Próximo cutover
+
+O próximo passo operacional é **parar, não remover**, o Docker Compose antigo. Isso libera os recursos consumidos pelo runtime duplicado e ainda preserva um rollback rápido.
+
+Critérios já satisfeitos antes dessa parada:
+
+- cinco Deployments K3s Ready;
+- scrape funcional real validado;
+- dependências de startup estabilizadas com `initContainer`;
+- API protegida por Cloudflare Access;
+- HTTP 401 sem Service Token;
+- Hermes e OpenCode autenticados com sucesso;
+- Docker ainda intacto para rollback.
+
+Depois da parada do Compose, observar Pods, restarts, consumo e logs do Firecrawl K3s antes de remover qualquer volume/container antigo.
 
 ## Rollback
 
@@ -357,9 +418,9 @@ K3s Firecrawl apresenta problema
         ↓
 remover/desabilitar Ingress K3s se necessário
         ↓
-parar stack K3s
+reativar Docker Compose
         ↓
-reativar endpoint Docker :3002
+reativar endpoint Docker :3002 se necessário
 ```
 
 Como o estado K3s atual é efêmero, não há necessidade de sincronizar dados de volta ao Compose.
@@ -373,3 +434,6 @@ Como o estado K3s atual é efêmero, não há necessidade de sincronizar dados d
 - Kubernetes init containers: https://kubernetes.io/docs/concepts/workloads/pods/init-containers/
 - Kubernetes `emptyDir`: https://kubernetes.io/docs/concepts/storage/volumes/#emptydir
 - K3s storage: https://docs.k3s.io/add-ons/storage
+- Cloudflare Access common policies / Service Auth: https://developers.cloudflare.com/cloudflare-one/access-controls/policies/common-policies/
+- Cloudflare Access Service Tokens API: https://developers.cloudflare.com/api/resources/zero_trust/subresources/access/subresources/service_tokens/
+- Cloudflare Terraform provider `cloudflare_zero_trust_access_application`: https://registry.terraform.io/providers/cloudflare/cloudflare/latest/docs/resources/zero_trust_access_application
