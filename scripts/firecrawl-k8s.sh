@@ -5,7 +5,6 @@ ACTION="${1:-validate}"
 APP_DIR="${FIRECRAWL_APP_DIR:-kubernetes/apps/firecrawl}"
 NAMESPACE="${FIRECRAWL_NAMESPACE:-firecrawl}"
 EXPECTED_HOST="${FIRECRAWL_HOST:-firecrawl.guiosoft.info}"
-SCRAPE_URL="${FIRECRAWL_SCRAPE_URL:-https://example.com}"
 
 need() {
   command -v "$1" >/dev/null || { echo "error: required command not found: $1" >&2; exit 1; }
@@ -183,57 +182,101 @@ test_path() {
 }
 
 scrape_test() {
+  need kubectl
   need curl
-  need jq
+  need python3
 
   test_path
 
+  target_url="${FIRECRAWL_SCRAPE_URL:-https://example.com}"
   echo
   echo "Submitting functional scrape through public endpoint"
-  echo "Target URL: $SCRAPE_URL"
+  echo "Target URL: $target_url"
 
+  payload="$(python3 - "$target_url" <<'PY'
+import json, sys
+print(json.dumps({"url": sys.argv[1], "formats": ["markdown"]}))
+PY
+)"
   response="$(mktemp)"
   trap 'rm -f "$response"' RETURN
   code="$(curl --silent --show-error --connect-timeout 10 --max-time 120 \
-    -o "$response" \
-    -w '%{http_code}' \
-    -X POST "https://$EXPECTED_HOST/v1/scrape" \
+    -o "$response" -w '%{http_code}' \
     -H 'Content-Type: application/json' \
-    --data "$(jq -cn --arg url "$SCRAPE_URL" '{url:$url,formats:["markdown"]}')")"
+    --data "$payload" \
+    "https://$EXPECTED_HOST/v1/scrape")"
 
   if [[ "$code" != "200" ]]; then
-    echo "error: scrape request returned HTTP $code" >&2
-    jq . "$response" 2>/dev/null || cat "$response" >&2
+    echo "error: POST /v1/scrape returned HTTP $code" >&2
+    cat "$response" >&2
     return 1
   fi
 
-  if ! jq -e '.success == true' "$response" >/dev/null 2>&1; then
-    echo "error: scrape response did not report success=true" >&2
-    jq . "$response" >&2
-    return 1
-  fi
-
-  markdown_length="$(jq -r '(.data.markdown // "") | length' "$response")"
-  if (( markdown_length < 1 )); then
-    echo "error: scrape succeeded but returned empty markdown" >&2
-    jq . "$response" >&2
-    return 1
-  fi
-
-  echo "POST /v1/scrape: HTTP 200 / success=true"
-  echo "Returned markdown length: $markdown_length characters"
+  python3 - "$response" <<'PY'
+import json, sys
+from pathlib import Path
+p = Path(sys.argv[1])
+data = json.loads(p.read_text(encoding="utf-8"))
+if data.get("success") is not True:
+    raise SystemExit("error: Firecrawl response did not contain success=true")
+markdown = ((data.get("data") or {}).get("markdown") or "")
+if not markdown.strip():
+    raise SystemExit("error: Firecrawl response contains no markdown")
+print("POST /v1/scrape: HTTP 200 / success=true")
+print(f"Returned markdown length: {len(markdown)} characters")
+PY
 
   echo
   echo "Pod resource usage after scrape:"
-  kubectl top pods -n "$NAMESPACE" 2>/dev/null || echo "metrics-server data unavailable"
+  kubectl top pod -n "$NAMESPACE" 2>/dev/null || echo "metrics-server usage unavailable"
 
   echo
   echo "Recent Firecrawl API warnings/errors (if any):"
-  kubectl logs -n "$NAMESPACE" deployment/firecrawl-api --since=5m 2>/dev/null | grep -Ei 'warn|error|failed|exception' | tail -n 20 || true
+  kubectl logs -n "$NAMESPACE" deployment/firecrawl-api --since=5m 2>/dev/null \
+    | grep -Ei 'warn|error|fatal|exception' \
+    | tail -n 20 || true
 
   echo
   echo "Firecrawl functional scrape validation: OK"
   echo "Docker Compose remains untouched."
+}
+
+observe() {
+  need kubectl
+
+  echo "Firecrawl runtime observation (read-only)"
+  echo
+  echo "Deployments:"
+  kubectl get deployment -n "$NAMESPACE" \
+    -o custom-columns='NAME:.metadata.name,READY:.status.readyReplicas,AVAILABLE:.status.availableReplicas,DESIRED:.spec.replicas' \
+    --no-headers | sort
+
+  echo
+  echo "Pods / restarts / age:"
+  kubectl get pods -n "$NAMESPACE" \
+    -o custom-columns='NAME:.metadata.name,READY:.status.containerStatuses[0].ready,RESTARTS:.status.containerStatuses[0].restartCount,STATUS:.status.phase,AGE:.metadata.creationTimestamp' \
+    --no-headers | sort
+
+  echo
+  echo "Current pod resources:"
+  kubectl top pod -n "$NAMESPACE" 2>/dev/null || echo "metrics-server usage unavailable"
+
+  echo
+  echo "Recent warning events:"
+  kubectl get events -n "$NAMESPACE" --field-selector type=Warning --sort-by=.lastTimestamp 2>/dev/null | tail -n 30 || true
+
+  echo
+  echo "Recent warnings/errors by component (last 30 minutes):"
+  for deployment in nuq-postgres redis rabbitmq playwright-service firecrawl-api; do
+    echo "--- $deployment ---"
+    kubectl logs -n "$NAMESPACE" "deployment/$deployment" --since=30m 2>/dev/null \
+      | grep -Ei 'warn|error|fatal|exception|panic|oom' \
+      | tail -n 20 || true
+  done
+
+  echo
+  echo "Observation note: 'You're bypassing authentication' is expected while USE_DB_AUTHENTICATION=false."
+  echo "Treat it as a security decision, not a runtime failure."
 }
 
 case "$ACTION" in
@@ -242,8 +285,9 @@ case "$ACTION" in
   deploy) deploy ;;
   test) test_path ;;
   scrape-test) scrape_test ;;
+  observe) observe ;;
   *)
-    echo "Usage: $0 {validate|status|deploy|test|scrape-test}" >&2
+    echo "Usage: $0 {validate|status|deploy|test|scrape-test|observe}" >&2
     exit 2
     ;;
 esac
