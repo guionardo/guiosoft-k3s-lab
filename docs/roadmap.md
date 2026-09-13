@@ -89,7 +89,8 @@ Para cada workload futuro:
 - [x] adicionar observação read-only de readiness, restarts, eventos, recursos e warnings/errors por componente;
 - [x] investigar os dois restarts iniciais da API: `exit code 1`, sem OOM, causados por `ECONNREFUSED` ao RabbitMQ durante corrida de startup;
 - [x] adicionar `initContainer` na API para aguardar PostgreSQL, Redis, RabbitMQ e Playwright antes de iniciar o harness Firecrawl;
-- [ ] reaplicar o Deployment e validar novo Pod da API com `RESTARTS=0`;
+- [x] reaplicar o Deployment e validar novo Pod da API com `RESTARTS=0`; único evento transitório foi `Startup probe failed` enquanto a API ainda abria a porta 3002, sem reinício do container;
+- [x] classificar warnings de startup do RabbitMQ por conexões TCP encerradas e `AUTUMN_SECRET_KEY` ausente como transitórios/opcionais no perfil atual;
 - [ ] observar estabilidade e consumo por um período maior antes do cutover definitivo;
 - [ ] implementar autenticação/rate limiting para a API pública;
 - [ ] parar Docker Compose antigo após período de confiança;
