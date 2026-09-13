@@ -304,6 +304,52 @@ spec:
         app: firecrawl-api
         app.kubernetes.io/part-of: firecrawl
     spec:
+      initContainers:
+        - name: wait-for-dependencies
+          image: ghcr.io/firecrawl/firecrawl@sha256:a88c2c1b546560b77206cf88da87600cb69ac65358eed1a0f8bb06dde691b065
+          imagePullPolicy: IfNotPresent
+          command: ["node", "-e"]
+          args:
+            - |
+              const net = require("net");
+              const targets = [
+                ["nuq-postgres", 5432],
+                ["redis", 6379],
+                ["rabbitmq", 5672],
+                ["playwright-service", 3000],
+              ];
+              const deadline = Date.now() + 120000;
+              const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+              const probe = (host, port) => new Promise(resolve => {
+                const socket = net.createConnection({ host, port });
+                let settled = false;
+                const done = ok => {
+                  if (settled) return;
+                  settled = true;
+                  socket.destroy();
+                  resolve(ok);
+                };
+                socket.setTimeout(2000);
+                socket.once("connect", () => done(true));
+                socket.once("error", () => done(false));
+                socket.once("timeout", () => done(false));
+              });
+              (async () => {
+                for (const [host, port] of targets) {
+                  while (!(await probe(host, port))) {
+                    if (Date.now() >= deadline) {
+                      console.error(`timeout waiting for ${host}:${port}`);
+                      process.exit(1);
+                    }
+                    console.log(`waiting for ${host}:${port}`);
+                    await sleep(2000);
+                  }
+                  console.log(`${host}:${port} ready`);
+                }
+              })().catch(error => {
+                console.error(error);
+                process.exit(1);
+              });
       containers:
         - name: api
           image: ghcr.io/firecrawl/firecrawl@sha256:a88c2c1b546560b77206cf88da87600cb69ac65358eed1a0f8bb06dde691b065
