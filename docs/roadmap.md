@@ -174,7 +174,10 @@ A fundação de métricas, traces e logs está operacional e validada. O histór
 - [x] validar mudança versionada e rollback declarativo via Git sem indisponibilidade;
 - [x] migrar Firecrawl para Flux com cadeia independente `namespace -> secrets -> workload`;
 - [x] validar self-healing do `firecrawl-api` após drift controlado de réplicas, preservando HTTP 200 pela LAN;
-- [ ] migrar observabilidade/Helm para Flux após workloads mais simples.
+- [x] migrar observabilidade/Helm para Flux em ordem conservadora: Alloy -> OpenTelemetry Collector -> Tempo -> Loki -> kube-prometheus-stack;
+- [x] validar adoção dos releases existentes sem recriação, preservando versões, PVCs e workloads;
+- [x] validar traces distribuídos após adoção de OTel Collector/Tempo e correlação de logs após adoção Loki/Alloy;
+- [x] manter todos os cinco HelmReleases de observabilidade ativos e `Ready` sob Flux.
 
 ## Fase 8 — Disaster Recovery
 
