@@ -39,6 +39,8 @@ clusters/
     ├── firecrawl-namespace.yaml
     ├── firecrawl-secrets.yaml
     ├── firecrawl.yaml
+    ├── monitoring-namespace.yaml
+    ├── observability-helm.yaml
     └── kustomization.yaml
 ```
 
@@ -108,6 +110,50 @@ O teste é reproduzível por:
 bash scripts/firecrawl-gitops-test.sh
 ```
 
+## Terceira adoção: observabilidade via HelmRelease
+
+A stack de observabilidade já existia como releases Helm operacionais antes da adoção pelo Flux. Para evitar recriação acidental, cada `HelmRelease` foi declarado com `releaseName`, `targetNamespace` e `storageNamespace` correspondendo exatamente aos releases existentes e inicialmente ficou com `suspend: true`.
+
+A adoção foi feita uma release por vez, em ordem conservadora de blast radius:
+
+```text
+Alloy
+  ↓
+OpenTelemetry Collector
+  ↓
+Tempo
+  ↓
+Loki
+  ↓
+kube-prometheus-stack
+```
+
+As versões adotadas foram preservadas:
+
+```text
+alloy                    1.12.1
+otel-collector           opentelemetry-collector 0.172.1
+tempo                    2.2.3
+loki                     18.5.0
+kube-prometheus-stack    89.2.0
+```
+
+Cada release foi ativado individualmente (`suspend: false`) e reconciliado antes de avançar para o próximo componente.
+
+A validação cobriu:
+
+- `HelmRelease` com `Ready=True`;
+- release Helm runtime existente e `deployed`;
+- Pods/StatefulSets/Deployments preservados e Ready;
+- PVCs de Tempo, Prometheus e Grafana preservados;
+- OTLP `4317/4318` no OpenTelemetry Collector;
+- trace distribuído `otel-go-demo -> OTel Collector -> Tempo`;
+- logs `otel-go-demo -> Alloy -> Loki` com lookup por `trace_id`;
+- Prometheus Operator CRDs;
+- targets, métricas e PVCs via `make observability-validate`.
+
+O script `scripts/observability-gitops-stage.sh`, originalmente criado para validar o estágio suspenso, agora valida o estado final de ownership: os cinco HelmReleases devem estar ativos, `Ready`, com releases Helm runtime `deployed` e HelmRepositories `Ready`.
+
 ## SOPS + age
 
 O Flux usa decriptação SOPS diretamente nas Kustomizations de secrets:
@@ -139,15 +185,18 @@ Git -> cluster
 manual drift -> self-healing para o estado do Git
 Git change -> cluster
 Git rollback -> cluster
+Helm existente -> HelmRelease Flux -> reconciliação sem recriação
 ```
 
 No `cloudflared`, o Secret foi excluído manualmente e recriado pelo Flux a partir do Git cifrado. Também foram validados drift de réplicas e mudança/rollback de annotation via Git sem indisponibilidade pública.
 
 No Firecrawl, o drift controlado de réplicas foi restaurado pelo Flux e o endpoint LAN permaneceu HTTP 200.
 
+Na observabilidade, os releases existentes foram adotados individualmente, preservando workloads, storage e integração funcional entre métricas, traces e logs.
+
 ## Prune e segurança
 
-`prune` está habilitado apenas em escopos pequenos e conhecidos. Recursos críticos não serão transferidos para Flux sem antes confirmar:
+`prune` está habilitado apenas em escopos pequenos e conhecidos. Recursos críticos não são transferidos para Flux sem antes confirmar:
 
 - ownership declarativo claro;
 - backup/rollback apropriado;
@@ -170,24 +219,34 @@ Concluído:
 - recuperação real de Secret a partir de Git + SOPS + age;
 - correção automática de drift manual;
 - mudança e rollback declarativo via Git;
-- teste de self-healing do Firecrawl preservando disponibilidade LAN.
+- teste de self-healing do Firecrawl preservando disponibilidade LAN;
+- Alloy sob HelmRelease Flux;
+- OpenTelemetry Collector sob HelmRelease Flux;
+- Tempo sob HelmRelease Flux;
+- Loki sob HelmRelease Flux;
+- kube-prometheus-stack sob HelmRelease Flux;
+- toda a stack atual de observabilidade reconciliada por Flux.
 
-Próximo candidato de adoção:
+Pendências relacionadas ao GitOps:
 
-1. observabilidade/Helm, por último entre os componentes atuais.
+1. tornar o bootstrap do Secret runtime `sops-age` reproduzível após bootstrap do Flux, sem expor a identidade privada;
+2. manter backup off-host independente da identidade privada age;
+3. expandir o modelo GitOps apenas quando novos workloads forem incorporados.
 
 ## Rollback operacional
 
-A primeira resposta a problemas de reconciliação deve ser suspender apenas a Kustomization afetada:
+A primeira resposta a problemas de reconciliação deve ser suspender apenas a Kustomization ou HelmRelease afetado.
+
+Exemplo para Firecrawl:
 
 ```bash
 flux suspend kustomization firecrawl -n flux-system
 ```
 
-ou, para o Tunnel:
+Exemplo para um release de observabilidade:
 
 ```bash
-flux suspend kustomization cloudflared -n flux-system
+flux suspend helmrelease tempo -n monitoring
 ```
 
 Mudanças declarativas devem ser revertidas no Git e reconciliadas novamente. A remoção completa do Flux não é o mecanismo normal de rollback.
@@ -196,4 +255,6 @@ Mudanças declarativas devem ser revertidas no Git e reconciliadas novamente. A 
 
 - Flux bootstrap for GitHub: https://fluxcd.io/flux/installation/bootstrap/github/
 - Flux Kustomization / SOPS decryption: https://fluxcd.io/flux/components/kustomize/kustomizations/
+- Flux HelmRelease: https://fluxcd.io/flux/components/helm/helmreleases/
+- Flux HelmRepository: https://fluxcd.io/flux/components/source/helmrepositories/
 - Flux releases: https://github.com/fluxcd/flux2/releases
