@@ -27,7 +27,10 @@
 - [x] Makefile como interface operacional principal;
 - [x] codificar no bootstrap o estado disabled de NFS/RPC, PCP e Cockpit após validação de que são desnecessários;
 - [x] manter Avahi deliberadamente enquanto DNS interno/LAN-only é consolidado;
-- [ ] role `firewall` somente após classificação final dos serviços LAN/cluster/loopback.
+- [x] classificar serviços LAN/cluster/loopback e implementar role `firewall` isolado em nftables;
+- [x] validar live trial do firewall com rollback automático e testes externos pela LAN;
+- [x] configurar persistência via `guiosoft-host-firewall.service` sem tomar posse do ruleset global;
+- [ ] validar persistência do firewall após reboot real do host.
 
 ## Fase 2 — K3s
 
