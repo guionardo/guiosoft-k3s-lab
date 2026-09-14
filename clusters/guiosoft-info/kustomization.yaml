@@ -8,3 +8,5 @@ resources:
   - firecrawl-namespace.yaml
   - firecrawl-secrets.yaml
   - firecrawl.yaml
+  - monitoring-namespace.yaml
+  - observability-helm.yaml
