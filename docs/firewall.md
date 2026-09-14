@@ -17,7 +17,7 @@ A política de bootstrap agora mantém esses serviços desabilitados de forma id
 | kubelet | 10250/TCP | cluster | necessário para componentes do cluster |
 | node-exporter | 9100/TCP | cluster/monitoramento | manter; Prometheus o alcança no IP do host |
 | Flannel VXLAN | 8472/UDP | nós K3s | nunca Internet |
-| Avahi/mDNS | 5353/UDP | LAN multicast | **manter** enquanto avaliamos descoberta para serviços LAN-only |
+| Avahi/mDNS | 5353/UDP | LAN multicast | manter por enquanto; não é mais requisito do Firecrawl |
 | DHCP client | 68/UDP, 546/UDP | infraestrutura de rede | preservar respostas válidas via política stateful |
 | cloudflared QUIC | UDP efêmero | saída | cliente outbound; não requer publicação inbound |
 | Traefik/ServiceLB | 80/443 | K3s/networking | publicação de aplicações conforme Ingress/Tunnel |
@@ -47,15 +47,45 @@ Decisão: desabilitar NFS/RPC inteiro em vez de criar regras para portas que nã
 
 Cockpit publicava 9090/TCP e possuía rota explícita `cockpit.guiosoft.info -> localhost:9090` no Cloudflare Tunnel. O cluster foi validado após desabilitar Cockpit e permaneceu normal. A rota Cloudflare foi então removida. Administração do host passa a privilegiar SSH, Ansible e CLI, reduzindo interfaces administrativas privilegiadas.
 
-## Avahi e a direção LAN-only
+## Firecrawl LAN-only e split-horizon DNS
 
-Avahi permanece deliberadamente ativo. O host anuncia `guiosoft-info.local` e estamos avaliando mover o Firecrawl de publicação Internet/Cloudflare Access para consumo exclusivamente dentro da LAN por Hermes e OpenCode.
+A alternativa de usar `guiosoft-info.local` via Avahi/mDNS foi considerada, mas o desenho escolhido é split-horizon DNS com o mesmo hostname estável `firecrawl.guiosoft.info`.
 
-A motivação é arquitetural: se os únicos consumidores são agentes locais, não há necessidade de publicar o serviço na Internet. Isso também remove a necessidade de adaptar/forkar Hermes apenas para injetar os headers `CF-Access-Client-Id` e `CF-Access-Client-Secret`.
+O MikroTik RouterOS da LAN atua como resolvedor DNS em `192.168.88.1`. O DHCP foi ajustado para entregar somente esse resolvedor aos clientes, evitando que resolvers públicos secundários contornem o override local. O MikroTik continua encaminhando consultas externas para seus upstreams.
 
-Entretanto, mDNS não será assumido como DNS hierárquico/wildcard. A direção preferida a investigar é **split-horizon DNS**: `firecrawl.guiosoft.info` sem registro público e resolvendo internamente para o IP LAN do Traefik/host. Avahi fica preservado enquanto essa fundação de DNS interno não for definida.
+Foi criado um registro DNS local para:
 
-A remoção pública do Firecrawl **ainda não foi executada**. Cloudflare Access/Service Tokens e o Ingress atual continuam válidos até a migração LAN-only ser testada ponta a ponta.
+```text
+firecrawl.guiosoft.info -> 192.168.88.9
+```
+
+Validação em 2026-09-14:
+
+- `dig @192.168.88.1 firecrawl.guiosoft.info A` retornou `192.168.88.9` com TTL 300;
+- `/etc/resolv.conf` do servidor passou a conter somente `nameserver 192.168.88.1`;
+- `getent ahostsv4 firecrawl.guiosoft.info` retornou `192.168.88.9`;
+- `curl http://firecrawl.guiosoft.info/` chegou ao Traefik/Firecrawl pela LAN e retornou HTTP 200;
+- o teste funcional do Firecrawl foi executado com sucesso pelo caminho LAN-only.
+
+Com isso, o caminho desejado passa a ser:
+
+```text
+Hermes / OpenCode
+       |
+       | DNS da LAN
+       v
+MikroTik 192.168.88.1
+       |
+       | firecrawl.guiosoft.info = 192.168.88.9
+       v
+Traefik -> Firecrawl K3s
+```
+
+Isso elimina a necessidade arquitetural de modificar/forkar Hermes apenas para adicionar os headers `CF-Access-Client-Id` e `CF-Access-Client-Secret`.
+
+A publicação Cloudflare/Access ainda deve ser removida de forma controlada somente depois de confirmar Hermes e OpenCode usando esse caminho interno. Os recursos Terraform correspondentes também precisam ser reconciliados para que uma execução futura não recrie a exposição removida manualmente.
+
+Avahi permanece ativo por enquanto, mas deixou de ser requisito para o Firecrawl. Sua necessidade poderá ser reavaliada separadamente.
 
 ## Modelo de segurança desejado
 
@@ -77,8 +107,9 @@ Princípios:
 
 ## Pendências antes do enforcement
 
-- definir e testar DNS interno/split-horizon para workloads LAN-only;
-- testar Firecrawl por hostname interno com Hermes e OpenCode antes de remover a publicação Cloudflare;
+- confirmar Hermes e OpenCode consumindo Firecrawl pelo DNS interno;
+- remover publicação/Access Cloudflare do Firecrawl e reconciliar Terraform somente após essa confirmação;
+- reavaliar se Avahi ainda possui consumidor real;
 - verificar regras de port-forward/NAT no roteador;
 - definir origens exatas para SSH, API 6443, kubelet 10250, node-exporter 9100 e Flannel 8472;
 - implementar o role `firewall` incremental e validar rollback.
@@ -95,4 +126,4 @@ O audit é read-only e não exige mais o antigo Firecrawl Docker em `127.0.0.1:3
 
 ## Decisões de hardening registradas em 2026-09-14
 
-O processo mostrou uma preferência explícita por eliminar serviços sem consumidor antes de escondê-los atrás de firewall. NFS/RPC, PCP e Cockpit foram retirados da superfície de rede por esse motivo. Avahi foi inicialmente candidato a remoção, mas foi preservado após surgir o requisito de descoberta/acesso LAN-only para o Firecrawl. Essa exceção é intencional e será reavaliada após a implantação de DNS interno.
+O processo mostrou uma preferência explícita por eliminar serviços sem consumidor antes de escondê-los atrás de firewall. NFS/RPC, PCP e Cockpit foram retirados da superfície de rede por esse motivo. Para o Firecrawl, a publicação pública deixou de ser necessária conceitualmente: o split-DNS local já foi validado até o serviço K3s, mantendo um hostname estável sem depender de mDNS. O próximo gate é validar os dois consumidores reais antes de desmontar Cloudflare Access.
