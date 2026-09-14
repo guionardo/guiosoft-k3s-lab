@@ -1,0 +1,24 @@
+---
+# Host firewall is staged by default. The role renders and validates the ruleset
+# without loading it until firewall_enforce is explicitly set to true.
+firewall_enforce: false
+firewall_table_name: guiosoft_host
+firewall_lan_interface: enp2s0
+firewall_lan_cidr: 192.168.88.0/24
+
+# Services intentionally reachable from the administrative LAN.
+firewall_lan_tcp_ports:
+  - 22
+  - 80
+  - 443
+  - 6443
+
+# Avahi remains enabled for now. Remove this when mDNS is retired.
+firewall_allow_mdns: true
+
+# Additional K3s nodes allowed to send Flannel VXLAN to this host.
+# Keep empty while the cluster is single-node. Add node IPv4 addresses before
+# joining a second node.
+firewall_k3s_node_ipv4: []
+
+firewall_ruleset_path: /etc/nftables.d/guiosoft-host.nft
