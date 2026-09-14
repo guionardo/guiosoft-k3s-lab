@@ -1,58 +1,9 @@
-# Firecrawl public Access resources are intentionally kept during phase 1 of
-# the LAN-only cutover. The tunnel now has an explicit firecrawl.guiosoft.info
-# -> http_status:404 rule before the *.guiosoft.info wildcard.
+# Firecrawl is LAN-only as of 2026-09-14.
 #
-# Apply and validate that public requests receive 404 before removing these
-# resources in phase 2. This ordering prevents a window where removing Access
-# would expose Firecrawl through the wildcard tunnel.
-
-resource "cloudflare_zero_trust_access_service_token" "firecrawl_hermes" {
-  account_id = var.cloudflare_account_id
-  name       = "firecrawl-hermes"
-  duration   = "8760h"
-  enabled    = true
-}
-
-resource "cloudflare_zero_trust_access_service_token" "firecrawl_opencode" {
-  account_id = var.cloudflare_account_id
-  name       = "firecrawl-opencode"
-  duration   = "8760h"
-  enabled    = true
-}
-
-resource "cloudflare_zero_trust_access_application" "firecrawl" {
-  account_id = var.cloudflare_account_id
-  name       = "Firecrawl Agents"
-  type       = "self_hosted"
-
-  destinations = [
-    {
-      type = "public"
-      uri  = "firecrawl.guiosoft.info"
-    }
-  ]
-
-  service_auth_401_redirect = true
-  app_launcher_visible      = false
-  skip_interstitial         = true
-
-  policies = [
-    {
-      name       = "Allow Hermes and OpenCode service tokens"
-      decision   = "non_identity"
-      precedence = 1
-      include = [
-        {
-          service_token = {
-            token_id = cloudflare_zero_trust_access_service_token.firecrawl_hermes.id
-          }
-        },
-        {
-          service_token = {
-            token_id = cloudflare_zero_trust_access_service_token.firecrawl_opencode.id
-          }
-        }
-      ]
-    }
-  ]
-}
+# Public requests for firecrawl.guiosoft.info are explicitly denied by the
+# Cloudflare Tunnel ingress rule in main.tf before the *.guiosoft.info wildcard.
+# LAN clients use split-horizon DNS and reach Traefik directly, bypassing the
+# public Cloudflare path.
+#
+# The former Cloudflare Access application and the Hermes/OpenCode service
+# tokens were removed after the public 404 path and LAN access were validated.
