@@ -1,0 +1,118 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: kube-prometheus-stack
+spec:
+  suspend: true
+  interval: 30m
+  timeout: 10m
+  releaseName: kube-prometheus-stack
+  targetNamespace: monitoring
+  storageNamespace: monitoring
+  chart:
+    spec:
+      chart: kube-prometheus-stack
+      version: 89.2.0
+      sourceRef:
+        kind: HelmRepository
+        name: prometheus-community
+  install:
+    crds: Create
+  upgrade:
+    crds: Skip
+  valuesFrom:
+    - kind: ConfigMap
+      name: kube-prometheus-stack-values
+      valuesKey: values.yaml
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: tempo
+spec:
+  suspend: true
+  interval: 30m
+  timeout: 5m
+  releaseName: tempo
+  targetNamespace: monitoring
+  storageNamespace: monitoring
+  chart:
+    spec:
+      chart: tempo
+      version: 2.2.3
+      sourceRef:
+        kind: HelmRepository
+        name: grafana-community
+  valuesFrom:
+    - kind: ConfigMap
+      name: tempo-values
+      valuesKey: values.yaml
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: otel-collector
+spec:
+  suspend: true
+  interval: 30m
+  timeout: 5m
+  releaseName: otel-collector
+  targetNamespace: monitoring
+  storageNamespace: monitoring
+  chart:
+    spec:
+      chart: opentelemetry-collector
+      version: 0.172.1
+      sourceRef:
+        kind: HelmRepository
+        name: open-telemetry
+  valuesFrom:
+    - kind: ConfigMap
+      name: opentelemetry-collector-values
+      valuesKey: values.yaml
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: loki
+spec:
+  suspend: true
+  interval: 30m
+  timeout: 8m
+  releaseName: loki
+  targetNamespace: monitoring
+  storageNamespace: monitoring
+  chart:
+    spec:
+      chart: loki
+      version: 18.5.0
+      sourceRef:
+        kind: HelmRepository
+        name: grafana-community
+  valuesFrom:
+    - kind: ConfigMap
+      name: loki-values
+      valuesKey: values.yaml
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: alloy
+spec:
+  suspend: true
+  interval: 30m
+  timeout: 5m
+  releaseName: alloy
+  targetNamespace: monitoring
+  storageNamespace: monitoring
+  chart:
+    spec:
+      chart: alloy
+      version: 1.12.1
+      sourceRef:
+        kind: HelmRepository
+        name: grafana
+  valuesFrom:
+    - kind: ConfigMap
+      name: alloy-values
+      valuesKey: values.yaml
