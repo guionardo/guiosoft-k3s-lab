@@ -131,6 +131,39 @@ Git cifrado -> Flux -> SOPS/age -> Kubernetes Secret -> workload operacional
 
 O recipient público age permanece no repositório; a identidade privada continua fora do Git e precisa de backup independente para DR.
 
+## Testes de drift e rollback declarativo
+
+Em 2026-09-14 também foram executadas duas provas adicionais no `cloudflared`.
+
+### Correção automática de drift
+
+O Deployment foi alterado manualmente para `replicas=1`, enquanto o Git continuava declarando `replicas: 2`.
+
+Após a reconciliação da Kustomization `cloudflared`, o Flux restaurou automaticamente o Deployment para `2/2`, mantendo os Pods `Ready` e a rota pública respondendo HTTP 200.
+
+Isso confirma que alterações manuais fora do Git não prevalecem sobre o estado declarativo.
+
+### Mudança e rollback via Git
+
+Foi adicionada temporariamente ao Deployment a annotation:
+
+```yaml
+guiosoft.info/gitops-test: "flux-change"
+```
+
+A mudança foi versionada no Git, reconciliada pelo Flux e aplicada ao cluster sem indisponibilidade. Em seguida, a annotation foi removida em um segundo commit e o Flux reconciliou novamente o estado anterior.
+
+Durante a mudança e o rollback, o workload permaneceu saudável e `https://k3s-test.guiosoft.info/` continuou respondendo HTTP 200.
+
+Com isso, a adoção inicial do Flux comprovou:
+
+```text
+Git -> cluster
+manual drift -> self-healing para o estado do Git
+Git change -> cluster
+Git rollback -> cluster
+```
+
 ## Prune e segurança
 
 `prune` está habilitado apenas em escopos pequenos e conhecidos. Recursos críticos não serão transferidos para Flux sem antes confirmar:
@@ -154,13 +187,14 @@ Concluído:
 - Secret SOPS do Tunnel sob Flux;
 - workload `cloudflared` sob Flux;
 - dependências explícitas entre namespace, secrets e workload;
-- recuperação real do Secret a partir de Git + SOPS + age sem indisponibilidade pública.
+- recuperação real do Secret a partir de Git + SOPS + age sem indisponibilidade pública;
+- correção automática de drift manual;
+- mudança e rollback declarativo via Git.
 
 Próximos candidatos de adoção:
 
-1. executar teste simples de drift/rollback declarativo no `cloudflared`;
-2. migrar Firecrawl para Flux;
-3. migrar observabilidade/Helm por último.
+1. migrar Firecrawl para Flux;
+2. migrar observabilidade/Helm por último.
 
 ## Rollback operacional
 
