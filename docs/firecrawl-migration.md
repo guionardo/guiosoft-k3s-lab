@@ -2,9 +2,9 @@
 
 ## Estado atual
 
-Firecrawl é o primeiro workload real escolhido para migração. Hoje ele roda em paralelo no Docker Compose e no K3s durante a fase final de cutover. A versão Kubernetes já foi validada funcionalmente e está protegida por Cloudflare Access; o Compose permanece disponível apenas como rollback até a próxima etapa.
+Firecrawl é o primeiro workload real escolhido para migração. O cutover para K3s foi concluído e a versão Kubernetes está atendendo o serviço, protegida por Cloudflare Access. O Docker Compose antigo está parado; seus containers e volumes permanecem preservados somente para rollback até o encerramento explícito da janela de observação.
 
-Componentes observados no runtime atual:
+Componentes observados no runtime Docker original:
 
 | Componente | Imagem observada | Persistência Docker atual | Política K3s inicial |
 |---|---|---|---|
@@ -14,13 +14,15 @@ Componentes observados no runtime atual:
 | RabbitMQ | `rabbitmq:3-management` | volume Docker anônimo em `/var/lib/rabbitmq` | efêmero via `emptyDir` |
 | PostgreSQL/NuQ | `ghcr.io/firecrawl/nuq-postgres:latest` | volume `firecrawl_nuq-postgres-data` | efêmero via `emptyDir` |
 
-O stack utiliza a rede Docker privada `firecrawl_backend`. Somente a API é publicada atualmente no host, em `3002`.
+O stack Docker utilizava a rede privada `firecrawl_backend`. Somente a API era publicada no host, em `3002`.
+
+Em 2026-09-14 a verificação explícita confirmou que nenhum container Firecrawl estava em execução. Os containers antigos permaneciam presentes em estado `Exited`, preservando um rollback simples. Quatro encerraram com código 0; o Playwright antigo permaneceu com `Exited (1)`, sem impacto no serviço atual porque o runtime Docker já não atende produção. Não executar `docker compose down -v` durante a janela de rollback.
 
 ## Auditoria runtime validada
 
-A auditoria read-only confirmou os cinco containers esperados ativos, limites atuais e identidades imutáveis das imagens. Também identificou o volume Docker anônimo como pertencente ao RabbitMQ em `/var/lib/rabbitmq`.
+A auditoria read-only confirmou os cinco containers esperados, limites e identidades imutáveis das imagens. Também identificou o volume Docker anônimo como pertencente ao RabbitMQ em `/var/lib/rabbitmq`.
 
-As imagens do scaffold Kubernetes foram então pinadas pelos mesmos digests observados no runtime Docker atual:
+As imagens do scaffold Kubernetes foram então pinadas pelos mesmos digests observados no runtime Docker:
 
 - `ghcr.io/firecrawl/firecrawl@sha256:a88c2c1b546560b77206cf88da87600cb69ac65358eed1a0f8bb06dde691b065`;
 - `ghcr.io/firecrawl/nuq-postgres@sha256:aed86f62858f29bd971abddcdeb301c12888098d2cf5d33c1ba42b053bc460f6`;
@@ -270,7 +272,7 @@ bash scripts/firecrawl-k8s.sh deploy
 
 Ele verifica namespace e Secret antes de alterar recursos, executa novamente a validação do scaffold, aplica `kubectl apply -k kubernetes/apps/firecrawl` e aguarda o rollout dos cinco Deployments.
 
-O Docker Compose atual não é parado nem alterado por esse deploy e continua disponível como rollback.
+O deploy não altera automaticamente o Docker Compose antigo; o desligamento do runtime anterior foi feito somente depois das validações de tráfego, scrape e autenticação.
 
 ## Validação de tráfego e scrape funcional
 
@@ -335,7 +337,21 @@ Ela mostra:
 - eventos Kubernetes do tipo Warning;
 - warnings/errors recentes de PostgreSQL, Redis, RabbitMQ, Playwright e API.
 
-O comando não gera scrape, não reinicia recursos e não altera o Docker Compose. Ele serve para comparar consumo e estabilidade ao longo do período de observação antes da remoção definitiva do runtime antigo.
+O comando não gera scrape, não reinicia recursos e não altera o Docker Compose.
+
+Após o Compose ser parado, a observação de 2026-09-14 confirmou:
+
+```text
+firecrawl-api          Ready  RESTARTS=0  ~2903 MiB
+nuq-postgres           Ready  RESTARTS=0  ~125 MiB
+playwright-service     Ready  RESTARTS=0  ~278 MiB
+rabbitmq               Ready  RESTARTS=0  ~355 MiB
+redis                  Ready  RESTARTS=0  ~10 MiB
+```
+
+O consumo total observado ficou em aproximadamente 3,59 GiB de RAM e 207m de CPU. Não havia eventos Warning recentes. O warning do Playwright sobre ausência de proxy permanece esperado para o perfil atual, e o aviso de bypass de autenticação da API permanece esperado porque Cloudflare Access é a camada autoritativa.
+
+Essa amostra, somada ao período anterior de funcionamento, foi considerada evidência suficiente para concluir a etapa de cutover e manter o Docker apenas como rollback preservado.
 
 ## Investigação dos restarts iniciais da API
 
@@ -387,27 +403,30 @@ Sequência atualizada:
 18. definir autenticação da API — **concluído: Cloudflare Access Service Auth**;
 19. criar Service Tokens por agente — **concluído: Hermes e OpenCode**;
 20. validar bloqueio sem token e scrape autenticado — **concluído: 401 sem credencial e sucesso com ambos os tokens**;
-21. parar o Docker Compose antigo mantendo possibilidade de rollback;
-22. observar estabilidade e consumo com apenas o K3s atendendo o serviço;
-23. remover Docker Compose somente após estabilidade suficiente.
+21. parar o Docker Compose antigo mantendo possibilidade de rollback — **concluído**;
+22. observar estabilidade e consumo com apenas o K3s atendendo o serviço — **concluído; cinco Pods Ready, zero restarts e sem warnings relevantes**;
+23. remover Docker Compose somente após estabilidade suficiente — **pendente; manter containers e volumes durante a janela de rollback**.
 
-Como não haverá migração de dados persistentes do Firecrawl nesta fase, o cutover fica significativamente mais simples: não existe sincronização de banco antigo/novo nem risco de divergência de writes entre bancos.
+Como não haverá migração de dados persistentes do Firecrawl nesta fase, o cutover ficou significativamente mais simples: não existe sincronização de banco antigo/novo nem risco de divergência de writes entre bancos.
 
-## Próximo cutover
+## Estado pós-cutover
 
-O próximo passo operacional é **parar, não remover**, o Docker Compose antigo. Isso libera os recursos consumidos pelo runtime duplicado e ainda preserva um rollback rápido.
+O serviço está operando exclusivamente pelo K3s. O runtime Docker antigo não está mais atendendo requisições, mas permanece materialmente disponível para rollback.
 
-Critérios já satisfeitos antes dessa parada:
+Critérios satisfeitos:
 
 - cinco Deployments K3s Ready;
+- Pods com `RESTARTS=0` na observação pós-cutover;
 - scrape funcional real validado;
 - dependências de startup estabilizadas com `initContainer`;
 - API protegida por Cloudflare Access;
 - HTTP 401 sem Service Token;
 - Hermes e OpenCode autenticados com sucesso;
-- Docker ainda intacto para rollback.
+- nenhum evento Warning recente na amostra pós-cutover;
+- perfil de recursos compatível com o baseline esperado;
+- containers e volumes Docker antigos preservados.
 
-Depois da parada do Compose, observar Pods, restarts, consumo e logs do Firecrawl K3s antes de remover qualquer volume/container antigo.
+A próxima ação relacionada ao Firecrawl é apenas a remoção definitiva do runtime antigo depois de uma janela de estabilidade suficientemente longa. Containers e volumes devem ser tratados separadamente; mesmo ao remover containers, os volumes não devem ser apagados automaticamente até confirmação explícita de que o rollback não é mais necessário.
 
 ## Rollback
 
@@ -429,11 +448,6 @@ Como o estado K3s atual é efêmero, não há necessidade de sincronizar dados d
 
 - Firecrawl self-hosting: https://github.com/firecrawl/firecrawl/blob/main/SELF_HOST.md
 - Firecrawl environment example: https://github.com/firecrawl/firecrawl/blob/main/apps/api/.env.example
-- Firecrawl upstream: https://github.com/firecrawl/firecrawl
-- Firecrawl scrape endpoint examples in upstream repository: `POST /v1/scrape` with JSON payload containing `url` and `formats`
-- Kubernetes init containers: https://kubernetes.io/docs/concepts/workloads/pods/init-containers/
-- Kubernetes `emptyDir`: https://kubernetes.io/docs/concepts/storage/volumes/#emptydir
-- K3s storage: https://docs.k3s.io/add-ons/storage
-- Cloudflare Access common policies / Service Auth: https://developers.cloudflare.com/cloudflare-one/access-controls/policies/common-policies/
+- Cloudflare Access common policies: https://developers.cloudflare.com/cloudflare-one/access-controls/policies/common-policies/
 - Cloudflare Access Service Tokens API: https://developers.cloudflare.com/api/resources/zero_trust/subresources/access/subresources/service_tokens/
-- Cloudflare Terraform provider `cloudflare_zero_trust_access_application`: https://registry.terraform.io/providers/cloudflare/cloudflare/latest/docs/resources/zero_trust_access_application
+- Kubernetes `emptyDir`: https://kubernetes.io/docs/concepts/storage/volumes/#emptydir
