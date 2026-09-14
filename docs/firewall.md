@@ -2,129 +2,194 @@
 
 ## Estado validado
 
-O audit pós-K3s confirmou K3s, Docker daemon e `cloudflared` ativos, Kubernetes API e Traefik funcionais e UFW instalado porém inativo. O antigo Docker Compose do Firecrawl está parado e preservado somente para rollback; a porta 3002 do Docker não é mais um requisito.
+Em 2026-09-14 a superfície do host foi reduzida e classificada antes da primeira política default-deny.
 
-Em 2026-09-14 o inventário foi reduzido antes de qualquer regra de firewall. NFS/RPC não possuía exports configurados, chamadas, conexões nem clientes; `nfs-server`, `rpcbind.service` e `rpcbind.socket` foram desabilitados sem remover os pacotes. PCP (`pmcd`, `pmlogger`, `pmproxy`) também foi desabilitado porque a observabilidade do host/cluster já é coberta pelo kube-prometheus-stack. Cockpit foi desabilitado após confirmar que o cluster permanecia normal, e sua rota explícita foi removida do Cloudflare Tunnel.
+NFS/RPC, PCP (`pmcd`, `pmlogger`, `pmproxy`) e Cockpit foram desabilitados porque não possuem consumidor necessário no desenho atual. O Firecrawl antigo em Docker Compose foi parado e não publica mais `3002/TCP`; containers e volumes permanecem preservados somente durante a janela de rollback.
 
-A política de bootstrap agora mantém esses serviços desabilitados de forma idempotente. Os pacotes continuam instalados nesta etapa para rollback simples.
+O MikroTik foi inspecionado e possui somente a regra padrão de `srcnat masquerade`. Não existe `dstnat`/port-forward direto para `192.168.88.9`, portanto as portas do host não são publicadas diretamente pela borda.
 
 ## Serviços relevantes restantes
 
-| Serviço / finalidade | Porta/protocolo | Escopo recomendado | Decisão |
-|---|---:|---|---|
-| SSH | 22/TCP | LAN administrativa | manter; preservar antes de qualquer default-deny |
-| Kubernetes API | 6443/TCP | LAN administrativa + nós | não publicar na Internet |
-| kubelet | 10250/TCP | cluster | necessário para componentes do cluster |
-| node-exporter | 9100/TCP | cluster/monitoramento | manter; Prometheus o alcança no IP do host |
-| Flannel VXLAN | 8472/UDP | nós K3s | nunca Internet |
-| Avahi/mDNS | 5353/UDP | LAN multicast | manter por enquanto; não é mais requisito do Firecrawl |
-| DHCP client | 68/UDP, 546/UDP | infraestrutura de rede | preservar respostas válidas via política stateful |
-| cloudflared QUIC | UDP efêmero | saída | cliente outbound; não requer publicação inbound |
-| Traefik/ServiceLB | 80/443 | K3s/networking | publicação de aplicações conforme Ingress/Tunnel |
+| Serviço / finalidade | Porta/protocolo | Escopo atual |
+|---|---:|---|
+| SSH | 22/TCP | LAN administrativa |
+| Kubernetes API | 6443/TCP | LAN administrativa + futuros nós |
+| kubelet | 10250/TCP | cluster |
+| node-exporter | 9100/TCP | cluster/monitoramento |
+| Flannel VXLAN | 8472/UDP | nós K3s; nenhum peer remoto no single-node atual |
+| Avahi/mDNS | 5353/UDP | LAN multicast, mantido por enquanto |
+| DHCP client | 68/UDP, 546/UDP | infraestrutura de rede |
+| cloudflared QUIC | UDP efêmero | saída |
+| Traefik/ServiceLB | 80/443 | LAN/K3s; publicação externa ocorre pelo Tunnel |
 
-Listeners exclusivamente em `127.0.0.1`/`::1` permanecem fora da exposição LAN direta.
+Listeners exclusivamente em loopback permanecem fora da exposição LAN direta.
 
-## Serviços eliminados da superfície
+## Política implementada
 
-### NFS/RPC
+O host não utiliza UFW para o enforcement atual. A política foi implementada diretamente em uma tabela nftables própria:
 
-Antes da desativação, `rpcinfo -p` correlacionou 111/TCP+UDP, 2049/TCP e portas dinâmicas a `portmapper`, `mountd`, `status`, `nfs`, `nfs_acl` e `nlockmgr`. A investigação seguinte mostrou:
+```text
+table inet guiosoft_host
+```
 
-- nenhum export ativo em `exportfs -v`;
-- nenhum export configurado em `/etc/exports` ou `/etc/exports.d`;
-- `nfsstat -s` com zero chamadas;
-- nenhuma conexão TCP 2049;
-- nenhum cliente em `/proc/fs/nfsd/clients`;
-- `rpcbind` servindo somente o stack NFS/RPC.
+Princípios do desenho:
 
-Decisão: desabilitar NFS/RPC inteiro em vez de criar regras para portas que não têm consumidor real. Os pacotes ficam instalados temporariamente para rollback.
+- possuir somente hook de `INPUT`;
+- não executar `flush ruleset`;
+- não controlar `FORWARD` ou `NAT`;
+- não modificar tabelas/chains de Docker, K3s, Flannel ou ServiceLB;
+- preservar loopback e `established,related`;
+- manter SSH permitido antes do default-drop;
+- limitar serviços administrativos à LAN;
+- manter interfaces internas do cluster confiáveis no host;
+- preparar 8472/UDP para ser explicitamente liberado por endereço de node quando o cluster ganhar novos nós.
 
-### PCP
+Ruleset atual, em termos funcionais:
 
-`pmcd`, `pmlogger` e `pmproxy` estavam ativos e publicavam 4330 e 44321-44323/TCP. O Cockpit instalado não dependia de `cockpit-pcp`; `/usr/share/cockpit/metrics` pertencia a `cockpit-system`. Como Prometheus/Grafana já fornecem a observabilidade necessária, os daemons PCP foram desabilitados sem remoção imediata dos pacotes.
+```text
+loopback                                  accept
+ct state established,related             accept
+ct state invalid                         drop
+ICMP / ICMPv6                            accept
+DHCP replies na enp2s0                   accept
+192.168.88.0/24 -> TCP 22,80,443,6443    accept
+mDNS multicast -> UDP 5353               accept
+cni0                                     accept
+flannel.1                                accept
+restante do INPUT                        drop
+```
 
-### Cockpit
+Enquanto o cluster permanecer single-node, `8472/UDP` não é liberado para a LAN inteira. Antes de adicionar outro node, os endereços IPv4 dos peers devem ser adicionados a `firewall_k3s_node_ipv4`.
 
-Cockpit publicava 9090/TCP e possuía rota explícita `cockpit.guiosoft.info -> localhost:9090` no Cloudflare Tunnel. O cluster foi validado após desabilitar Cockpit e permaneceu normal. A rota Cloudflare foi então removida. Administração do host passa a privilegiar SSH, Ansible e CLI, reduzindo interfaces administrativas privilegiadas.
+## Processo de implantação seguro
 
-## Firecrawl LAN-only e split-horizon DNS
+A implantação foi feita em etapas.
 
-A alternativa de usar `guiosoft-info.local` via Avahi/mDNS foi considerada, mas o desenho escolhido é split-horizon DNS com o mesmo hostname estável `firecrawl.guiosoft.info`.
+### 1. Classificação read-only
 
-O MikroTik RouterOS da LAN atua como resolvedor DNS em `192.168.88.1`. O DHCP foi ajustado para entregar somente esse resolvedor aos clientes, evitando que resolvers públicos secundários contornem o override local. O MikroTik continua encaminhando consultas externas para seus upstreams.
+`firewall-classify.yml` coletou interfaces, rotas, listeners TCP/UDP, nodes, services, ingresses, Docker networks e tamanho do ruleset existente. A classificação confirmou LAN `192.168.88.0/24`, node `192.168.88.9` e os listeners relevantes restantes.
 
-Foi criado um registro DNS local para:
+### 2. Staging sem alteração live
+
+O role `firewall` primeiro renderizou `/etc/nftables.d/guiosoft-host.nft` e executou:
+
+```bash
+nft --check --file /etc/nftables.d/guiosoft-host.nft
+```
+
+Nenhuma regra foi carregada enquanto `firewall_enforce=false`.
+
+### 3. Trial com rollback automático
+
+O primeiro enforcement armou um timer systemd de rollback por cinco minutos antes de carregar a tabela. O rollback removeria somente `table inet guiosoft_host` se a conectividade fosse perdida.
+
+Após o apply foram validados:
+
+- Kubernetes `/readyz` local;
+- Traefik local;
+- nova sessão SSH pela LAN;
+- kubeconfig externo / `kubectl` pela LAN;
+- Firecrawl via `http://firecrawl.guiosoft.info/`.
+
+Com os testes aprovados, `firewall-confirm.yml` cancelou o rollback e manteve a tabela ativa.
+
+### 4. Persistência
+
+A persistência é fornecida por:
+
+```text
+guiosoft-host-firewall.service
+```
+
+O unit é separado do `nftables.service` global e carrega somente o arquivo versionado da policy. Ele está habilitado para o boot e ordenado antes de `k3s.service` e `cloudflared.service`.
+
+A policy live foi validada com o cluster inteiro operacional e Firecrawl retornando HTTP 200. Falta apenas validar a execução do unit em um reboot real; até esse teste a persistência deve ser considerada configurada, porém ainda não comprovada pós-boot.
+
+## Firecrawl LAN-only
+
+O Firecrawl usa split-horizon DNS no MikroTik:
 
 ```text
 firecrawl.guiosoft.info -> 192.168.88.9
 ```
 
-Validação em 2026-09-14:
-
-- `dig @192.168.88.1 firecrawl.guiosoft.info A` retornou `192.168.88.9` com TTL 300;
-- `/etc/resolv.conf` do servidor passou a conter somente `nameserver 192.168.88.1`;
-- `getent ahostsv4 firecrawl.guiosoft.info` retornou `192.168.88.9`;
-- `curl http://firecrawl.guiosoft.info/` chegou ao Traefik/Firecrawl pela LAN e retornou HTTP 200;
-- o teste funcional do Firecrawl foi executado com sucesso pelo caminho LAN-only;
-- Hermes foi testado com sucesso consumindo o Firecrawl por esse caminho interno, sem depender dos headers do Cloudflare Access;
-- OpenCode foi testado com sucesso via MCP após adicionar a configuração Firecrawl ao objeto `mcp` de `~/.config/opencode/opencode.jsonc`.
-
-Com isso, ambos os consumidores reais estão validados no caminho interno:
+Hermes e OpenCode/MCP foram validados pelo caminho interno. No Cloudflare Tunnel existe regra explícita anterior ao wildcard:
 
 ```text
-Hermes / OpenCode
-       |
-       | DNS da LAN
-       v
-MikroTik 192.168.88.1
-       |
-       | firecrawl.guiosoft.info = 192.168.88.9
-       v
-Traefik -> Firecrawl K3s
+firecrawl.guiosoft.info -> http_status:404
 ```
 
-A necessidade arquitetural de modificar/forkar Hermes apenas para adicionar os headers `CF-Access-Client-Id` e `CF-Access-Client-Secret` deixa de existir. OpenCode também opera sem depender da publicação Cloudflare do Firecrawl.
+A aplicação Cloudflare Access e os dois Service Tokens antigos foram removidos declarativamente depois do bloqueio público. Assim, o mesmo hostname funciona internamente e é deliberadamente recusado na rota pública.
 
-O gate funcional para a migração LAN-only está concluído. O próximo passo é remover a publicação pública/Cloudflare Access e os Service Tokens do Firecrawl e reconciliar o Terraform para que esses recursos não sejam recriados. Essa remoção deve preservar o registro DNS local do MikroTik e o Ingress Traefik, pois o mesmo hostname continuará sendo usado dentro da LAN.
+## Serviços eliminados da superfície
 
-Avahi permanece ativo por enquanto, mas deixou de ser requisito para o Firecrawl. Sua necessidade poderá ser reavaliada separadamente.
+### NFS/RPC
 
-## Modelo de segurança desejado
+Nenhum export, cliente, chamada ou conexão ativa foi encontrado. `nfs-server`, `rpcbind.service` e `rpcbind.socket` permanecem desabilitados.
 
-Antes de firewall, reduzir a superfície removendo listeners sem consumidor real. Depois, classificar o que restar em loopback, LAN, cluster, Cloudflare Tunnel ou exceção Internet direta.
+### PCP
 
-A política futura deve negar inbound não solicitado e liberar somente origens/portas necessárias. O role não deve tomar posse do ruleset inteiro porque Docker, K3s, Flannel e ServiceLB também manipulam nftables.
+`pmcd`, `pmlogger` e `pmproxy` publicavam 4330 e 44321-44323/TCP. Como kube-prometheus-stack cobre a observabilidade necessária, foram desabilitados e posteriormente confirmados como `disabled` e `inactive`.
 
-Princípios:
+### Cockpit
 
-- preservar loopback e `established,related`;
-- preservar SSH antes de qualquer `drop` default;
-- não `flush` nem recriar chains/tabelas gerenciadas por K3s/Docker;
-- restringir regras do host à interface/origem apropriada;
-- tratar Pod CIDR `10.42.0.0/16` e Service CIDR `10.43.0.0/16` separadamente da LAN;
-- manter 8472/UDP restrito aos nós quando houver múltiplos nós;
-- manter 9100/TCP acessível somente ao caminho necessário ao Prometheus;
-- validar Traefik, DNS, Kubernetes API, observabilidade e SSH após cada mudança;
-- manter rollback local antes da primeira política default-deny.
+Cockpit foi desabilitado e sua rota Cloudflare removida. Administração do host privilegia SSH, Ansible e CLI.
 
-## Pendências antes do enforcement
+## Avahi
 
-- remover publicação/Access Cloudflare do Firecrawl e reconciliar Terraform; Hermes e OpenCode já estão validados pela LAN;
-- reavaliar se Avahi ainda possui consumidor real;
-- verificar regras de port-forward/NAT no roteador;
-- definir origens exatas para SSH, API 6443, kubelet 10250, node-exporter 9100 e Flannel 8472;
-- implementar o role `firewall` incremental e validar rollback.
+Avahi permanece ativo deliberadamente, embora não seja mais necessário para o Firecrawl. A exceção mDNS pode ser removida junto com o serviço quando não houver mais consumidor real.
 
-## Auditoria
+## Auditoria e operação
 
-Executar a qualquer momento:
+Auditoria read-only:
 
 ```bash
 make firewall-audit
 ```
 
-O audit é read-only e não exige mais o antigo Firecrawl Docker em `127.0.0.1:3002`.
+Classificação detalhada:
 
-## Decisões de hardening registradas em 2026-09-14
+```bash
+cd ansible
+ansible-playbook -K playbooks/firewall-classify.yml
+```
 
-O processo mostrou uma preferência explícita por eliminar serviços sem consumidor antes de escondê-los atrás de firewall. NFS/RPC, PCP e Cockpit foram retirados da superfície de rede por esse motivo. Para o Firecrawl, o split-DNS local foi validado até o serviço K3s e com os dois consumidores reais, Hermes e OpenCode, mantendo um hostname estável sem depender de mDNS ou Cloudflare Access. O gate funcional LAN-only está concluído; resta desmontar a exposição pública de forma declarativa.
+Staging da policy:
+
+```bash
+cd ansible
+ansible-playbook -K playbooks/firewall.yml
+```
+
+Trial live protegido por rollback:
+
+```bash
+cd ansible
+ansible-playbook -K playbooks/firewall.yml -e firewall_enforce=true
+```
+
+Confirmação após testes externos:
+
+```bash
+cd ansible
+ansible-playbook -K playbooks/firewall-confirm.yml
+```
+
+Configuração da persistência:
+
+```bash
+cd ansible
+ansible-playbook -K playbooks/firewall-persist.yml
+```
+
+## Pendência final desta fase
+
+Executar um reboot real e confirmar que:
+
+- `guiosoft-host-firewall.service` fica `active (exited)`;
+- `table inet guiosoft_host` existe após o boot;
+- SSH novo pela LAN funciona;
+- Kubernetes API/kubeconfig externo funcionam;
+- todos os Pods retornam saudáveis;
+- Firecrawl continua retornando HTTP 200 pela LAN;
+- Cloudflare Tunnel e workloads públicos continuam operacionais.
