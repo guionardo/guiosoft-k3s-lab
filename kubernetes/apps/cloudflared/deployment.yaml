@@ -3,6 +3,8 @@ kind: Deployment
 metadata:
   name: cloudflared
   namespace: cloudflare
+  annotations:
+    guiosoft.info/gitops-test: "flux-change"
   labels:
     app: cloudflared
     app.kubernetes.io/name: cloudflared
