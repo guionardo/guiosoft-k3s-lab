@@ -30,7 +30,7 @@ kind: HelmRelease
 metadata:
   name: tempo
 spec:
-  suspend: true
+  suspend: false
   interval: 30m
   timeout: 5m
   releaseName: tempo
