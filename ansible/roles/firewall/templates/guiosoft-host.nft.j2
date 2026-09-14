@@ -1,0 +1,44 @@
+table inet {{ firewall_table_name }} {
+  chain input {
+    type filter hook input priority -10; policy drop;
+
+    # Never interfere with local-only services or replies to outbound traffic.
+    iifname "lo" accept
+    ct state established,related accept
+    ct state invalid drop
+
+    # Keep basic diagnostics and IPv6 neighbour/router control working.
+    ip protocol icmp accept
+    ip6 nexthdr icmpv6 accept
+
+    # DHCP client traffic must still work across reboots and lease renewal.
+    iifname "{{ firewall_lan_interface }}" udp sport 67 udp dport 68 accept
+    iifname "{{ firewall_lan_interface }}" udp sport 547 udp dport 546 accept
+
+    # Administrative LAN services: SSH, Traefik and Kubernetes API.
+    iifname "{{ firewall_lan_interface }}" ip saddr {{ firewall_lan_cidr }} tcp dport { {{ firewall_lan_tcp_ports | join(', ') }} } accept
+
+{% if firewall_allow_mdns %}
+    # Temporary LAN multicast exception while Avahi remains part of the host.
+    iifname "{{ firewall_lan_interface }}" ip daddr 224.0.0.251 udp dport 5353 accept
+    iifname "{{ firewall_lan_interface }}" ip6 daddr ff02::fb udp dport 5353 accept
+{% endif %}
+
+    # Pods on this node need host endpoints such as kubelet/node-exporter and
+    # may reach the apiserver after service NAT. Keep this interface trusted;
+    # pod-level isolation belongs to Kubernetes NetworkPolicy, not this host chain.
+    iifname "cni0" accept
+    iifname "flannel.1" accept
+
+{% if firewall_k3s_node_ipv4 | length > 0 %}
+    # Flannel VXLAN is node-to-node only; never expose it to the whole LAN.
+{% for node_ip in firewall_k3s_node_ipv4 %}
+    iifname "{{ firewall_lan_interface }}" ip saddr {{ node_ip }} udp dport 8472 accept
+{% endfor %}
+{% endif %}
+
+    # Everything else addressed to the host is denied. This table only hooks
+    # INPUT; it does not flush or own Docker/K3s FORWARD/NAT chains.
+    counter drop
+  }
+}
