@@ -87,7 +87,11 @@ A Fase 4 usa o **Firecrawl como primeiro workload real**. A versão K3s foi impl
 
 O Firecrawl foi inicialmente protegido publicamente por Cloudflare Access Service Auth, com tokens separados para Hermes e OpenCode. Depois, ambos os consumidores foram classificados como LAN-only. O Access e os tokens já foram retirados, o hostname resolve internamente para o servidor K3s e a rota pública é bloqueada explicitamente antes do wildcard do Tunnel. O Docker Compose antigo continua parado e seus containers/volumes permanecem preservados apenas para rollback.
 
-A próxima grande etapa do projeto é **GitOps**: escolher Argo CD ou Flux, fazer bootstrap declarativo do controlador e passar a reconciliar os manifests versionados — incluindo o fluxo de Secrets SOPS — a partir do Git.
+A Fase 7 de GitOps está operacional com Flux. O bootstrap usa SSH/deploy key no runtime e SOPS + age para secrets cifrados. `cloudflared` e Firecrawl estão sob reconciliação declarativa, com recuperação de Secret e self-healing de drift já validados.
+
+A observabilidade também foi adotada pelo Flux sem recriar os releases Helm existentes. A migração foi feita release por release na ordem Alloy -> OpenTelemetry Collector -> Tempo -> Loki -> kube-prometheus-stack. Os cinco HelmReleases estão ativos e `Ready`, preservando versões, workloads e PVCs, e os testes funcionais de traces, logs e métricas continuam válidos após a adoção.
+
+As principais pendências GitOps agora são tornar reproduzível o bootstrap runtime do Secret `sops-age` após a instalação do Flux e manter uma cópia off-host independente da identidade privada age para Disaster Recovery.
 
 ## Divisão de responsabilidades
 
