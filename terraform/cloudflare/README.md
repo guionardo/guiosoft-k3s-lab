@@ -32,6 +32,72 @@ O token usado para import/plan deve ter somente as permissões necessárias para
 
 `terraform.tfvars`, state e diretórios `.terraform` já são ignorados pelo `.gitignore` do repositório.
 
+### Token temporário para bootstrap/reconstrução completa
+
+Quando este laboratório precisar ser reconstruído do zero, é mais simples criar um único **API Token temporário de bootstrap** com todas as permissões exigidas pelo Terraform Cloudflare deste projeto, em vez de descobrir permissões incrementalmente durante a recuperação.
+
+Esse token é deliberadamente mais poderoso que um token operacional de longa duração. Portanto:
+
+> **Crie-o somente para a janela de instalação/reconstrução, configure TTL de no máximo 2 dias e revogue-o assim que o Terraform e as validações terminarem. Não reutilize esse token como credencial permanente.**
+
+No Cloudflare Dashboard, crie um **Custom API Token** e restrinja os recursos ao account e à zone usados pelo homelab. Para o escopo atualmente gerenciado pelo projeto, conceda:
+
+```text
+Account permissions
+  Cloudflare Tunnel              Edit/Write
+  Access: Apps and Policies      Edit/Write
+  Access: Service Tokens         Edit/Write
+
+Zone permissions
+  DNS                            Edit/Write
+
+Account resources
+  Include -> somente o account do homelab
+
+Zone resources
+  Include -> somente guiosoft.info
+
+TTL
+  início -> momento do bootstrap
+  expiração -> no máximo 2 dias depois
+```
+
+A nomenclatura `Edit`/`Write` pode variar conforme a versão da UI/API da Cloudflare; a intenção é conceder capacidade de leitura e escrita para esses quatro grupos durante o bootstrap.
+
+Se o bootstrap for executado a partir de um endereço público estável, também é recomendável restringir o token por **Client IP Address Filtering**. Não faça essa restrição quando o IP de saída puder mudar durante a recuperação, pois isso pode bloquear o próprio procedimento de DR.
+
+Depois de criar o token, mantenha-o apenas na sessão de shell:
+
+```bash
+export CLOUDFLARE_API_TOKEN='...'
+```
+
+Antes do Terraform, valide a credencial sem imprimir o segredo:
+
+```bash
+test -n "${CLOUDFLARE_API_TOKEN:-}" || {
+  echo "CLOUDFLARE_API_TOKEN não definido" >&2
+  exit 1
+}
+
+curl -fsS \
+  -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+  https://api.cloudflare.com/client/v4/user/tokens/verify
+```
+
+Então execute normalmente `terraform init`, `terraform plan` e, somente depois de revisar o plano, `terraform apply`.
+
+Ao final da reconstrução:
+
+1. valide Tunnel, DNS e aplicações Access;
+2. valide os clientes protegidos, como Hermes/OpenCode no Firecrawl;
+3. remova a variável da sessão com `unset CLOUDFLARE_API_TOKEN`;
+4. revogue/delete o API Token temporário no Cloudflare Dashboard, mesmo que ainda reste tempo no TTL.
+
+O TTL de 2 dias é uma **proteção adicional**, não substitui a revogação explícita após o trabalho.
+
+Essa política aplica-se ao **API Token de IaC/bootstrap**. Ela não altera o token de execução de um Tunnel remotamente gerenciado nem os Cloudflare Access Service Tokens usados pelos agentes; são credenciais com finalidades e ciclos de vida diferentes.
+
 ### Estado Terraform passa a ser sensível
 
 Os recursos `cloudflare_zero_trust_access_service_token` retornam o `client_secret` somente no fluxo de criação/rotação. Embora os outputs correspondentes sejam marcados como `sensitive`, os valores continuam fazendo parte do Terraform state.
@@ -190,6 +256,10 @@ Outros registros DNS específicos podem ser importados individualmente. Não dev
 
 ## Fontes
 
+- Cloudflare API Tokens / criação, TTL e Client IP filtering: https://developers.cloudflare.com/fundamentals/api/get-started/create-token/
+- Cloudflare API token permissions: https://developers.cloudflare.com/fundamentals/api/reference/permissions/
+- Cloudflare Tunnel via API / permissões: https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/get-started/create-remote-tunnel-api/
+- Cloudflare Tunnel tokens e permissões: https://developers.cloudflare.com/tunnel/reference/tunnel-tokens/
 - Cloudflare Terraform Provider v5.24: https://developers.cloudflare.com/api/terraform/
 - Cloudflare Access common policies / Service Auth (`decision = "non_identity"`): https://developers.cloudflare.com/cloudflare-one/access-controls/policies/common-policies/
 - Cloudflare Access Service Tokens: https://developers.cloudflare.com/cloudflare-one/access-controls/service-credentials/service-tokens/
