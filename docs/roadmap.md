@@ -170,7 +170,8 @@ A fundação de métricas, traces e logs está operacional e validada. O histór
 - [x] ordenar reconciliação `namespace -> secrets -> workload` com `dependsOn`;
 - [x] validar recuperação real do `cloudflared-tunnel-token` após exclusão manual, recriado a partir do Git cifrado;
 - [x] validar workload e rota pública após recuperação do Secret, com HTTP 200;
-- [ ] executar teste controlado de drift e rollback via Git;
+- [x] executar teste controlado de drift manual e validar self-healing para o estado do Git;
+- [x] validar mudança versionada e rollback declarativo via Git sem indisponibilidade;
 - [ ] migrar Firecrawl para Flux;
 - [ ] migrar observabilidade/Helm para Flux após workloads mais simples.
 
