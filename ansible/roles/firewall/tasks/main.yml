@@ -5,7 +5,8 @@
       - firewall_lan_interface | length > 0
       - firewall_lan_cidr | length > 0
       - 22 in firewall_lan_tcp_ports
-    fail_msg: "Firewall inputs are incomplete; SSH must remain allowed before enforcement."
+      - firewall_rollback_seconds | int >= 60
+    fail_msg: "Firewall inputs are incomplete; SSH and a rollback window must remain available before enforcement."
 
 - name: Ensure nftables include directory exists
   ansible.builtin.file:
@@ -37,6 +38,39 @@
   ansible.builtin.debug:
     var: firewall_rendered_policy.stdout_lines
 
+- name: Reset stale rollback unit state before live trial
+  ansible.builtin.command: "systemctl reset-failed {{ firewall_rollback_unit }}.timer {{ firewall_rollback_unit }}.service"
+  when: firewall_enforce | bool
+  changed_when: false
+  failed_when: false
+
+- name: Stop stale rollback timer before live trial
+  ansible.builtin.command: "systemctl stop {{ firewall_rollback_unit }}.timer"
+  when: firewall_enforce | bool
+  changed_when: false
+  failed_when: false
+
+- name: Arm automatic firewall rollback before loading rules
+  ansible.builtin.command:
+    argv:
+      - systemd-run
+      - --unit={{ firewall_rollback_unit }}
+      - --on-active={{ firewall_rollback_seconds }}s
+      - /usr/sbin/nft
+      - delete
+      - table
+      - inet
+      - "{{ firewall_table_name }}"
+  when: firewall_enforce | bool
+  register: firewall_rollback_arm
+  changed_when: true
+
+- name: Remove previous isolated table before reloading trial policy
+  ansible.builtin.command: "nft delete table inet {{ firewall_table_name }}"
+  when: firewall_enforce | bool
+  changed_when: true
+  failed_when: false
+
 - name: Apply isolated host firewall table when explicitly enabled
   ansible.builtin.command: "nft --file {{ firewall_ruleset_path }}"
   when: firewall_enforce | bool
@@ -46,6 +80,41 @@
   ansible.builtin.command: "nft list table inet {{ firewall_table_name }}"
   when: firewall_enforce | bool
   changed_when: false
+
+- name: Verify Kubernetes API remains healthy locally
+  ansible.builtin.command: "k3s kubectl get --raw=/readyz"
+  when: firewall_enforce | bool
+  register: firewall_k3s_readyz
+  changed_when: false
+  failed_when: firewall_k3s_readyz.stdout | trim != 'ok'
+
+- name: Verify Traefik still answers locally
+  ansible.builtin.command:
+    argv:
+      - curl
+      - --fail-with-body
+      - --silent
+      - --show-error
+      - --output
+      - /dev/null
+      - --write-out
+      - "%{http_code}"
+      - --header
+      - "Host: nonexistent.guiosoft.info"
+      - http://127.0.0.1/
+  when: firewall_enforce | bool
+  register: firewall_traefik_status
+  changed_when: false
+  failed_when: firewall_traefik_status.stdout | trim != '404'
+
+- name: Show live-trial rollback instructions
+  ansible.builtin.debug:
+    msg:
+      - "LIVE FIREWALL TRIAL ACTIVE. Automatic rollback is armed for {{ firewall_rollback_seconds }} seconds."
+      - "From another LAN machine, validate SSH to this host, kubectl against 192.168.88.9:6443, and HTTP access to firecrawl.guiosoft.info."
+      - "Only after external validation, run: ansible-playbook -K playbooks/firewall-confirm.yml"
+      - "If connectivity is lost, do nothing: the rollback unit will delete table inet {{ firewall_table_name }} automatically."
+  when: firewall_enforce | bool
 
 - name: Remind that staged mode made no live firewall change
   ansible.builtin.debug:
