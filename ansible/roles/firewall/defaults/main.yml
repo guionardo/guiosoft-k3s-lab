@@ -22,3 +22,8 @@ firewall_allow_mdns: true
 firewall_k3s_node_ipv4: []
 
 firewall_ruleset_path: /etc/nftables.d/guiosoft-host.nft
+
+# A live firewall trial always arms an automatic rollback first. The rollback
+# remains armed until firewall-confirm.yml is run after external LAN validation.
+firewall_rollback_seconds: 300
+firewall_rollback_unit: guiosoft-firewall-rollback
