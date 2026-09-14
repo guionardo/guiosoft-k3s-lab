@@ -186,7 +186,7 @@ A fundação de métricas, traces e logs está operacional e validada. O histór
 - [x] guards explícitos para alvo DR;
 - [x] restore destrutivo implementado somente para host marcado;
 - [x] inventário Ansible de exemplo para DR;
-- [ ] cópia off-host independente da identidade privada age;
+- [x] cópia off-host independente da identidade privada age, cifrada com senha de DR separada e validada por restore isolado + descriptografia de Secrets SOPS reais;
 - [ ] provisionar VM/host isolado — adiado até existir recurso disponível;
 - [ ] restaurar K3s e aplicações em ambiente separado;
 - [ ] teste completo de reconstrução e registro de RTO/RPO.
