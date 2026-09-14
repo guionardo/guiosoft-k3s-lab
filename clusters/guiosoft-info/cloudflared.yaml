@@ -9,11 +9,9 @@ spec:
   timeout: 2m
   wait: true
   prune: true
+  dependsOn:
+    - name: cloudflare-secrets
   sourceRef:
     kind: GitRepository
     name: flux-system
   path: ./kubernetes/apps/cloudflared
-  decryption:
-    provider: sops
-    secretRef:
-      name: sops-age
