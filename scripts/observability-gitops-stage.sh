@@ -10,25 +10,28 @@ need() {
   }
 }
 
-for cmd in flux kubectl helm diff; do
+for cmd in flux kubectl helm diff awk sort; do
   need "$cmd"
 done
 
 echo "Observability GitOps staging reconciliation"
 echo
 
-# Capture the current Helm release chart/version state before Flux creates the
-# suspended HelmRelease objects. Go templates avoid shell/Python quoting issues.
+# Capture the current Helm release state before and after staging. We use the
+# stable tabular output rather than version-dependent JSON/template features.
+capture_helm_state() {
+  helm list -n "$NAMESPACE" --no-headers \
+    | awk -F '\t' 'BEGIN { OFS="\t" } { print $1, $8, $5 }' \
+    | sort
+}
+
 before="$(mktemp)"
 after="$(mktemp)"
 trap 'rm -f "$before" "$after"' EXIT
 
-helm list -n "$NAMESPACE" \
-  -o template \
-  --template '{{range .}}{{.Name}}{{"\t"}}{{.Chart}}{{"\t"}}{{.Status}}{{"\n"}}{{end}}' \
-  | sort > "$before"
+capture_helm_state > "$before"
 
-echo "Current Helm releases:"
+echo "Current Helm releases (name, chart, status):"
 cat "$before"
 echo
 
@@ -58,10 +61,7 @@ echo
 echo "HelmRepository readiness:"
 kubectl get helmrepository -n "$NAMESPACE"
 
-helm list -n "$NAMESPACE" \
-  -o template \
-  --template '{{range .}}{{.Name}}{{"\t"}}{{.Chart}}{{"\t"}}{{.Status}}{{"\n"}}{{end}}' \
-  | sort > "$after"
+capture_helm_state > "$after"
 
 if ! diff -u "$before" "$after"; then
   echo "error: Helm release chart/version/status changed during staging" >&2
