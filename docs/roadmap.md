@@ -161,11 +161,18 @@ A fundação de métricas, traces e logs está operacional e validada. O histór
 
 ## Fase 7 — GitOps
 
-- [ ] escolher Argo CD ou Flux;
-- [ ] bootstrap GitOps;
-- [ ] reconciliar aplicações a partir do Git;
-- [ ] promoção/rollback;
-- [ ] secrets cifrados integrados.
+- [x] escolher Flux como controlador GitOps;
+- [x] instalar/pinar Flux CLI via Ansible;
+- [x] bootstrap GitOps no GitHub com acesso runtime via SSH/deploy key;
+- [x] validar reconciliação do próprio `flux-system` a partir do Git;
+- [x] adotar `cloudflared` como primeiro workload sem downtime;
+- [x] integrar secrets cifrados com SOPS + age ao Flux;
+- [x] ordenar reconciliação `namespace -> secrets -> workload` com `dependsOn`;
+- [x] validar recuperação real do `cloudflared-tunnel-token` após exclusão manual, recriado a partir do Git cifrado;
+- [x] validar workload e rota pública após recuperação do Secret, com HTTP 200;
+- [ ] executar teste controlado de drift e rollback via Git;
+- [ ] migrar Firecrawl para Flux;
+- [ ] migrar observabilidade/Helm para Flux após workloads mais simples.
 
 ## Fase 8 — Disaster Recovery
 
