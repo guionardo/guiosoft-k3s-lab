@@ -1,6 +1,6 @@
 # Estado atual e decisões de escopo
 
-Atualizado em 2026-09-14 após a validação do firewall em reboot real, a migração do Cloudflare Tunnel connector do systemd do host para o K3s e a adoção inicial do Flux com SOPS + age.
+Atualizado em 2026-09-14 após a validação do firewall em reboot real, a migração do Cloudflare Tunnel connector do systemd do host para o K3s e a conclusão da adoção GitOps com Flux para cloudflared, Firecrawl e observabilidade.
 
 ## Host
 
@@ -35,9 +35,15 @@ O Flux v2.9.5 foi adotado como controlador GitOps e o bootstrap no GitHub foi co
 clusters/guiosoft-info
 ```
 
-O acesso runtime do Flux ao repositório usa SSH/deploy key. O `flux-system` já reconcilia sua própria configuração a partir da branch `main`.
+O acesso runtime do Flux ao repositório usa SSH/deploy key. O `flux-system` reconcilia sua própria configuração a partir da branch `main`.
 
-O primeiro workload adotado foi o `cloudflared`. A reconciliação foi separada em três camadas explícitas:
+As principais áreas atualmente sob Flux são:
+
+- `cloudflared`, com namespace e Secret SOPS independentes;
+- Firecrawl, com namespace e Secret SOPS independentes;
+- stack de observabilidade via HelmRelease.
+
+A reconciliação do `cloudflared` segue:
 
 ```text
 cloudflare-namespace
@@ -47,8 +53,6 @@ cloudflare-secrets
 cloudflared
 ```
 
-As dependências são declaradas com `dependsOn`. O namespace é criado antes dos secrets, e o workload só reconcilia depois dos secrets.
-
 A identidade privada age usada pelo Flux permanece fora do Git e é disponibilizada como Secret runtime `sops-age` no namespace `flux-system`. O manifesto `cloudflared-token.sops.yaml` mantém `apiVersion`, `kind` e `metadata` em claro e cifra apenas `data`.
 
 Em 2026-09-14 foi executado um teste real de recuperação: o Secret `cloudflared-tunnel-token` foi apagado manualmente, `cloudflare-secrets` foi reconciliado e o Secret foi recriado a partir do Git cifrado. O Tunnel permaneceu operacional e `https://k3s-test.guiosoft.info/` respondeu HTTP 200 após a recuperação.
@@ -57,6 +61,25 @@ Esse teste valida a cadeia:
 
 ```text
 Git cifrado -> Flux -> SOPS/age -> Kubernetes Secret -> workload operacional
+```
+
+O Firecrawl também está sob Flux e já teve self-healing validado após drift controlado de réplicas.
+
+A observabilidade foi adotada a partir dos releases Helm existentes, sem recriação deliberada. A ordem foi:
+
+```text
+Alloy -> OpenTelemetry Collector -> Tempo -> Loki -> kube-prometheus-stack
+```
+
+Os cinco HelmReleases estão ativos (`suspend: false`) e foram validados individualmente com `Ready=True`, preservando releases, versões, workloads e PVCs existentes.
+
+A validação funcional continuou cobrindo:
+
+```text
+app -> OpenTelemetry Collector -> Tempo
+app logs -> Alloy -> Loki
+Prometheus -> targets/métricas/alertas
+Grafana -> Prometheus/Tempo/Loki
 ```
 
 ## Cloudflare Tunnel no Kubernetes
@@ -143,6 +166,16 @@ A observabilidade inclui:
 - node-exporter;
 - métricas customizadas, traces distribuídos, logs correlacionados e alertas validados.
 
+A stack de observabilidade agora também está sob reconciliação GitOps por Flux via HelmRelease. As versões adotadas foram preservadas:
+
+```text
+kube-prometheus-stack 89.2.0
+tempo 2.2.3
+opentelemetry-collector 0.172.1
+loki 18.5.0
+alloy 1.12.1
+```
+
 Um incident drill controlado já confirmou o fluxo de detecção, correlação e recuperação.
 
 ## Cloudflare
@@ -195,13 +228,13 @@ A identidade privada age passa a ser ainda mais crítica porque é necessária t
 
 SOPS + age estão configurados. A identidade privada age permanece fora do repositório e `.sops.yaml` contém somente o recipient público. O fluxo encrypt/decrypt e aplicação de Kubernetes Secret cifrado foi validado.
 
-O token do Cloudflare Tunnel segue o mesmo padrão e agora está integrado ao Flux. O teste de exclusão e recriação do Secret confirmou que o cluster consegue recuperar o credential a partir do Git cifrado desde que a identidade privada age esteja disponível no `flux-system`.
+O token do Cloudflare Tunnel segue o mesmo padrão e está integrado ao Flux. O teste de exclusão e recriação do Secret confirmou que o cluster consegue recuperar o credential a partir do Git cifrado desde que a identidade privada age esteja disponível no `flux-system`.
 
 ## Próximos passos
 
-1. executar um teste controlado de drift/rollback declarativo no `cloudflared`;
-2. migrar Firecrawl para reconciliação Flux;
-3. migrar observabilidade/Helm depois dos workloads mais simples;
-4. remover o runtime antigo do Firecrawl somente após encerrar sua janela de rollback;
-5. pinçar `cloudflared` também por digest após registrar o `imageID` validado em runtime;
-6. avançar pendências de storage/DR conforme necessidade operacional.
+1. tornar reproduzível o bootstrap do Secret runtime `sops-age` após a instalação do Flux;
+2. criar uma cópia off-host independente da identidade privada age;
+3. remover o runtime antigo do Firecrawl somente após encerrar sua janela de rollback;
+4. pinçar `cloudflared` também por digest após registrar o `imageID` validado em runtime;
+5. avançar pendências de storage/DR conforme necessidade operacional;
+6. revisar consumo da observabilidade após período maior de retenção/carga.
