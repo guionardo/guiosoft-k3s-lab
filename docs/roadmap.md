@@ -56,8 +56,9 @@
 - [x] validar resolução interna por `dig`/`getent` e HTTP 200 direto ao Traefik/Firecrawl;
 - [x] validar Firecrawl LAN-only com Hermes;
 - [x] validar Firecrawl LAN-only com OpenCode via MCP;
-- [ ] remover declarativamente Cloudflare Access/Service Tokens do Firecrawl após registrar plano/rollback;
-- [ ] garantir que Firecrawl deixe de ser alcançável pela rota pública wildcard sem prejudicar outros Ingress;
+- [x] bloquear explicitamente `firecrawl.guiosoft.info` no Tunnel com `http_status:404` antes do wildcard e validar a rota pública sem prejudicar o acesso LAN;
+- [x] remover declarativamente a aplicação Cloudflare Access e os Service Tokens Hermes/OpenCode após o bloqueio público validado;
+- [x] validar novamente HTTP pela LAN e HTTPS pela rota pública após o cutover definitivo;
 - [ ] migrar `cloudflared` para Kubernetes somente depois das demais fundações.
 
 ## Fase 4 — Workloads
@@ -106,6 +107,7 @@ Para cada workload futuro:
 - [x] concluir que Access deixou de ser necessário após classificar Hermes/OpenCode como consumidores exclusivamente LAN;
 - [x] validar Hermes diretamente contra o hostname resolvido internamente;
 - [x] validar OpenCode/Firecrawl via MCP com configuração no objeto `mcp` de `~/.config/opencode/opencode.jsonc`;
+- [x] retirar definitivamente Cloudflare Access/Service Tokens e manter Firecrawl LAN-only com bloqueio público explícito no Tunnel;
 - [x] observar estabilidade e consumo por um período maior antes da remoção definitiva do runtime antigo;
 - [x] parar Docker Compose antigo mantendo rollback simples — containers e volumes preservados;
 - [x] observar K3s sozinho após o cutover, com os cinco Pods `Ready`, `RESTARTS=0` e sem warnings relevantes;
