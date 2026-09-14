@@ -65,25 +65,26 @@ Validação em 2026-09-14:
 - `/etc/resolv.conf` do servidor passou a conter somente `nameserver 192.168.88.1`;
 - `getent ahostsv4 firecrawl.guiosoft.info` retornou `192.168.88.9`;
 - `curl http://firecrawl.guiosoft.info/` chegou ao Traefik/Firecrawl pela LAN e retornou HTTP 200;
-- o teste funcional do Firecrawl foi executado com sucesso pelo caminho LAN-only.
+- o teste funcional do Firecrawl foi executado com sucesso pelo caminho LAN-only;
+- **Hermes foi testado com sucesso consumindo o Firecrawl por esse caminho interno**, sem depender dos headers do Cloudflare Access.
 
-Com isso, o caminho desejado passa a ser:
+Com isso, o caminho validado para Hermes é:
 
 ```text
-Hermes / OpenCode
-       |
-       | DNS da LAN
-       v
+Hermes
+   |
+   | DNS da LAN
+   v
 MikroTik 192.168.88.1
-       |
-       | firecrawl.guiosoft.info = 192.168.88.9
-       v
+   |
+   | firecrawl.guiosoft.info = 192.168.88.9
+   v
 Traefik -> Firecrawl K3s
 ```
 
-Isso elimina a necessidade arquitetural de modificar/forkar Hermes apenas para adicionar os headers `CF-Access-Client-Id` e `CF-Access-Client-Secret`.
+Isso elimina para Hermes a necessidade arquitetural de modificar/forkar o cliente apenas para adicionar os headers `CF-Access-Client-Id` e `CF-Access-Client-Secret`.
 
-A publicação Cloudflare/Access ainda deve ser removida de forma controlada somente depois de confirmar Hermes e OpenCode usando esse caminho interno. Os recursos Terraform correspondentes também precisam ser reconciliados para que uma execução futura não recrie a exposição removida manualmente.
+O gate restante antes de desmontar a publicação Cloudflare é confirmar **OpenCode** usando o mesmo caminho interno. Depois disso, a rota pública/Cloudflare Access e seus Service Tokens podem ser removidos e o Terraform deve ser reconciliado para não recriá-los.
 
 Avahi permanece ativo por enquanto, mas deixou de ser requisito para o Firecrawl. Sua necessidade poderá ser reavaliada separadamente.
 
@@ -107,8 +108,8 @@ Princípios:
 
 ## Pendências antes do enforcement
 
-- confirmar Hermes e OpenCode consumindo Firecrawl pelo DNS interno;
-- remover publicação/Access Cloudflare do Firecrawl e reconciliar Terraform somente após essa confirmação;
+- confirmar OpenCode consumindo Firecrawl pelo DNS interno; Hermes já foi validado;
+- remover publicação/Access Cloudflare do Firecrawl e reconciliar Terraform após os dois consumidores estarem validados;
 - reavaliar se Avahi ainda possui consumidor real;
 - verificar regras de port-forward/NAT no roteador;
 - definir origens exatas para SSH, API 6443, kubelet 10250, node-exporter 9100 e Flannel 8472;
@@ -126,4 +127,4 @@ O audit é read-only e não exige mais o antigo Firecrawl Docker em `127.0.0.1:3
 
 ## Decisões de hardening registradas em 2026-09-14
 
-O processo mostrou uma preferência explícita por eliminar serviços sem consumidor antes de escondê-los atrás de firewall. NFS/RPC, PCP e Cockpit foram retirados da superfície de rede por esse motivo. Para o Firecrawl, a publicação pública deixou de ser necessária conceitualmente: o split-DNS local já foi validado até o serviço K3s, mantendo um hostname estável sem depender de mDNS. O próximo gate é validar os dois consumidores reais antes de desmontar Cloudflare Access.
+O processo mostrou uma preferência explícita por eliminar serviços sem consumidor antes de escondê-los atrás de firewall. NFS/RPC, PCP e Cockpit foram retirados da superfície de rede por esse motivo. Para o Firecrawl, o split-DNS local já foi validado até o serviço K3s e também com Hermes como consumidor real, mantendo um hostname estável sem depender de mDNS ou Cloudflare Access. O último gate funcional é OpenCode antes de desmontar a publicação pública.
