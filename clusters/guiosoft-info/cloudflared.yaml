@@ -13,3 +13,7 @@ spec:
     kind: GitRepository
     name: flux-system
   path: ./kubernetes/apps/cloudflared
+  decryption:
+    provider: sops
+    secretRef:
+      name: sops-age
