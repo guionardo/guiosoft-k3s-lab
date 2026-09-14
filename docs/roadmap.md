@@ -8,9 +8,9 @@
 - [x] remover Tailscale e validar ausência no preflight;
 - [x] remover publicação OpenShip no Cloudflare;
 - [x] remover `traefik.guiosoft.info`;
-- [ ] confirmar situação local do OpenShip;
-- [ ] remover `git.guiosoft.info`;
-- [ ] remover `git-ssh.guiosoft.info`;
+- [x] confirmar situação local do OpenShip — nenhuma unidade systemd/container local encontrado;
+- [x] remover `git.guiosoft.info`;
+- [x] remover `git-ssh.guiosoft.info`;
 - [x] auditar firewall/listeners após bootstrap do K3s;
 - [x] consolidar estado atual em documentação versionada.
 
@@ -99,10 +99,10 @@ Para cada workload futuro:
 - [x] manter `USE_DB_AUTHENTICATION=false` intencionalmente; autenticação autoritativa está na borda Cloudflare;
 - [x] criar Service Tokens separados para Hermes e OpenCode, com validade de 1 ano;
 - [x] validar `firecrawl-access-test`: sem credenciais recebe HTTP 401 e requests autenticados executam `/v1/scrape` com sucesso;
-- [ ] observar estabilidade e consumo por um período maior antes da remoção definitiva do runtime antigo;
-- [ ] parar Docker Compose antigo mantendo rollback simples;
-- [ ] observar K3s sozinho após o cutover;
-- [ ] remover Docker Compose somente após estabilidade suficiente.
+- [x] observar estabilidade e consumo por um período maior antes da remoção definitiva do runtime antigo;
+- [x] parar Docker Compose antigo mantendo rollback simples — containers e volumes preservados;
+- [x] observar K3s sozinho após o cutover, com os cinco Pods `Ready`, `RESTARTS=0` e sem warnings relevantes;
+- [ ] remover Docker Compose somente após estabilidade suficiente; preservar volumes até o encerramento da janela de rollback.
 
 ## Fase 5 — Storage e backup
 
