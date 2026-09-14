@@ -92,7 +92,13 @@ verify_sha="$(sha256sum "$verify_tmp" | awk '{print $1}')"
 }
 
 printf '%s  %s\n' "$(sha256sum "$out" | awk '{print $1}')" "$(basename "$out")" > "$sum"
-chmod 0600 "$out" "$sum"
+
+# FAT/exFAT/NTFS mounts may not support POSIX chmod. The destination contains only
+# ciphertext and its checksum; access permissions on those files are governed by
+# mount options on such filesystems. Keep strict modes where the filesystem supports it.
+if ! chmod 0600 "$out" "$sum" 2>/dev/null; then
+  echo "note: destination filesystem does not support POSIX chmod; using mount permissions"
+fi
 
 sync "$out" "$sum" 2>/dev/null || true
 
