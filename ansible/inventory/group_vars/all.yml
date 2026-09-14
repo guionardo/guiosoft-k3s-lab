@@ -46,6 +46,19 @@ restic_r2_keep_monthly: 12
 preserve_docker: true
 preserve_cloudflared: true
 
+# Host hardening decisions validated on 2026-09-14. Packages are intentionally
+# retained for reversible rollback, but these listeners must stay disabled.
+# Avahi is deliberately kept because mDNS may support LAN-only application access.
+host_disabled_services:
+  - nfs-server.service
+  - rpcbind.service
+  - rpcbind.socket
+  - pmcd.service
+  - pmlogger.service
+  - pmproxy.service
+  - cockpit.service
+  - cockpit.socket
+
 base_packages:
   - ca-certificates
   - curl
