@@ -29,7 +29,7 @@
       changed_when: false
       failed_when: false
 
-    - name: Assert preserved services remain active
+    - name: Assert preserved host services remain active
       ansible.builtin.assert:
         that:
           - not preserve_docker or docker_state.stdout == 'active'
@@ -47,6 +47,17 @@
       register: tcp_listeners
       changed_when: false
 
+    - name: Read UDP listeners
+      ansible.builtin.command: ss -lnup
+      register: udp_listeners
+      changed_when: false
+
+    - name: Read nftables ruleset
+      ansible.builtin.command: nft list ruleset
+      register: nft_ruleset
+      changed_when: false
+      failed_when: false
+
     - name: Verify Traefik HTTP endpoint is listening locally
       ansible.builtin.uri:
         url: http://127.0.0.1/
@@ -61,31 +72,23 @@
       register: kubernetes_ready
       changed_when: false
 
-    - name: Verify Firecrawl local endpoint when Docker preservation is enabled
-      ansible.builtin.uri:
-        url: http://127.0.0.1:3002/
-        method: GET
-        status_code:
-          - 200
-          - 301
-          - 302
-          - 401
-          - 403
-          - 404
-        return_content: false
-      when: preserve_docker
-
     - name: Show firewall audit summary
       ansible.builtin.debug:
         msg:
           - "K3s: {{ k3s_state.stdout }}"
-          - "Docker: {{ docker_state.stdout }}"
+          - "Docker daemon: {{ docker_state.stdout }}"
           - "cloudflared: {{ cloudflared_state.stdout }}"
           - "Kubernetes API: {{ kubernetes_ready.stdout | trim }}"
           - "UFW return code: {{ ufw_status.rc }}"
           - "UFW status: {{ ufw_status.stdout_lines | default([]) }}"
           - "TCP listeners: {{ tcp_listeners.stdout_lines }}"
+          - "UDP listeners: {{ udp_listeners.stdout_lines }}"
+          - "nftables ruleset lines: {{ nft_ruleset.stdout_lines | default([]) | length }}"
 
-# This playbook is intentionally read-only. It validates coexistence of K3s,
-# Docker, cloudflared and the current firewall state without modifying UFW or
-# nftables. A future firewall role must not take ownership of Docker/K3s rules.
+# This playbook is intentionally read-only. preserve_docker means preserving the
+# Docker daemon, not keeping any specific Docker workload alive. Firecrawl's old
+# Compose stack is currently stopped and retained only as rollback material, so
+# port 3002 is intentionally not asserted here.
+#
+# A future firewall role must coexist with the nftables rules managed by
+# Docker/K3s instead of taking ownership of the complete ruleset.
