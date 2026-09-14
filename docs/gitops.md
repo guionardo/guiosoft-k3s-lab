@@ -182,9 +182,17 @@ ansible-playbook -i ansible/inventory/production.yml \
   ansible/playbooks/flux-sops-age.yml
 ```
 
-O playbook usa a identidade já criada pela role `secrets`, exige que o namespace `flux-system` exista, usa o kubeconfig administrativo do K3s e aplica `flux-system/sops-age` sem imprimir a chave privada. As tarefas que manipulam a identidade ou o Secret usam `no_log: true`.
+O playbook usa a identidade já criada pela role `secrets`, exige que o namespace `flux-system` exista, usa o kubeconfig administrativo do usuário e aplica `flux-system/sops-age` sem imprimir a chave privada. As tarefas que manipulam a identidade ou o Secret usam `no_log: true`.
 
-A validação recomendada é executar o playbook duas vezes: a primeira execução pode criar/atualizar o Secret; a segunda deve ser idempotente. Essa validação runtime ainda deve ser registrada antes de considerar o bootstrap totalmente comprovado para DR.
+Em 2026-09-14 o playbook foi executado novamente contra o host real após o Secret já existir e terminou com:
+
+```text
+ok=8
+changed=0
+failed=0
+```
+
+Isso comprova a idempotência do bootstrap runtime de `flux-system/sops-age`. A reconstrução ainda depende, deliberadamente, de recuperar a identidade privada age a partir de uma cópia off-host independente antes de executar esse playbook em um host novo.
 
 ## Testes de recuperação, drift e rollback
 
@@ -197,6 +205,7 @@ manual drift -> self-healing para o estado do Git
 Git change -> cluster
 Git rollback -> cluster
 Helm existente -> HelmRelease Flux -> reconciliação sem recriação
+age identity local -> Ansible -> flux-system/sops-age idempotente
 ```
 
 No `cloudflared`, o Secret foi excluído manualmente e recriado pelo Flux a partir do Git cifrado. Também foram validados drift de réplicas e mudança/rollback de annotation via Git sem indisponibilidade pública.
@@ -237,13 +246,13 @@ Concluído:
 - Loki sob HelmRelease Flux;
 - kube-prometheus-stack sob HelmRelease Flux;
 - toda a stack atual de observabilidade reconciliada por Flux;
-- playbook pós-bootstrap para criar/atualizar `flux-system/sops-age` sem expor a chave privada.
+- playbook pós-bootstrap para criar/atualizar `flux-system/sops-age` sem expor a chave privada;
+- validação real de idempotência do bootstrap de `sops-age` com `changed=0` e `failed=0`.
 
 Pendências relacionadas ao GitOps/DR:
 
-1. validar o playbook `flux-sops-age.yml` em duas execuções consecutivas e registrar a idempotência;
-2. manter backup off-host independente da identidade privada age;
-3. expandir o modelo GitOps apenas quando novos workloads forem incorporados.
+1. manter e testar backup off-host independente da identidade privada age;
+2. expandir o modelo GitOps apenas quando novos workloads forem incorporados.
 
 ## Rollback operacional
 
