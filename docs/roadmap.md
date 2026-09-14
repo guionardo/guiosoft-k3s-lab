@@ -48,7 +48,7 @@
 - [x] validar Traefik e Ingress internamente;
 - [x] manter inicialmente `cloudflared` no host;
 - [x] publicar `k3s-test.guiosoft.info`;
-- [x] corrigir wildcard Tunnel para `http://127.0.0.1:80`;
+- [x] corrigir wildcard Tunnel para `http://127.0.0.1:80` durante a fase inicial;
 - [x] apontar `*.guiosoft.info` para o Tunnel;
 - [x] validar Cloudflare -> Tunnel -> Traefik -> Ingress -> Service -> Pod;
 - [x] definir padrão de Ingress e 404 para hosts desconhecidos;
@@ -62,7 +62,14 @@
 - [x] bloquear explicitamente `firecrawl.guiosoft.info` no Tunnel com `http_status:404` antes do wildcard e validar a rota pública sem prejudicar o acesso LAN;
 - [x] remover declarativamente a aplicação Cloudflare Access e os Service Tokens Hermes/OpenCode após o bloqueio público validado;
 - [x] validar novamente HTTP pela LAN e HTTPS pela rota pública após o cutover definitivo;
-- [ ] migrar `cloudflared` para Kubernetes somente depois das demais fundações.
+- [x] mudar o origin wildcard para `http://192.168.88.9:80`, compatível simultaneamente com o connector host e Pods K3s;
+- [x] criar namespace/Deployment/Service/ServiceMonitor para `cloudflared` no Kubernetes;
+- [x] armazenar Tunnel token como Kubernetes Secret cifrado com SOPS + age;
+- [x] validar connector Kubernetes em paralelo com o systemd do host, incluindo quatro conexões QUIC e configuração remota;
+- [x] parar/desabilitar `cloudflared.service` somente após validação pública/LAN com o connector Kubernetes;
+- [x] escalar `cloudflared` para duas réplicas e validar tráfego após o cutover exclusivo para K3s;
+- [x] preservar temporariamente instalação/configuração systemd como rollback simples durante a janela de observação;
+- [ ] pinçar a imagem `cloudflared` por digest após registrar o `imageID` runtime.
 
 ## Fase 4 — Workloads
 
