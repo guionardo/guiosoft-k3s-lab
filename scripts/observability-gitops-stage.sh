@@ -17,11 +17,12 @@ done
 echo "Observability GitOps staging reconciliation"
 echo
 
-# Capture the current Helm release state before and after staging. We use the
-# stable tabular output rather than version-dependent JSON/template features.
+# Capture the current Helm release state before and after staging. The default
+# Helm table is tab-separated; fields are NAME, NAMESPACE, REVISION, UPDATED,
+# STATUS, CHART and APP VERSION. We compare NAME + CHART + STATUS.
 capture_helm_state() {
   helm list -n "$NAMESPACE" --no-headers \
-    | awk -F '\t' 'BEGIN { OFS="\t" } { print $1, $8, $5 }' \
+    | awk -F '\t' 'BEGIN { OFS="\t" } { print $1, $6, $5 }' \
     | sort
 }
 
@@ -30,6 +31,11 @@ after="$(mktemp)"
 trap 'rm -f "$before" "$after"' EXIT
 
 capture_helm_state > "$before"
+
+if [[ ! -s "$before" ]]; then
+  echo "error: no Helm releases found in namespace '$NAMESPACE'" >&2
+  exit 1
+fi
 
 echo "Current Helm releases (name, chart, status):"
 cat "$before"
@@ -50,6 +56,11 @@ kubectl get helmrelease -n "$NAMESPACE" \
 
 expected=(alloy kube-prometheus-stack loki otel-collector tempo)
 for name in "${expected[@]}"; do
+  if ! kubectl get helmrelease -n "$NAMESPACE" "$name" >/dev/null 2>&1; then
+    echo "error: expected HelmRelease/$name was not staged" >&2
+    exit 1
+  fi
+
   suspend="$(kubectl get helmrelease -n "$NAMESPACE" "$name" -o jsonpath='{.spec.suspend}')"
   if [[ "$suspend" != "true" ]]; then
     echo "error: HelmRelease/$name is not suspended" >&2
@@ -61,6 +72,14 @@ echo
 echo "HelmRepository readiness:"
 kubectl get helmrepository -n "$NAMESPACE"
 
+not_ready="$(kubectl get helmrepository -n "$NAMESPACE" -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.conditions[?(@.type=="Ready")].status}{"\n"}{end}' \
+  | awk '$2 != "True" { print $1 }')"
+if [[ -n "$not_ready" ]]; then
+  echo "error: one or more HelmRepository objects are not Ready:" >&2
+  printf '%s\n' "$not_ready" >&2
+  exit 1
+fi
+
 capture_helm_state > "$after"
 
 if ! diff -u "$before" "$after"; then
@@ -71,4 +90,5 @@ fi
 echo
 echo "Existing Helm releases were unchanged."
 echo "All staged HelmRelease objects are suspended."
+echo "All HelmRepository objects are Ready."
 echo "Observability GitOps staging validation: OK"
