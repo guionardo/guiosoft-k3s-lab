@@ -53,7 +53,7 @@ kind: HelmRelease
 metadata:
   name: otel-collector
 spec:
-  suspend: true
+  suspend: false
   interval: 30m
   timeout: 5m
   releaseName: otel-collector
