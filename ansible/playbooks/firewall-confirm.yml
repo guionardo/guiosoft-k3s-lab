@@ -1,0 +1,36 @@
+---
+- name: Confirm live host firewall trial after external LAN validation
+  hosts: k3s_servers
+  become: true
+  gather_facts: false
+
+  vars:
+    firewall_table_name: guiosoft_host
+    firewall_rollback_unit: guiosoft-firewall-rollback
+
+  tasks:
+    - name: Verify firewall table is still loaded
+      ansible.builtin.command: "nft list table inet {{ firewall_table_name }}"
+      changed_when: false
+
+    - name: Stop automatic rollback timer
+      ansible.builtin.command: "systemctl stop {{ firewall_rollback_unit }}.timer"
+      changed_when: true
+      failed_when: false
+
+    - name: Reset rollback unit state
+      ansible.builtin.command: "systemctl reset-failed {{ firewall_rollback_unit }}.timer {{ firewall_rollback_unit }}.service"
+      changed_when: false
+      failed_when: false
+
+    - name: Verify rollback timer is no longer active
+      ansible.builtin.command: "systemctl is-active {{ firewall_rollback_unit }}.timer"
+      register: firewall_rollback_timer_state
+      changed_when: false
+      failed_when: firewall_rollback_timer_state.stdout | trim not in ['inactive', 'failed', 'unknown']
+
+    - name: Confirm accepted live trial
+      ansible.builtin.debug:
+        msg:
+          - "Firewall live trial confirmed. Automatic rollback is no longer armed."
+          - "The nftables table remains live for this boot. Persistence across reboot will be configured only after this trial is accepted."
