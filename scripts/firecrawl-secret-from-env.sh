@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ENV_FILE="${1:-${FIRECRAWL_ENV_FILE:-.env}}"
-OUTPUT_FILE="${2:-${FIRECRAWL_SECRET_FILE:-kubernetes/apps/firecrawl/firecrawl-secrets.sops.yaml}}"
+OUTPUT_FILE="${2:-${FIRECRAWL_SECRET_FILE:-kubernetes/secrets/firecrawl-secrets.sops.yaml}}"
 
 need() {
   command -v "$1" >/dev/null || { echo "error: required command not found: $1" >&2; exit 1; }
@@ -113,9 +113,14 @@ for key in allowed:
 out_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 PY
 
-# The temporary plaintext filename does not end in .sops.yaml, so tell SOPS
-# which final path should be used when evaluating creation_rules.
-sops --encrypt --config .sops.yaml --filename-override "$OUTPUT_FILE" "$PLAIN" > "$ENCRYPTED"
+# Keep Kubernetes object structure readable for Flux/Kustomize while encrypting
+# only Secret payload fields. The filename override lets SOPS creation_rules
+# evaluate the final repository path instead of the temporary plaintext path.
+sops --encrypt \
+  --config .sops.yaml \
+  --filename-override "$OUTPUT_FILE" \
+  --encrypted-regex '^(data|stringData)$' \
+  "$PLAIN" > "$ENCRYPTED"
 
 # Validate decryptability before moving the encrypted artifact into the repo tree.
 sops --decrypt "$ENCRYPTED" >/dev/null
@@ -123,7 +128,5 @@ install -m 0600 "$ENCRYPTED" "$OUTPUT_FILE"
 
 echo "Encrypted Firecrawl Secret created: $OUTPUT_FILE"
 echo "Values were not printed and plaintext was only held in a temporary directory."
+echo "The SOPS payload is Flux-compatible: only data/stringData are encrypted."
 echo "Next: make secret-validate FILE=$OUTPUT_FILE"
-echo "Before applying the Secret, ensure the namespace exists:"
-echo "  kubectl apply -f kubernetes/apps/firecrawl/namespace.yaml"
-echo "Then: make secret-apply FILE=$OUTPUT_FILE"
