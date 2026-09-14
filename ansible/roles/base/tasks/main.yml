@@ -18,7 +18,6 @@
     enabled: false
     state: stopped
   loop: "{{ host_disabled_services | default([]) }}"
-  failed_when: false
 
 - name: Ensure br_netfilter module is loaded
   community.general.modprobe:
