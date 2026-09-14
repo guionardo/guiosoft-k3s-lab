@@ -116,6 +116,36 @@
       - "If connectivity is lost, do nothing: the rollback unit will delete table inet {{ firewall_table_name }} automatically."
   when: firewall_enforce | bool
 
+- name: Install persistent firewall systemd unit after accepted trial
+  ansible.builtin.template:
+    src: guiosoft-host-firewall.service.j2
+    dest: "/etc/systemd/system/{{ firewall_systemd_unit }}"
+    owner: root
+    group: root
+    mode: "0644"
+  when: firewall_persist | bool
+  register: firewall_systemd_template
+
+- name: Reload systemd after installing firewall unit
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+  when:
+    - firewall_persist | bool
+    - firewall_systemd_template is changed
+
+- name: Enable persistent firewall loader without reapplying live policy
+  ansible.builtin.systemd_service:
+    name: "{{ firewall_systemd_unit }}"
+    enabled: true
+  when: firewall_persist | bool
+
+- name: Verify persistent firewall loader is enabled
+  ansible.builtin.command: "systemctl is-enabled {{ firewall_systemd_unit }}"
+  when: firewall_persist | bool
+  register: firewall_persist_enabled
+  changed_when: false
+  failed_when: firewall_persist_enabled.stdout | trim != 'enabled'
+
 - name: Remind that staged mode made no live firewall change
   ansible.builtin.debug:
     msg: "firewall_enforce=false: rules were rendered and syntax-checked but NOT loaded."
