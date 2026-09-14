@@ -17,13 +17,10 @@ done
 echo "Observability GitOps staging reconciliation"
 echo
 
-# Capture the current Helm release state before and after staging. The default
-# Helm table is tab-separated; fields are NAME, NAMESPACE, REVISION, UPDATED,
-# STATUS, CHART and APP VERSION. We compare NAME + CHART + STATUS.
+# Compare Helm's own raw release rows before and after staging. Avoid parsing
+# columns because Helm versions differ in spacing/tab formatting.
 capture_helm_state() {
-  helm list -n "$NAMESPACE" --no-headers \
-    | awk -F '\t' 'BEGIN { OFS="\t" } { print $1, $6, $5 }' \
-    | sort
+  helm list -n "$NAMESPACE" --no-headers | sort
 }
 
 before="$(mktemp)"
@@ -37,7 +34,7 @@ if [[ ! -s "$before" ]]; then
   exit 1
 fi
 
-echo "Current Helm releases (name, chart, status):"
+echo "Current Helm releases:"
 cat "$before"
 echo
 
@@ -83,7 +80,7 @@ fi
 capture_helm_state > "$after"
 
 if ! diff -u "$before" "$after"; then
-  echo "error: Helm release chart/version/status changed during staging" >&2
+  echo "error: Helm release state changed during staging" >&2
   exit 1
 fi
 
