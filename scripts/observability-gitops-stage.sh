@@ -10,7 +10,7 @@ need() {
   }
 }
 
-for cmd in flux kubectl helm; do
+for cmd in flux kubectl helm python3 diff; do
   need "$cmd"
 done
 
