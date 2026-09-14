@@ -6,7 +6,8 @@ Laboratório pessoal para estudar Kubernetes com K3s em um servidor Debian 13 ex
 
 - instalar e operar um cluster K3s em hardware próprio;
 - migrar serviços atuais sem big-bang;
-- publicar aplicações por subdomínios de `guiosoft.info` usando Cloudflare Tunnel;
+- publicar aplicações por subdomínios de `guiosoft.info` usando Cloudflare Tunnel quando exposição pública for necessária;
+- preferir acesso LAN-only para workloads consumidos exclusivamente dentro da rede local;
 - aprender os principais conceitos de Kubernetes com workloads reais;
 - manter infraestrutura e configuração em código;
 - possibilitar reconstrução do ambiente após falha do disco do sistema;
@@ -26,12 +27,13 @@ K3s
   ├── cloudflared
   ├── Traefik
   ├── namespaces
-  ├── workloads
+  ├── workloads públicos quando necessário
+  ├── workloads LAN-only via DNS interno
   ├── observabilidade
   └── GitOps
 ```
 
-Durante a migração, os serviços atuais continuarão rodando no host Debian. Cada serviço será movido individualmente para o K3s e o hostname correspondente será redirecionado apenas após validação.
+A publicação externa deixa de ser requisito universal. Cada workload é classificado conforme seus consumidores; serviços exclusivamente locais devem preferencialmente permanecer fora da Internet.
 
 ## Estado atual
 
@@ -39,13 +41,19 @@ O cluster single-node K3s está operacional. Traefik, CoreDNS, metrics-server e 
 
 A limpeza pré-K3s foi concluída: Tailscale foi removido, OpenShip deixou de ter publicação Cloudflare e não possui container/unidade systemd local, e os registros DNS explícitos legados `git.guiosoft.info` e `git-ssh.guiosoft.info` foram removidos. O wildcard `*.guiosoft.info` continua sendo a rota padrão para o Tunnel.
 
+O hardening do host já eliminou listeners sem consumidor real antes da criação do firewall: NFS/RPC, PCP e Cockpit foram desabilitados de forma reversível e o bootstrap Ansible preserva esse estado. A rota pública do Cockpit também foi removida do Cloudflare. Avahi foi deliberadamente mantido enquanto a estratégia de descoberta/DNS interno é consolidada.
+
+O MikroTik RouterOS da LAN passou a fornecer resolução interna determinística para `firecrawl.guiosoft.info -> 192.168.88.9`, e o DHCP foi ajustado para que o cliente validado use somente o resolvedor local `192.168.88.1`. `dig`, `getent` e HTTP direto ao hostname confirmaram que o tráfego chega ao Traefik/Firecrawl pela LAN sem passar pelo Cloudflare.
+
+A nova rota LAN-only também foi validada pelos dois consumidores reais: Hermes executou Firecrawl com sucesso pela resolução interna e OpenCode executou Firecrawl via MCP após configuração no objeto `mcp` de `~/.config/opencode/opencode.jsonc`. Isso elimina a necessidade funcional do fork planejado do Hermes apenas para injetar headers do Cloudflare Access. A retirada definitiva da publicação/Access Cloudflare será feita somente depois de remover declarativamente esses recursos do Terraform e validar ausência de regressão.
+
 Hostnames desconhecidos sob o wildcard `*.guiosoft.info` chegam ao Traefik, mas recebem HTTP 404 quando não existe um Ingress explícito.
 
 O acesso `kubectl` a partir de outra máquina da LAN também foi validado usando `make kubeconfig-external`, que renderiza o kubeconfig administrativo com o `InternalIP` do servidor em vez de loopback. A API continua destinada somente à rede administrativa.
 
 O layout persistente em `/srv/k3s` foi validado no host. Novos volumes `local-path` foram reprovisionados e confirmados fisicamente abaixo de `/mnt/store1/k3s/local-path`. No perfil atual do `local-path`, a capacidade declarada de um PVC não pré-aloca nem reserva fisicamente todo esse espaço no ext4 do host e também não funciona como quota rígida por diretório; por isso o espaço livre real de `/mnt/store1` deve ser monitorado independentemente da soma nominal dos PVCs.
 
-A infraestrutura Cloudflare está declarada em Terraform usando o provider v5. O Tunnel existente, sua configuração remota e o wildcard DNS foram importados para o state local e o `terraform plan` foi validado com `No changes`. A aplicação Cloudflare Access do Firecrawl e dois Service Tokens independentes para Hermes e OpenCode também foram criados por Terraform.
+A infraestrutura Cloudflare está declarada em Terraform usando o provider v5. O Tunnel existente, sua configuração remota e o wildcard DNS foram importados para o state local e o `terraform plan` foi validado com `No changes`. A aplicação Cloudflare Access do Firecrawl e dois Service Tokens independentes para Hermes e OpenCode ainda existem no Terraform durante a transição LAN-only; não são mais necessários pelos clientes locais validados e serão removidos de forma controlada.
 
 SOPS + age estão instalados via Ansible. A identidade age é criada de forma idempotente somente quando ausente, a configuração pública do recipient está versionada em `.sops.yaml`, e o fluxo de encrypt/decrypt e de Kubernetes Secrets cifrados foi validado.
 
@@ -69,7 +77,7 @@ O controlled incident drill também foi validado em runtime. O target `make otel
 
 A Fase 4 usa o **Firecrawl como primeiro workload real**. A versão K3s foi implantada com os cinco componentes Ready, scrape funcional real validado e imagens pinadas por digest. PostgreSQL/NuQ, Redis e RabbitMQ foram deliberadamente classificados como efêmeros e usam `emptyDir`, sem PVCs Firecrawl. Uma corrida de startup com RabbitMQ foi corrigida com `initContainer`, e o novo Pod da API foi validado com `RESTARTS=0`.
 
-`firecrawl.guiosoft.info` está protegido por Cloudflare Access Service Auth. Hermes e OpenCode possuem Service Tokens separados; requests sem credencial recebem HTTP 401, enquanto ambos os tokens foram validados com `POST /v1/scrape` funcional. O cutover para K3s foi concluído: o Docker Compose antigo está parado e seus containers/volumes permanecem preservados apenas para rollback. Após o cutover, os cinco Pods K3s permaneceram `Ready`, com `RESTARTS=0` e sem warnings relevantes; a remoção definitiva do runtime Docker antigo continua deliberadamente pendente até o encerramento da janela de rollback.
+O Firecrawl foi inicialmente protegido publicamente por Cloudflare Access Service Auth, com tokens separados para Hermes e OpenCode. Depois, o requisito foi simplificado: ambos os consumidores estão na LAN, então `firecrawl.guiosoft.info` passou a resolver internamente para o servidor K3s e foi validado com Hermes e OpenCode/MCP sem os headers Cloudflare. O Docker Compose antigo continua parado e seus containers/volumes permanecem preservados apenas para rollback.
 
 ## Divisão de responsabilidades
 
@@ -78,7 +86,7 @@ Terraform
 ├── Cloudflare
 │   ├── DNS
 │   ├── Tunnel
-│   ├── Access / Service Tokens
+│   ├── Access / Service Tokens quando necessários
 │   ├── rotas/public hostnames
 │   └── bucket R2 de backup
 └── infraestrutura externa futura
@@ -89,6 +97,7 @@ Ansible
 ├── diretórios e storage do host
 ├── ferramentas de IaC, secrets, backup e Helm
 ├── automação de backup local + off-host
+├── hardening de serviços do host
 ├── firewall
 └── bootstrap do cluster
 
@@ -98,297 +107,6 @@ Kubernetes / Helm / GitOps
 ├── namespaces
 ├── Prometheus / Alertmanager / Grafana
 ├── OpenTelemetry Collector / Tempo
-├── Loki / Grafana Alloy
-└── aplicações
+├── Loki / Alloy
+└── workloads
 ```
-
-## Operações principais
-
-```bash
-make preflight
-make bootstrap
-make tools
-make storage
-make k3s
-make kubeconfig-external
-make cluster-status
-make firewall-audit
-make secrets-test
-make backup-run
-make dr-readiness
-make dr-r2-rehearsal
-make observability-install
-make observability-validate
-make observability-tracing-install
-make observability-tracing-status
-make observability-logging-install
-make observability-logging-status
-make observability-logging-test
-make observability-grafana-datasources
-make observability-grafana-reload
-make observability-grafana-dashboard-audit
-make observability-grafana
-make otel-go-demo-install
-make otel-go-demo-test
-make otel-go-demo-metrics-test
-make otel-go-demo-incident-test
-make firecrawl-migration-audit
-make firecrawl-k8s-validate
-make firecrawl-k8s-status
-make tf-cloudflare-plan
-make tf-r2-plan
-```
-
-O `Makefile` é a interface operacional preferida. Os scripts continuam sendo a implementação de baixo nível, mas operações normais do laboratório devem ser expostas por targets `make`.
-
-## Acesso remoto com kubectl
-
-Para exibir um kubeconfig administrativo adequado a outra máquina da mesma LAN:
-
-```bash
-make kubeconfig-external
-```
-
-O target descobre o `InternalIP` do node e substitui apenas o `server:` do kubeconfig, preservando CA, certificados e chaves. O fluxo foi validado com `kubectl` executado a partir de outra máquina da LAN.
-
-Para gravar o resultado com permissões restritas:
-
-```bash
-umask 077
-make kubeconfig-external > k3s-guiosoft.yaml
-```
-
-Esse kubeconfig contém credenciais administrativas e nunca deve ser versionado. A porta `6443` não deve ser publicada na Internet nem pelo Cloudflare Tunnel.
-
-Detalhes em [`docs/remote-kubectl.md`](docs/remote-kubectl.md).
-
-## Observabilidade
-
-A arquitetura atual cobre os três sinais principais:
-
-```text
-Metrics -> Prometheus
-Logs    -> Grafana Alloy -> Loki
-Traces  -> OpenTelemetry Collector -> Tempo
-UI      -> Grafana
-```
-
-A validação consolidada está disponível em:
-
-```bash
-make observability-validate
-```
-
-Ela verifica Pods/PVCs, targets e query `up` do Prometheus, auditoria de alertas, health dos datasources Grafana e uso atual de recursos quando o metrics-server estiver disponível. No cluster atual o teste passou com 15/15 targets `up`; Prometheus, Tempo e Loki estão com health `OK` e o único alerta sintético ativo na última validação foi `Watchdog`, como esperado.
-
-O demo distribuído usa:
-
-```text
-client
-  |
-  v
-otel-go-demo
-  |
-  | W3C traceparent
-  v
-otel-go-downstream
-  |
-  +--> ambos enviam OTLP --> Collector --> Tempo
-```
-
-Para construir, instalar e validar essa propagação:
-
-```bash
-make otel-go-demo-install
-make otel-go-demo-test
-```
-
-As métricas de aplicação ficam em `/metrics` e são coletadas por `ServiceMonitor`. Para validar o caminho aplicação -> Prometheus e os artefatos de dashboard/alerta:
-
-```bash
-make otel-go-demo-metrics-test
-```
-
-As principais séries são:
-
-```text
-otel_demo_http_requests_total
-otel_demo_http_request_duration_seconds
-otel_demo_requests_in_flight
-otel_demo_downstream_requests_total
-otel_demo_downstream_request_duration_seconds
-otel_demo_downstream_errors_total
-```
-
-Exemplo de PromQL:
-
-```promql
-rate(otel_demo_http_requests_total[5m])
-```
-
-Para testar investigação de incidente de forma controlada:
-
-```bash
-make otel-go-demo-incident-test
-```
-
-O experimento afeta somente os workloads descartáveis do demo. Ele reduz `otel-go-downstream` temporariamente para zero replicas, exige falhas HTTP 502 no frontend, valida métricas no Prometheus, estado `pending`/`firing` do alerta downstream, o mesmo `trace_id` no Loki e Tempo, restaura a escala original e confirma a recuperação. Como as regras reais usam `for: 5m`, o estado `pending` já é considerado evidência de detecção no teste rápido. Esse fluxo foi validado no cluster atual.
-
-Grafana continua sem Ingress nesta fase. Para acesso local:
-
-```bash
-make observability-grafana
-```
-
-Para acesso temporário pela LAN administrativa:
-
-```bash
-make observability-grafana ADDRESS=192.168.88.9
-```
-
-Detalhes em [`docs/observability.md`](docs/observability.md), [`docs/otel-go-demo.md`](docs/otel-go-demo.md), [`docs/alert-audit.md`](docs/alert-audit.md) e [`docs/grafana-dashboard-audit.md`](docs/grafana-dashboard-audit.md).
-
-## Firecrawl
-
-O primeiro workload real escolhido para migração é o Firecrawl. A versão Kubernetes está funcionalmente validada e atende o serviço após o cutover; o Docker Compose antigo está parado, com containers e volumes preservados temporariamente para rollback.
-
-O perfil Kubernetes atual tomou duas decisões explícitas:
-
-- `firecrawl-api` é publicado em `https://firecrawl.guiosoft.info` por Traefik e protegido por Cloudflare Access;
-- PostgreSQL/NuQ, Redis e RabbitMQ são efêmeros nesta etapa e usam `emptyDir`, sem PVCs.
-
-Todas as imagens estão pinadas pelos digests observados no runtime Docker atual. O Ingress publica somente a API; PostgreSQL, Redis, RabbitMQ e Playwright continuam internos ao namespace.
-
-Operações atuais:
-
-```bash
-make firecrawl-migration-audit
-make firecrawl-k8s-validate
-make firecrawl-k8s-status
-bash scripts/firecrawl-k8s.sh deploy
-bash scripts/firecrawl-k8s.sh test
-bash scripts/firecrawl-k8s.sh scrape-test
-bash scripts/firecrawl-k8s.sh observe
-bash scripts/firecrawl-access-test.sh
-```
-
-`make firecrawl-k8s-validate` é read-only: renderiza Kustomize, executa dry-run client-side, exige o Ingress `firecrawl.guiosoft.info`, confirma que as imagens estão pinadas por digest e que não existem PVCs Firecrawl neste perfil.
-
-A configuração não sensível fica em ConfigMap. Para gerar o Secret cifrado diretamente do `.env` local sem imprimir valores:
-
-```bash
-bash scripts/firecrawl-secret-from-env.sh /caminho/do/firecrawl/.env
-make secret-validate FILE=kubernetes/apps/firecrawl/firecrawl-secrets.sops.yaml
-make secret-apply FILE=kubernetes/apps/firecrawl/firecrawl-secrets.sops.yaml
-```
-
-O `.env` real nunca deve ser versionado.
-
-A autenticação pública é feita por Cloudflare Access Service Auth, com um Service Token por agente. O Firecrawl mantém `USE_DB_AUTHENTICATION=false` nesta fase; o warning de bypass de autenticação nativa é esperado porque a borda Cloudflare é a camada autoritativa. A validação confirmou HTTP 401 sem token e scrape autenticado com sucesso para Hermes e OpenCode.
-
-Os Client Secrets dos Service Tokens existem também no state local do Terraform e devem ser tratados como segredo. Nunca devem ser adicionados ao Git, logs ou exemplos de documentação.
-
-Após a parada do Compose, a observação do K3s sozinho confirmou os cinco Deployments disponíveis, Pods `Ready`, `RESTARTS=0`, sem eventos Warning recentes e consumo compatível com o baseline anterior. O runtime Docker antigo não deve ser removido ainda: manter containers e volumes preservados até o encerramento explícito da janela de rollback; não executar `docker compose down -v` durante essa janela.
-
-Detalhes em [`docs/firecrawl-migration.md`](docs/firecrawl-migration.md) e a semântica de PVC/local-path em [`docs/storage.md`](docs/storage.md).
-
-## Documentação final
-
-Além da documentação operacional mantida durante a implementação, o roadmap reserva uma etapa final específica para transformar o projeto em material de estudo e publicação. Essa etapa deverá reconstruir a jornada completa, incluindo decisões, alternativas descartadas, trade-offs, erros, troubleshooting, evidências de validação e fontes oficiais.
-
-Os entregáveis finais previstos são:
-
-- guia técnico detalhado e reproduzível;
-- material de estudo sobre K3s/Kubernetes, IaC, storage, backup, Cloudflare e observabilidade;
-- artigo técnico completo para blog;
-- versão condensada para LinkedIn.
-
-A publicação deverá passar por revisão explícita para remover secrets, identificadores desnecessários e detalhes sensíveis do ambiente.
-
-## Disaster Recovery
-
-O objetivo operacional continua sendo reconstruir o ambiente em outro host sem depender do disco raiz original. As validações não destrutivas já estão concluídas:
-
-```bash
-make dr-readiness
-make dr-r2-rehearsal
-```
-
-O teste destrutivo completo permanece deliberadamente adiado até existir uma VM ou segundo host isolado disponível.
-
-Detalhes em [`docs/disaster-recovery.md`](docs/disaster-recovery.md).
-
-## Segurança
-
-Este repositório é público. Nunca versionar:
-
-- tokens do Cloudflare;
-- Cloudflare Access Client Secrets;
-- credenciais R2 em plaintext;
-- senha do repositório Restic;
-- kubeconfig real;
-- chaves SSH ou identidade privada age;
-- senhas;
-- arquivos `.env` com credenciais;
-- Secrets Kubernetes em texto puro;
-- Terraform state ou plans contendo secrets;
-- backups ou dumps de banco de dados;
-- relatórios de discovery sem revisão.
-
-SOPS + age são usados para secrets declarativos que precisam permanecer no Git. O recipient público pode ser versionado; a identidade privada permanece fora do repositório e precisa de cópia de recuperação off-host.
-
-## Domínio
-
-Domínio principal do laboratório: `guiosoft.info`.
-
-## Fontes e evidências desta etapa
-
-A evolução atual foi baseada em:
-
-- validações reais do cluster K3s, Traefik, Cloudflare Tunnel, `kubectl`, PVC/local-path, SOPS + age e backup/restore executadas no próprio servidor;
-- validação real do kubeconfig remoto a partir de outra máquina da LAN;
-- validação real do `kube-prometheus-stack`, Tempo, OpenTelemetry Collector, Loki e Alloy no cluster atual;
-- validação real de 15/15 targets Prometheus `up`, auditoria dos alertas e health dos datasources Prometheus/Tempo/Loki;
-- validação real da remoção do hard CPU limit do node-exporter com desaparecimento de throttling e `CPUThrottlingHigh`;
-- auditoria read-only de 26 dashboards Grafana com carregamento válido e classificação K3s/Linux;
-- validação real de tracing distribuído `otel-go-demo -> otel-go-downstream` com W3C Trace Context;
-- validação real de logs `otel-go-demo -> Alloy -> Loki`, correlação pelo mesmo `trace_id` e navegação visual no Grafana;
-- validação real das métricas customizadas `otel_demo_*` e das regras customizadas no Prometheus;
-- validação real do controlled incident drill cobrindo HTTP 502, métricas, alerta, Loki, Tempo e recuperação do downstream;
-- auditoria read-only do Docker Compose Firecrawl, identificação de volumes/digests e preparação do perfil K3s efêmero com Ingress público;
-- validação real do Firecrawl K3s com scrape funcional, correção da corrida de startup e `RESTARTS=0` após redeploy;
-- validação real do Cloudflare Access Service Auth: HTTP 401 sem Service Token e `/v1/scrape` autenticado com Hermes e OpenCode;
-- validação pós-cutover do Firecrawl com Docker Compose parado e K3s atendendo sozinho com cinco Pods Ready, zero restarts e sem warnings relevantes;
-- Prometheus Go client `v1.24.1` para métricas customizadas;
-- documentação oficial do Prometheus Operator sobre `ServiceMonitor` e `PrometheusRule`;
-- documentação oficial do Prometheus sobre alerting rules;
-- documentação oficial do Grafana sobre dashboards;
-- documentação oficial do OpenTelemetry sobre propagação de contexto e W3C Trace Context;
-- documentação oficial do K3s para cluster access, storage, datastore e backup/restore;
-- documentação oficial do Kubernetes sobre kubeconfig, `kubectl`, Persistent Volumes e `emptyDir`;
-- documentação oficial do Grafana Loki, Alloy, Tempo e provisioning de datasources;
-- documentação oficial do Firecrawl para self-hosting e configuração de ambiente;
-- documentação oficial do Cloudflare Access sobre políticas Service Auth e Service Tokens;
-- documentação oficial do Restic, Cloudflare R2, SOPS, age, Helm e systemd.
-
-Referências relevantes:
-
-- https://github.com/prometheus/client_golang/releases
-- https://prometheus-operator.dev/docs/developer/getting-started/
-- https://prometheus.io/docs/prometheus/latest/configuration/alerting_rules/
-- https://grafana.com/docs/grafana/latest/dashboards/build-dashboards/
-- https://opentelemetry.io/docs/concepts/context-propagation/
-- https://www.w3.org/TR/trace-context/
-- https://grafana.com/docs/grafana/latest/administration/provisioning/#data-sources
-- https://grafana.com/docs/loki/latest/setup/install/helm/
-- https://grafana.com/docs/alloy/latest/collect/logs-in-kubernetes/
-- https://grafana.com/docs/tempo/latest/
-- https://github.com/firecrawl/firecrawl/blob/main/SELF_HOST.md
-- https://github.com/firecrawl/firecrawl/blob/main/apps/api/.env.example
-- https://developers.cloudflare.com/cloudflare-one/access-controls/policies/common-policies/
-- https://developers.cloudflare.com/api/resources/zero_trust/subresources/access/subresources/service_tokens/
-- https://kubernetes.io/docs/concepts/storage/persistent-volumes/
-- https://kubernetes.io/docs/concepts/storage/volumes/#emptydir
-- https://docs.k3s.io/add-ons/storage
-
-Nenhum dado persistente existente foi movido e nenhum secret plaintext deve ser mantido no Git.
