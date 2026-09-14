@@ -46,51 +46,34 @@ if [[ "$repo_ready" != "True" ]]; then
   exit 1
 fi
 
-runtime="$(helm list -n "$NAMESPACE" --no-headers | awk -F '\t' '$1 == "alloy" { print $1 "\t" $6 "\t" $5 }')"
+# Do not parse Helm columns: older/newer Helm builds differ in whitespace.
+# Filter by release name and validate the raw row for status/chart instead.
+runtime="$(helm list -n "$NAMESPACE" --filter "^${RELEASE}$" --no-headers)"
 if [[ -z "$runtime" ]]; then
-  echo "error: existing Helm release 'alloy' was not found in namespace '$NAMESPACE'" >&2
-  echo >&2
-  echo "Helm releases containing 'alloy' in any namespace:" >&2
-  global_matches="$(helm list -A --no-headers | awk -F '\t' 'tolower($1) ~ /alloy/ { print }')"
-  if [[ -n "$global_matches" ]]; then
-    printf '%s\n' "$global_matches" >&2
-  else
-    echo "  (none)" >&2
-  fi
-
-  echo >&2
-  echo "Helm storage Secrets for release name 'alloy':" >&2
-  secret_matches="$(kubectl get secret -A -l owner=helm,name="$RELEASE" \
-    -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,STATUS:.metadata.labels.status,VERSION:.metadata.labels.version' \
-    --no-headers 2>/dev/null || true)"
-  if [[ -n "$secret_matches" ]]; then
-    printf '%s\n' "$secret_matches" >&2
-  else
-    echo "  (none)" >&2
-  fi
-
-  echo >&2
-  echo "Kubernetes workloads/resources containing 'alloy' in monitoring:" >&2
-  kubectl get deployment,statefulset,daemonset,pod,service -n "$NAMESPACE" \
-    -o name 2>/dev/null | grep -i alloy >&2 || echo "  (none)" >&2
-
-  echo >&2
-  echo "Refusing adoption: Flux must not create a fresh release until the existing runtime ownership is understood." >&2
+  echo "error: existing Helm release '$RELEASE' was not found in namespace '$NAMESPACE'" >&2
   exit 1
 fi
 
-runtime_chart="$(awk -F '\t' '{print $2}' <<<"$runtime")"
-runtime_status="$(awk -F '\t' '{print $3}' <<<"$runtime")"
-
-if [[ "$runtime_chart" != "alloy-$EXPECTED_CHART_VERSION" ]]; then
+if ! grep -Eq "(^|[[:space:]])alloy-${EXPECTED_CHART_VERSION//./\\.}([[:space:]]|$)" <<<"$runtime"; then
   echo "error: runtime Alloy chart differs from expected GitOps version" >&2
-  echo "expected: alloy-$EXPECTED_CHART_VERSION" >&2
-  echo "actual:   $runtime_chart" >&2
+  echo "expected chart: alloy-$EXPECTED_CHART_VERSION" >&2
+  echo "runtime row:    $runtime" >&2
   exit 1
 fi
 
-if [[ "$runtime_status" != "deployed" ]]; then
-  echo "error: runtime Alloy release is not deployed: $runtime_status" >&2
+if ! grep -Eq '(^|[[:space:]])deployed([[:space:]]|$)' <<<"$runtime"; then
+  echo "error: runtime Alloy release is not deployed" >&2
+  echo "runtime row: $runtime" >&2
+  exit 1
+fi
+
+# Cross-check Helm storage ownership independently from helm list rendering.
+deployed_secret_count="$(kubectl get secret -n "$NAMESPACE" -l owner=helm,name="$RELEASE",status=deployed \
+  -o name 2>/dev/null | wc -l | tr -d ' ')"
+if [[ "$deployed_secret_count" != "1" ]]; then
+  echo "error: expected exactly one deployed Helm storage Secret for '$RELEASE', found $deployed_secret_count" >&2
+  kubectl get secret -n "$NAMESPACE" -l owner=helm,name="$RELEASE" \
+    -o custom-columns='NAME:.metadata.name,STATUS:.metadata.labels.status,VERSION:.metadata.labels.version' >&2 || true
   exit 1
 fi
 
@@ -103,8 +86,8 @@ storage_namespace="$(kubectl get helmrelease -n "$NAMESPACE" alloy -o jsonpath='
   echo "error: HelmRelease/alloy version=$desired_version expected=$EXPECTED_CHART_VERSION" >&2
   exit 1
 }
-[[ "$release_name" == "alloy" ]] || {
-  echo "error: HelmRelease/alloy releaseName=$release_name expected=alloy" >&2
+[[ "$release_name" == "$RELEASE" ]] || {
+  echo "error: HelmRelease/alloy releaseName=$release_name expected=$RELEASE" >&2
   exit 1
 }
 [[ "$target_namespace" == "$NAMESPACE" ]] || {
@@ -122,6 +105,12 @@ echo
 
 echo "Alloy pods:"
 kubectl get pods -n "$NAMESPACE" -l app.kubernetes.io/name=alloy -o wide
+
+pod_count="$(kubectl get pods -n "$NAMESPACE" -l app.kubernetes.io/name=alloy -o name | wc -l | tr -d ' ')"
+if [[ "$pod_count" == "0" ]]; then
+  echo "error: no Alloy pods found" >&2
+  exit 1
+fi
 
 not_ready="$(kubectl get pods -n "$NAMESPACE" -l app.kubernetes.io/name=alloy \
   -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.phase}{"\t"}{range .status.conditions[?(@.type=="Ready")]}{.status}{end}{"\n"}{end}' \
