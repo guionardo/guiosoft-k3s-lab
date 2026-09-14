@@ -76,7 +76,7 @@ kind: HelmRelease
 metadata:
   name: loki
 spec:
-  suspend: true
+  suspend: false
   interval: 30m
   timeout: 8m
   releaseName: loki
