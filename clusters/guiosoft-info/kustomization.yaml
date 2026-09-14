@@ -5,3 +5,6 @@ resources:
   - cloudflare-namespace.yaml
   - cloudflare-secrets.yaml
   - cloudflared.yaml
+  - firecrawl-namespace.yaml
+  - firecrawl-secrets.yaml
+  - firecrawl.yaml
