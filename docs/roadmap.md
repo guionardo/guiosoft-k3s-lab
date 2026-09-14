@@ -172,7 +172,8 @@ A fundação de métricas, traces e logs está operacional e validada. O histór
 - [x] validar workload e rota pública após recuperação do Secret, com HTTP 200;
 - [x] executar teste controlado de drift manual e validar self-healing para o estado do Git;
 - [x] validar mudança versionada e rollback declarativo via Git sem indisponibilidade;
-- [ ] migrar Firecrawl para Flux;
+- [x] migrar Firecrawl para Flux com cadeia independente `namespace -> secrets -> workload`;
+- [x] validar self-healing do `firecrawl-api` após drift controlado de réplicas, preservando HTTP 200 pela LAN;
 - [ ] migrar observabilidade/Helm para Flux após workloads mais simples.
 
 ## Fase 8 — Disaster Recovery
