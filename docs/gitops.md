@@ -33,16 +33,16 @@ O bootstrap usa:
 clusters/
 └── guiosoft-info/
     ├── flux-system/
-    │   ├── gotk-components.yaml
-    │   ├── gotk-sync.yaml
-    │   └── kustomization.yaml
     ├── cloudflare-namespace.yaml
     ├── cloudflare-secrets.yaml
     ├── cloudflared.yaml
+    ├── firecrawl-namespace.yaml
+    ├── firecrawl-secrets.yaml
+    ├── firecrawl.yaml
     └── kustomization.yaml
 ```
 
-Os manifests de aplicações continuam organizados sob `kubernetes/`. A adoção é incremental para manter rollback simples.
+Namespaces, secrets e workloads são reconciliados em escopos separados. Os secrets cifrados também são separados por aplicação sob `kubernetes/secrets/<app>/`, evitando que uma Kustomization assuma secrets de outro namespace.
 
 ## Bootstrap GitHub
 
@@ -72,9 +72,7 @@ Um GitHub token/PAT foi necessário apenas para a operação de bootstrap no Git
 
 O `cloudflared` foi escolhido como primeiro workload real sob Flux por ser pequeno, stateless, declarativo e possuir rollback simples.
 
-A adoção foi feita sem recriar o workload: os recursos Kubernetes já existentes foram assumidos pela reconciliação do Flux e permaneceram operacionais durante a transição.
-
-A ordem atual de reconciliação é:
+A ordem de reconciliação é:
 
 ```text
 cloudflare-namespace
@@ -84,85 +82,68 @@ cloudflare-secrets
 cloudflared
 ```
 
-Isso garante que o namespace exista antes de aplicar Secrets e que o Deployment só reconcilie depois que os secrets necessários estiverem disponíveis.
+A adoção foi validada com recuperação do Secret SOPS, drift manual de réplicas, mudança versionada e rollback via Git, mantendo a rota pública operacional.
+
+## Segunda adoção: Firecrawl
+
+O Firecrawl foi migrado depois que o fluxo do `cloudflared` estava comprovado. A aplicação já estava operacional no K3s; o Flux passou a assumir os recursos existentes sem necessidade de recriar a stack.
+
+A cadeia é independente da Cloudflare:
+
+```text
+firecrawl-namespace
+        ↓
+firecrawl-secrets
+        ↓
+firecrawl
+```
+
+O Secret `firecrawl-secrets` é gerado localmente a partir do `.env`, cifrado com SOPS + age e versionado apenas na forma cifrada. O Flux decripta o Secret no momento da reconciliação.
+
+Em 2026-09-14 foi executado um teste controlado de self-healing: `firecrawl-api` foi escalado manualmente de 1 para 2 réplicas, criando drift positivo sem reduzir a capacidade do serviço. Após `flux reconcile`, o Deployment retornou ao estado declarado de 1 réplica, ficou disponível e `http://firecrawl.guiosoft.info/` continuou respondendo HTTP 200 pela LAN.
+
+O teste é reproduzível por:
+
+```bash
+bash scripts/firecrawl-gitops-test.sh
+```
 
 ## SOPS + age
 
-O Flux usa decriptação SOPS diretamente em `Kustomization`:
+O Flux usa decriptação SOPS diretamente nas Kustomizations de secrets:
 
 ```yaml
-apiVersion: kustomize.toolkit.fluxcd.io/v1
-kind: Kustomization
-metadata:
-  name: cloudflare-secrets
-  namespace: flux-system
-spec:
-  interval: 10m
-  path: ./kubernetes/secrets
-  prune: true
-  sourceRef:
-    kind: GitRepository
-    name: flux-system
-  decryption:
-    provider: sops
-    secretRef:
-      name: sops-age
+decryption:
+  provider: sops
+  secretRef:
+    name: sops-age
 ```
 
 A identidade privada age necessária para decriptação é instalada no namespace `flux-system` como Secret runtime e **não é versionada em plaintext**.
 
-O arquivo SOPS deve manter `apiVersion`, `kind` e `metadata` legíveis, criptografando apenas `data`/`stringData`. O Secret do Tunnel segue esse padrão.
-
-## Teste de recuperação do Secret
-
-Em 2026-09-14 foi validado o fluxo completo de recuperação:
-
-1. o Secret `cloudflared-tunnel-token` foi removido manualmente do namespace `cloudflare`;
-2. `cloudflare-secrets` foi reconciliado pelo Flux;
-3. o Secret foi recriado a partir do manifesto cifrado no Git;
-4. o `cloudflared` permaneceu saudável;
-5. `https://k3s-test.guiosoft.info/` continuou respondendo HTTP 200.
-
-Isso valida a cadeia:
+Os arquivos SOPS mantêm `apiVersion`, `kind` e `metadata` legíveis e criptografam somente `data`/`stringData` com:
 
 ```text
-Git cifrado -> Flux -> SOPS/age -> Kubernetes Secret -> workload operacional
+^(data|stringData)$
 ```
 
 O recipient público age permanece no repositório; a identidade privada continua fora do Git e precisa de backup independente para DR.
 
-## Testes de drift e rollback declarativo
+## Testes de recuperação, drift e rollback
 
-Em 2026-09-14 também foram executadas duas provas adicionais no `cloudflared`.
-
-### Correção automática de drift
-
-O Deployment foi alterado manualmente para `replicas=1`, enquanto o Git continuava declarando `replicas: 2`.
-
-Após a reconciliação da Kustomization `cloudflared`, o Flux restaurou automaticamente o Deployment para `2/2`, mantendo os Pods `Ready` e a rota pública respondendo HTTP 200.
-
-Isso confirma que alterações manuais fora do Git não prevalecem sobre o estado declarativo.
-
-### Mudança e rollback via Git
-
-Foi adicionada temporariamente ao Deployment a annotation:
-
-```yaml
-guiosoft.info/gitops-test: "flux-change"
-```
-
-A mudança foi versionada no Git, reconciliada pelo Flux e aplicada ao cluster sem indisponibilidade. Em seguida, a annotation foi removida em um segundo commit e o Flux reconciliou novamente o estado anterior.
-
-Durante a mudança e o rollback, o workload permaneceu saudável e `https://k3s-test.guiosoft.info/` continuou respondendo HTTP 200.
-
-Com isso, a adoção inicial do Flux comprovou:
+As provas realizadas até agora cobrem:
 
 ```text
+Git cifrado -> Flux -> SOPS/age -> Kubernetes Secret -> workload
 Git -> cluster
 manual drift -> self-healing para o estado do Git
 Git change -> cluster
 Git rollback -> cluster
 ```
+
+No `cloudflared`, o Secret foi excluído manualmente e recriado pelo Flux a partir do Git cifrado. Também foram validados drift de réplicas e mudança/rollback de annotation via Git sem indisponibilidade pública.
+
+No Firecrawl, o drift controlado de réplicas foi restaurado pelo Flux e o endpoint LAN permaneceu HTTP 200.
 
 ## Prune e segurança
 
@@ -183,22 +164,27 @@ Concluído:
 - bootstrap GitHub;
 - controllers Flux operacionais;
 - `flux-system` reconciliando a própria configuração;
-- namespace `cloudflare` sob Flux;
-- Secret SOPS do Tunnel sob Flux;
-- workload `cloudflared` sob Flux;
-- dependências explícitas entre namespace, secrets e workload;
-- recuperação real do Secret a partir de Git + SOPS + age sem indisponibilidade pública;
+- `cloudflared` sob Flux com namespace e Secret SOPS independentes;
+- Firecrawl sob Flux com namespace e Secret SOPS independentes;
+- dependências explícitas `namespace -> secrets -> workload`;
+- recuperação real de Secret a partir de Git + SOPS + age;
 - correção automática de drift manual;
-- mudança e rollback declarativo via Git.
+- mudança e rollback declarativo via Git;
+- teste de self-healing do Firecrawl preservando disponibilidade LAN.
 
-Próximos candidatos de adoção:
+Próximo candidato de adoção:
 
-1. migrar Firecrawl para Flux;
-2. migrar observabilidade/Helm por último.
+1. observabilidade/Helm, por último entre os componentes atuais.
 
 ## Rollback operacional
 
-A primeira resposta a problemas de reconciliação deve ser suspender a Kustomization afetada, não remover o Flux:
+A primeira resposta a problemas de reconciliação deve ser suspender apenas a Kustomization afetada:
+
+```bash
+flux suspend kustomization firecrawl -n flux-system
+```
+
+ou, para o Tunnel:
 
 ```bash
 flux suspend kustomization cloudflared -n flux-system
