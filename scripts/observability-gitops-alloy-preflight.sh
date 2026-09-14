@@ -48,7 +48,34 @@ fi
 
 runtime="$(helm list -n "$NAMESPACE" --no-headers | awk -F '\t' '$1 == "alloy" { print $1 "\t" $6 "\t" $5 }')"
 if [[ -z "$runtime" ]]; then
-  echo "error: existing Helm release 'alloy' was not found" >&2
+  echo "error: existing Helm release 'alloy' was not found in namespace '$NAMESPACE'" >&2
+  echo >&2
+  echo "Helm releases containing 'alloy' in any namespace:" >&2
+  global_matches="$(helm list -A --no-headers | awk -F '\t' 'tolower($1) ~ /alloy/ { print }')"
+  if [[ -n "$global_matches" ]]; then
+    printf '%s\n' "$global_matches" >&2
+  else
+    echo "  (none)" >&2
+  fi
+
+  echo >&2
+  echo "Helm storage Secrets for release name 'alloy':" >&2
+  secret_matches="$(kubectl get secret -A -l owner=helm,name="$RELEASE" \
+    -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,STATUS:.metadata.labels.status,VERSION:.metadata.labels.version' \
+    --no-headers 2>/dev/null || true)"
+  if [[ -n "$secret_matches" ]]; then
+    printf '%s\n' "$secret_matches" >&2
+  else
+    echo "  (none)" >&2
+  fi
+
+  echo >&2
+  echo "Kubernetes workloads/resources containing 'alloy' in monitoring:" >&2
+  kubectl get deployment,statefulset,daemonset,pod,service -n "$NAMESPACE" \
+    -o name 2>/dev/null | grep -i alloy >&2 || echo "  (none)" >&2
+
+  echo >&2
+  echo "Refusing adoption: Flux must not create a fresh release until the existing runtime ownership is understood." >&2
   exit 1
 fi
 
