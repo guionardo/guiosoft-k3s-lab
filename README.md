@@ -43,17 +43,19 @@ A limpeza pré-K3s foi concluída: Tailscale foi removido, OpenShip deixou de te
 
 O hardening do host já eliminou listeners sem consumidor real antes da criação do firewall: NFS/RPC, PCP e Cockpit foram desabilitados de forma reversível e o bootstrap Ansible preserva esse estado. A rota pública do Cockpit também foi removida do Cloudflare. Avahi foi deliberadamente mantido enquanto a estratégia de descoberta/DNS interno é consolidada.
 
-O MikroTik RouterOS da LAN passou a fornecer resolução interna determinística para `firecrawl.guiosoft.info -> 192.168.88.9`, e o DHCP foi ajustado para que o cliente validado use somente o resolvedor local `192.168.88.1`. `dig`, `getent` e HTTP direto ao hostname confirmaram que o tráfego chega ao Traefik/Firecrawl pela LAN sem passar pelo Cloudflare.
+O MikroTik RouterOS da LAN fornece resolução interna determinística para `firecrawl.guiosoft.info -> 192.168.88.9`, e o DHCP foi ajustado para que o cliente validado use somente o resolvedor local `192.168.88.1`. `dig`, `getent` e HTTP direto ao hostname confirmaram que o tráfego chega ao Traefik/Firecrawl pela LAN sem passar pelo Cloudflare.
 
-A nova rota LAN-only também foi validada pelos dois consumidores reais: Hermes executou Firecrawl com sucesso pela resolução interna e OpenCode executou Firecrawl via MCP após configuração no objeto `mcp` de `~/.config/opencode/opencode.jsonc`. Isso elimina a necessidade funcional do fork planejado do Hermes apenas para injetar headers do Cloudflare Access. A retirada definitiva da publicação/Access Cloudflare será feita somente depois de remover declarativamente esses recursos do Terraform e validar ausência de regressão.
+A rota LAN-only foi validada pelos dois consumidores reais: Hermes executou Firecrawl com sucesso pela resolução interna e OpenCode executou Firecrawl via MCP após configuração no objeto `mcp` de `~/.config/opencode/opencode.jsonc`. Isso eliminou a necessidade funcional do fork planejado do Hermes apenas para injetar headers do Cloudflare Access.
 
-Hostnames desconhecidos sob o wildcard `*.guiosoft.info` chegam ao Traefik, mas recebem HTTP 404 quando não existe um Ingress explícito.
+O cutover LAN-only do Firecrawl foi concluído. Antes de retirar o Access, o Terraform recebeu uma regra explícita e prioritária no Cloudflare Tunnel para `firecrawl.guiosoft.info -> http_status:404`, impedindo que o hostname alcance o Traefik através do wildcard público `*.guiosoft.info`. Após validar simultaneamente o acesso HTTP pela LAN e o bloqueio HTTPS pela rota pública, a aplicação Cloudflare Access e os dois Service Tokens de Hermes/OpenCode foram destruídos declarativamente. O Firecrawl permanece acessível pela LAN via split-DNS e explicitamente bloqueado no caminho público.
+
+Hostnames desconhecidos sob o wildcard `*.guiosoft.info` chegam ao Traefik, mas recebem HTTP 404 quando não existe um Ingress explícito. O Firecrawl é uma exceção deliberada: seu hostname é interceptado pelo Tunnel antes do wildcard e recebe 404 sem alcançar o Traefik.
 
 O acesso `kubectl` a partir de outra máquina da LAN também foi validado usando `make kubeconfig-external`, que renderiza o kubeconfig administrativo com o `InternalIP` do servidor em vez de loopback. A API continua destinada somente à rede administrativa.
 
 O layout persistente em `/srv/k3s` foi validado no host. Novos volumes `local-path` foram reprovisionados e confirmados fisicamente abaixo de `/mnt/store1/k3s/local-path`. No perfil atual do `local-path`, a capacidade declarada de um PVC não pré-aloca nem reserva fisicamente todo esse espaço no ext4 do host e também não funciona como quota rígida por diretório; por isso o espaço livre real de `/mnt/store1` deve ser monitorado independentemente da soma nominal dos PVCs.
 
-A infraestrutura Cloudflare está declarada em Terraform usando o provider v5. O Tunnel existente, sua configuração remota e o wildcard DNS foram importados para o state local e o `terraform plan` foi validado com `No changes`. A aplicação Cloudflare Access do Firecrawl e dois Service Tokens independentes para Hermes e OpenCode ainda existem no Terraform durante a transição LAN-only; não são mais necessários pelos clientes locais validados e serão removidos de forma controlada.
+A infraestrutura Cloudflare está declarada em Terraform usando o provider v5. O Tunnel existente, sua configuração remota e o wildcard DNS estão sob gerenciamento declarativo. Para workloads LAN-only cobertos pelo wildcard DNS público, o Tunnel deve conter uma negação explícita antes da regra wildcard; o Firecrawl é a primeira aplicação usando esse padrão.
 
 SOPS + age estão instalados via Ansible. A identidade age é criada de forma idempotente somente quando ausente, a configuração pública do recipient está versionada em `.sops.yaml`, e o fluxo de encrypt/decrypt e de Kubernetes Secrets cifrados foi validado.
 
@@ -77,7 +79,7 @@ O controlled incident drill também foi validado em runtime. O target `make otel
 
 A Fase 4 usa o **Firecrawl como primeiro workload real**. A versão K3s foi implantada com os cinco componentes Ready, scrape funcional real validado e imagens pinadas por digest. PostgreSQL/NuQ, Redis e RabbitMQ foram deliberadamente classificados como efêmeros e usam `emptyDir`, sem PVCs Firecrawl. Uma corrida de startup com RabbitMQ foi corrigida com `initContainer`, e o novo Pod da API foi validado com `RESTARTS=0`.
 
-O Firecrawl foi inicialmente protegido publicamente por Cloudflare Access Service Auth, com tokens separados para Hermes e OpenCode. Depois, o requisito foi simplificado: ambos os consumidores estão na LAN, então `firecrawl.guiosoft.info` passou a resolver internamente para o servidor K3s e foi validado com Hermes e OpenCode/MCP sem os headers Cloudflare. O Docker Compose antigo continua parado e seus containers/volumes permanecem preservados apenas para rollback.
+O Firecrawl foi inicialmente protegido publicamente por Cloudflare Access Service Auth, com tokens separados para Hermes e OpenCode. Depois, ambos os consumidores foram classificados como LAN-only. O Access e os tokens já foram retirados, o hostname resolve internamente para o servidor K3s e a rota pública é bloqueada explicitamente antes do wildcard do Tunnel. O Docker Compose antigo continua parado e seus containers/volumes permanecem preservados apenas para rollback.
 
 ## Divisão de responsabilidades
 
@@ -87,6 +89,7 @@ Terraform
 │   ├── DNS
 │   ├── Tunnel
 │   ├── Access / Service Tokens quando necessários
+│   ├── bloqueios explícitos para hostnames LAN-only cobertos pelo wildcard
 │   ├── rotas/public hostnames
 │   └── bucket R2 de backup
 └── infraestrutura externa futura
