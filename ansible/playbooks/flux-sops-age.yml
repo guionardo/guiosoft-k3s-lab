@@ -1,28 +1,16 @@
 ---
 - name: Bootstrap Flux SOPS age runtime secret
   hosts: k3s_servers
-  become: true
   gather_facts: false
 
   vars:
     flux_namespace: flux-system
     flux_sops_age_secret_name: sops-age
-    flux_kubeconfig: /etc/rancher/k3s/k3s.yaml
+    flux_user_home: "{{ lookup('env', 'HOME') }}"
+    flux_kubeconfig: "{{ lookup('env', 'KUBECONFIG') | default(lookup('env', 'HOME') ~ '/.kube/config', true) }}"
+    flux_sops_age_identity_file: "{{ lookup('env', 'HOME') }}/.config/sops/age/keys.txt"
 
   tasks:
-    - name: Resolve local secrets identity user
-      ansible.builtin.set_fact:
-        flux_secrets_identity_user: "{{ lookup('env', 'USER') }}"
-
-    - name: Resolve local secrets identity user home
-      ansible.builtin.getent:
-        database: passwd
-        key: "{{ flux_secrets_identity_user }}"
-
-    - name: Resolve age identity path
-      ansible.builtin.set_fact:
-        flux_sops_age_identity_file: "{{ ansible_facts.getent_passwd[flux_secrets_identity_user][4] }}/.config/sops/age/keys.txt"
-
     - name: Verify age identity exists
       ansible.builtin.stat:
         path: "{{ flux_sops_age_identity_file }}"
@@ -38,6 +26,20 @@
           The local SOPS age identity is missing. Run ansible/playbooks/tools.yml
           first and restore the off-host age identity before bootstrapping Flux secrets.
       no_log: true
+
+    - name: Verify user kubeconfig exists
+      ansible.builtin.stat:
+        path: "{{ flux_kubeconfig }}"
+      register: flux_kubeconfig_stat
+
+    - name: Require an existing user kubeconfig
+      ansible.builtin.assert:
+        that:
+          - flux_kubeconfig_stat.stat.exists
+          - flux_kubeconfig_stat.stat.isreg
+        fail_msg: >-
+          Kubernetes user kubeconfig was not found at {{ flux_kubeconfig }}.
+          Ensure kubectl works without sudo before bootstrapping the Flux SOPS Secret.
 
     - name: Verify Flux namespace exists
       ansible.builtin.command:
