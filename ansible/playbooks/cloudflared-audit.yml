@@ -24,16 +24,6 @@
       register: cloudflared_version
       changed_when: false
 
-    - name: Read cloudflared unit with tunnel tokens redacted
-      ansible.builtin.shell: |
-        set -o pipefail
-        systemctl cat cloudflared.service \
-          | sed -E 's/(--token([=[:space:]]+))[A-Za-z0-9._~-]+/\1<redacted>/g; s/(TUNNEL_TOKEN=)[^[:space:]"'"']+/\1<redacted>/g'
-      args:
-        executable: /bin/bash
-      register: cloudflared_unit_redacted
-      changed_when: false
-
     - name: List cloudflared-owned listening sockets without process arguments
       ansible.builtin.shell: |
         set -o pipefail
@@ -85,8 +75,4 @@
           - "Listening sockets: {{ cloudflared_sockets.stdout_lines }}"
           - "Candidate shared origin {{ cloudflared_candidate_origin }} -> HTTP {{ cloudflared_candidate_origin_status.stdout }}"
           - "Current public route https://{{ cloudflared_test_host }}/ -> HTTP {{ cloudflared_public_status.stdout }}"
-          - "Unit follows below with token-like values redacted."
-
-    - name: Print redacted cloudflared unit
-      ansible.builtin.debug:
-        var: cloudflared_unit_redacted.stdout_lines
+          - "The service unit body is intentionally not printed because it may contain the tunnel token."
