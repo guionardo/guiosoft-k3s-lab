@@ -66,25 +66,26 @@ Validação em 2026-09-14:
 - `getent ahostsv4 firecrawl.guiosoft.info` retornou `192.168.88.9`;
 - `curl http://firecrawl.guiosoft.info/` chegou ao Traefik/Firecrawl pela LAN e retornou HTTP 200;
 - o teste funcional do Firecrawl foi executado com sucesso pelo caminho LAN-only;
-- **Hermes foi testado com sucesso consumindo o Firecrawl por esse caminho interno**, sem depender dos headers do Cloudflare Access.
+- Hermes foi testado com sucesso consumindo o Firecrawl por esse caminho interno, sem depender dos headers do Cloudflare Access;
+- OpenCode foi testado com sucesso via MCP após adicionar a configuração Firecrawl ao objeto `mcp` de `~/.config/opencode/opencode.jsonc`.
 
-Com isso, o caminho validado para Hermes é:
+Com isso, ambos os consumidores reais estão validados no caminho interno:
 
 ```text
-Hermes
-   |
-   | DNS da LAN
-   v
+Hermes / OpenCode
+       |
+       | DNS da LAN
+       v
 MikroTik 192.168.88.1
-   |
-   | firecrawl.guiosoft.info = 192.168.88.9
-   v
+       |
+       | firecrawl.guiosoft.info = 192.168.88.9
+       v
 Traefik -> Firecrawl K3s
 ```
 
-Isso elimina para Hermes a necessidade arquitetural de modificar/forkar o cliente apenas para adicionar os headers `CF-Access-Client-Id` e `CF-Access-Client-Secret`.
+A necessidade arquitetural de modificar/forkar Hermes apenas para adicionar os headers `CF-Access-Client-Id` e `CF-Access-Client-Secret` deixa de existir. OpenCode também opera sem depender da publicação Cloudflare do Firecrawl.
 
-O gate restante antes de desmontar a publicação Cloudflare é confirmar **OpenCode** usando o mesmo caminho interno. Depois disso, a rota pública/Cloudflare Access e seus Service Tokens podem ser removidos e o Terraform deve ser reconciliado para não recriá-los.
+O gate funcional para a migração LAN-only está concluído. O próximo passo é remover a publicação pública/Cloudflare Access e os Service Tokens do Firecrawl e reconciliar o Terraform para que esses recursos não sejam recriados. Essa remoção deve preservar o registro DNS local do MikroTik e o Ingress Traefik, pois o mesmo hostname continuará sendo usado dentro da LAN.
 
 Avahi permanece ativo por enquanto, mas deixou de ser requisito para o Firecrawl. Sua necessidade poderá ser reavaliada separadamente.
 
@@ -108,8 +109,7 @@ Princípios:
 
 ## Pendências antes do enforcement
 
-- confirmar OpenCode consumindo Firecrawl pelo DNS interno; Hermes já foi validado;
-- remover publicação/Access Cloudflare do Firecrawl e reconciliar Terraform após os dois consumidores estarem validados;
+- remover publicação/Access Cloudflare do Firecrawl e reconciliar Terraform; Hermes e OpenCode já estão validados pela LAN;
 - reavaliar se Avahi ainda possui consumidor real;
 - verificar regras de port-forward/NAT no roteador;
 - definir origens exatas para SSH, API 6443, kubelet 10250, node-exporter 9100 e Flannel 8472;
@@ -127,4 +127,4 @@ O audit é read-only e não exige mais o antigo Firecrawl Docker em `127.0.0.1:3
 
 ## Decisões de hardening registradas em 2026-09-14
 
-O processo mostrou uma preferência explícita por eliminar serviços sem consumidor antes de escondê-los atrás de firewall. NFS/RPC, PCP e Cockpit foram retirados da superfície de rede por esse motivo. Para o Firecrawl, o split-DNS local já foi validado até o serviço K3s e também com Hermes como consumidor real, mantendo um hostname estável sem depender de mDNS ou Cloudflare Access. O último gate funcional é OpenCode antes de desmontar a publicação pública.
+O processo mostrou uma preferência explícita por eliminar serviços sem consumidor antes de escondê-los atrás de firewall. NFS/RPC, PCP e Cockpit foram retirados da superfície de rede por esse motivo. Para o Firecrawl, o split-DNS local foi validado até o serviço K3s e com os dois consumidores reais, Hermes e OpenCode, mantendo um hostname estável sem depender de mDNS ou Cloudflare Access. O gate funcional LAN-only está concluído; resta desmontar a exposição pública de forma declarativa.
