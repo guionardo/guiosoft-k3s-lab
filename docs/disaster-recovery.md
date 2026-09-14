@@ -27,9 +27,10 @@ No host atual já foram validados:
 - `restic check`;
 - restore R2 -> local com comparação SHA-256 byte a byte;
 - readiness check de DR com todos os pré-requisitos atuais acessíveis;
-- rehearsal isolado usando exclusivamente o snapshot remoto do R2 como fonte.
+- rehearsal isolado usando exclusivamente o snapshot remoto do R2 como fonte;
+- bootstrap idempotente de `flux-system/sops-age` a partir da identidade age local, com segunda execução `changed=0` e `failed=0`.
 
-Isso prova a qualidade e recuperabilidade do artefato de backup. O passo que ainda falta é subir um K3s separado usando esse datastore restaurado.
+Isso prova a qualidade e recuperabilidade do artefato de backup e que a identidade age recuperada pode ser reinjetada no Flux declarativamente. O passo que ainda falta é subir um K3s separado usando esse datastore restaurado.
 
 ## Dependências que não podem depender do servidor perdido
 
@@ -43,6 +44,76 @@ Uma recuperação real exige que os itens abaixo existam fora do host original:
 - documentação deste repositório.
 
 A identidade privada `age` é especialmente crítica: o recipient público versionado no Git não permite descriptografar os secrets. A identidade privada precisa ter uma cópia externa independente e protegida.
+
+## Backup independente da identidade age
+
+O backup da identidade privada age **não deve depender do próprio SOPS**, nem das credenciais Restic que são recuperadas com essa mesma identidade. Isso criaria uma dependência circular no cenário de perda total do host.
+
+O helper abaixo cria uma cópia cifrada com AES-256-CBC/PBKDF2 usando uma senha de DR independente:
+
+```bash
+AGE_BACKUP_DEST=/caminho/montado/off-host \
+  bash scripts/age-identity-backup.sh
+```
+
+O destino deve ser explicitamente off-host, por exemplo um pendrive, disco removível ou filesystem de NAS montado no servidor. O script recusa destinos evidentemente locais sob `/home`, `/root`, `/tmp` e `/var`.
+
+O fluxo é:
+
+```text
+~/.config/sops/age/keys.txt
+        ↓
+cópia temporária mode 0600
+        ↓
+AES-256-CBC + PBKDF2 (200000 iterações)
+        ↓
+arquivo .enc no destino off-host
+        ↓
+descriptografia temporária de verificação
+        ↓
+comparação SHA-256 com a identidade original
+        ↓
+checksum do arquivo cifrado
+```
+
+A senha usada para esse backup deve ser guardada independentemente do servidor, do Git, dos secrets SOPS e do repositório Restic. Não use a senha Restic como senha desse backup.
+
+Também é possível fornecer a senha por arquivo local temporário fora do Git:
+
+```bash
+AGE_BACKUP_DEST=/mnt/nas/dr \
+AGE_BACKUP_PASSPHRASE_FILE=/run/user/$UID/age-dr-passphrase \
+  bash scripts/age-identity-backup.sh
+```
+
+O arquivo de senha não deve ser versionado nem armazenado junto ao backup cifrado.
+
+### Rehearsal de restore da identidade age
+
+O restore deve ser ensaiado para um caminho isolado, nunca sobrescrevendo a identidade ativa:
+
+```bash
+AGE_RESTORE_TARGET=/tmp/age-dr-test/keys.txt \
+  bash scripts/age-identity-restore.sh /mnt/nas/dr/age-identity-HOST-TIMESTAMP.enc
+```
+
+O helper:
+
+- valida primeiro o `.sha256` do backup cifrado;
+- descriptografa para arquivo temporário protegido;
+- exige que o resultado tenha formato de identidade age;
+- recusa sobrescrever qualquer target já existente;
+- instala o arquivo restaurado com mode `0600`.
+
+Depois valide o recipient e um Secret SOPS conhecido:
+
+```bash
+age-keygen -y /tmp/age-dr-test/keys.txt
+SOPS_AGE_KEY_FILE=/tmp/age-dr-test/keys.txt \
+  sops -d kubernetes/secrets/cloudflare/cloudflared-token.sops.yaml >/dev/null
+```
+
+Somente depois de executar backup real em mídia/off-host e um restore isolado bem-sucedido a pendência de cópia externa da identidade age deve ser considerada concluída.
 
 ## Readiness check
 
@@ -183,6 +254,8 @@ make ansible-deps
    ↓
 bootstrap/tooling/K3s no alvo usando inventário DR
    ↓
+recriar flux-system/sops-age via ansible/playbooks/flux-sops-age.yml
+   ↓
 make dr-target-init
    ↓
 copiar archive + checksum exportados do R2
@@ -208,9 +281,9 @@ O rehearsal será considerado aprovado quando, em um ambiente separado:
 
 ## Dados de aplicações
 
-Atualmente o cluster não possui PVC real de aplicação. O único PVC existente é o workload descartável `lab/persistence-test`.
+Atualmente o cluster possui PVCs da stack de observabilidade (Prometheus, Grafana e Tempo). O Firecrawl atual mantém PostgreSQL/NuQ, Redis e RabbitMQ deliberadamente efêmeros via `emptyDir`.
 
-Quando workloads stateful reais forem adicionados, cada um precisará ser classificado e protegido separadamente:
+Cada workload stateful real precisa ser classificado e protegido separadamente:
 
 - **file-oriented**: backup consistente do filesystem;
 - **database**: dump/snapshot nativo da engine como fonte primária de restore;
@@ -224,6 +297,7 @@ O restore do control plane K3s não substitui o restore desses dados.
 Nunca versionar:
 
 - identidade privada `age`;
+- senha do backup independente da identidade age;
 - credenciais R2 em plaintext;
 - senha Restic em plaintext;
 - server token extraído do backup;
@@ -235,5 +309,6 @@ Nunca versionar:
 - K3s — Backup and Restore: https://docs.k3s.io/datastore/backup-restore
 - K3s — Cluster Datastore: https://docs.k3s.io/datastore
 - SOPS — age key management: https://getsops.io/docs/usage/key-management/
+- OpenSSL `enc`: https://docs.openssl.org/master/man1/openssl-enc/
 - Restic — Restoring from backup: https://restic.readthedocs.io/en/stable/050_restore.html
 - Restic — Checking integrity: https://restic.readthedocs.io/en/stable/045_working_with_repos.html
