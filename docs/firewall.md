@@ -42,7 +42,9 @@ nftables: 1363 linhas no ruleset atual
 | Cockpit | 9090/TCP | `*` | Cloudflare Tunnel e, opcionalmente, LAN administrativa | o Tunnel já possui rota explícita para `localhost:9090`; acesso LAN direto pode ser removido se não for usado |
 | NFS | 2049/TCP | `0.0.0.0`, `::` | LAN confiável | restringir à sub-rede/clientes que realmente montam exports |
 | rpcbind | 111/TCP+UDP | `0.0.0.0`, `::` | LAN confiável somente se exigido pelo perfil NFS | não deve ficar disponível fora da LAN |
-| rpc.mountd / rpc.statd / auxiliares RPC | portas dinâmicas TCP+UDP | `0.0.0.0`, `::` | LAN confiável somente se exigido por NFS | idealmente fixar portas antes de aplicar regras estritas ou migrar clientes para um perfil NFSv4 que reduza dependências RPC |
+| rpc.mountd | TCP 60823/43449/38483; UDP 58268/51611/41179 | `0.0.0.0`, `::` | LAN confiável somente se clientes NFSv3 precisarem | portas dinâmicas por versão RPC; forte candidato a eliminação do firewall se todos os clientes usarem NFSv4 |
+| rpc.statd | 36343/TCP, 50988/UDP | `0.0.0.0`, `::` | LAN confiável somente se NFSv3/locking legado exigir | não abrir genericamente |
+| nlockmgr | 38205/TCP, 35280/UDP | `0.0.0.0`, `::` | LAN confiável somente se NFSv3 exigir | não abrir genericamente |
 | PCP `pmlogger` | 4330/TCP | `0.0.0.0`, `::` | host/LAN somente se houver consumidor remoto | não há evidência atual de necessidade Internet |
 | PCP `pmcd` | 44321/TCP | `0.0.0.0`, `::` | host/LAN somente se houver consumidor remoto | revisar relação com Cockpit/monitoramento |
 | PCP `pmproxy` | 44322-44323/TCP | `0.0.0.0`, `::` | host/LAN somente se houver consumidor remoto | candidato a bloqueio de ingress LAN se uso for apenas local |
@@ -54,7 +56,23 @@ nftables: 1363 linhas no ruleset atual
 | cloudflared metrics/local | 20241/TCP | `127.0.0.1` | loopback | não exposto diretamente à LAN |
 | processos de desenvolvimento (`kubectl`, Electron/Code etc.) | portas altas | loopback | loopback | fora do escopo do firewall LAN |
 
-Há também portas altas TCP/UDP sem processo identificado no `ss`. Pelo contexto, parte delas provavelmente pertence ao subsistema RPC/NFS ou ao kernel. Elas **não devem ser liberadas genericamente**. Antes da política de enforcement, o próximo audit deve correlacioná-las com `rpcinfo -p` e, quando necessário, com o ruleset atual.
+## NFS/RPC — correlação validada
+
+O `rpcinfo -p` confirmou que as portas altas vistas no `ss` pertencem ao stack NFS/RPC e não devem ser liberadas como um range genérico:
+
+```text
+rpcbind     111/TCP+UDP
+nfs         2049/TCP (v3 e v4)
+nfs_acl     2049/TCP
+mountd      60823/43449/38483 TCP
+mountd      58268/51611/41179 UDP
+status      36343/TCP, 50988/UDP
+nlockmgr    38205/TCP, 35280/UDP
+```
+
+A presença de `mountd`, `status` e `nlockmgr` expostos confirma compatibilidade NFSv3 ativa. Se os clientes reais já puderem operar somente com NFSv4, a política de firewall pode ficar substancialmente menor: em geral o tráfego de dados fica concentrado em TCP 2049, enquanto dependências clássicas de mountd/statd/nlockmgr deixam de ser necessárias para o caminho de cliente v4.
+
+Não alterar o servidor para NFSv4-only antes de identificar quais clientes montam exports e qual versão eles negociam. A próxima decisão deve ser baseada no uso real, não apenas no que o servidor oferece.
 
 ## Decisão atual
 
@@ -98,16 +116,16 @@ O role de firewall deve ser incremental e não tomar posse do ruleset completo:
 - restringir regras do host à interface LAN e aos serviços classificados;
 - tratar CIDRs de Pods (`10.42.0.0/16`) e Services (`10.43.0.0/16`) separadamente de clientes LAN;
 - manter UDP 8472 restrito aos nós K3s quando houver mais de um nó;
-- não liberar portas RPC dinâmicas para `any`; primeiro identificar/fixar as portas necessárias ao NFS;
+- não liberar portas RPC dinâmicas para `any`; preferir NFSv4-only quando compatível ou, se NFSv3 for realmente necessário, fixar portas RPC antes do enforcement;
 - validar Traefik, DNS, Kubernetes API, observabilidade, NFS e SSH após cada mudança;
 - manter um caminho de rollback local antes da primeira política default-deny.
 
 ## Pendências antes de ativar firewall
 
-- confirmar se NFS continua necessário e quais clientes/sub-redes o utilizam;
+- identificar os clientes NFS reais e as versões/protocolos que estão usando;
+- decidir se o servidor pode ser simplificado para NFSv4-only ou se NFSv3 precisa ser mantido;
 - decidir se Cockpit TCP 9090 continuará acessível diretamente pela LAN ou somente pelo Cloudflare Tunnel/local;
 - confirmar se existe algum consumidor remoto de PCP (`pmcd`, `pmproxy`, `pmlogger`);
-- correlacionar portas RPC dinâmicas com `rpcinfo -p` e decidir se serão fixadas;
 - verificar regras de port-forward/NAT no roteador;
 - somente então implementar e testar o role `firewall` de forma incremental.
 
@@ -127,10 +145,12 @@ Para classificar o bloco NFS/RPC sem modificar o host, executar também:
 rpcinfo -p
 ```
 
-Isso permite relacionar `rpcbind`, `nfs`, `mountd`, `status` e demais programas RPC às portas dinâmicas vistas no `ss`.
+Para identificar clientes NFS ativos e a versão negociada antes de qualquer mudança do servidor, usar ferramentas read-only como `ss`, `nfsstat` e inspeção dos mounts dos clientes.
 
 ## Evidências desta revisão
 
 Em 2026-09-14, a auditoria anterior falhou exclusivamente porque ainda tentava validar o endpoint Docker legado do Firecrawl em `127.0.0.1:3002`. O Compose já estava parado intencionalmente; K3s, Docker daemon, `cloudflared`, Traefik e Kubernetes API haviam passado nas verificações anteriores. O playbook foi ajustado para refletir essa nova responsabilidade operacional.
 
 A auditoria seguinte passou e registrou o inventário TCP/UDP pós-cutover descrito acima. A classificação permanece deliberadamente conservadora: nenhum listener foi bloqueado ou reconfigurado nesta etapa.
+
+O `rpcinfo -p` executado em 2026-09-14 correlacionou as portas altas a `mountd`, `status` e `nlockmgr`, além de confirmar NFS v3 e v4 em TCP 2049. Isso fecha a identificação das portas RPC, mas ainda não autoriza removê-las: falta confirmar quais versões os clientes realmente usam.
