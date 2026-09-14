@@ -12,7 +12,7 @@ need() {
   }
 }
 
-for cmd in openssl sha256sum mktemp install date hostname; do
+for cmd in openssl sha256sum mktemp install date hostname readlink awk; do
   need "$cmd"
 done
 
