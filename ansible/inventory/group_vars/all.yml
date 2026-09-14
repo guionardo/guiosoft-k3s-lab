@@ -13,6 +13,11 @@ helm_version: v4.3.0
 helm_arch: amd64
 helm_sha256: 86584a54def73570558f66f5111cc53dfed56689637ae32c1201205d494f54fb
 
+# Flux is the GitOps controller selected for Fase 7.
+flux_version: v2.9.5
+flux_arch: amd64
+flux_sha256: b853df82adfd7736f580692f9f734473d571606307139f8fd20c2a80dd1ff473
+
 k3s_node_name: guiosoft-info
 k3s_data_dir: /var/lib/rancher/k3s
 k3s_write_kubeconfig_mode: "0640"
