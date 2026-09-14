@@ -20,11 +20,6 @@ resource "cloudflare_zero_trust_tunnel_cloudflared_config" "homelab" {
   config = {
     ingress = [
       {
-        hostname       = "cockpit.guiosoft.info"
-        service        = "http://localhost:9090"
-        origin_request = {}
-      },
-      {
         hostname       = "*.guiosoft.info"
         service        = "http://127.0.0.1:80"
         origin_request = {}
