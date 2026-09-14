@@ -1,0 +1,92 @@
+---
+- name: Audit current cloudflared host connector before Kubernetes migration
+  hosts: k3s_servers
+  become: true
+  gather_facts: false
+
+  vars:
+    cloudflared_candidate_origin: http://192.168.88.9:80
+    cloudflared_test_host: k3s-test.guiosoft.info
+
+  tasks:
+    - name: Read cloudflared service state
+      ansible.builtin.command: >-
+        systemctl show cloudflared.service
+        --property=LoadState
+        --property=ActiveState
+        --property=SubState
+        --property=FragmentPath
+      register: cloudflared_service_state
+      changed_when: false
+
+    - name: Read cloudflared version
+      ansible.builtin.command: cloudflared --version
+      register: cloudflared_version
+      changed_when: false
+
+    - name: Read cloudflared unit with tunnel tokens redacted
+      ansible.builtin.shell: |
+        set -o pipefail
+        systemctl cat cloudflared.service \
+          | sed -E 's/(--token([=[:space:]]+))[A-Za-z0-9._~-]+/\1<redacted>/g; s/(TUNNEL_TOKEN=)[^[:space:]"'"']+/\1<redacted>/g'
+      args:
+        executable: /bin/bash
+      register: cloudflared_unit_redacted
+      changed_when: false
+
+    - name: List cloudflared-owned listening sockets without process arguments
+      ansible.builtin.shell: |
+        set -o pipefail
+        ss -lnptu 2>/dev/null | grep -F 'cloudflared' || true
+      args:
+        executable: /bin/bash
+      register: cloudflared_sockets
+      changed_when: false
+
+    - name: Verify candidate shared origin reaches Traefik before Terraform cutover
+      ansible.builtin.command:
+        argv:
+          - curl
+          - --fail-with-body
+          - --silent
+          - --show-error
+          - --output
+          - /dev/null
+          - --write-out
+          - "%{http_code}"
+          - --header
+          - "Host: {{ cloudflared_test_host }}"
+          - "{{ cloudflared_candidate_origin }}/"
+      register: cloudflared_candidate_origin_status
+      changed_when: false
+      failed_when: cloudflared_candidate_origin_status.stdout | trim != '200'
+
+    - name: Verify current public tunnel still serves the test workload
+      ansible.builtin.command:
+        argv:
+          - curl
+          - --fail-with-body
+          - --silent
+          - --show-error
+          - --output
+          - /dev/null
+          - --write-out
+          - "%{http_code}"
+          - "https://{{ cloudflared_test_host }}/"
+      register: cloudflared_public_status
+      changed_when: false
+      failed_when: cloudflared_public_status.stdout | trim != '200'
+
+    - name: Print cloudflared migration audit
+      ansible.builtin.debug:
+        msg:
+          - "Service state: {{ cloudflared_service_state.stdout_lines }}"
+          - "Version: {{ cloudflared_version.stdout }}"
+          - "Listening sockets: {{ cloudflared_sockets.stdout_lines }}"
+          - "Candidate shared origin {{ cloudflared_candidate_origin }} -> HTTP {{ cloudflared_candidate_origin_status.stdout }}"
+          - "Current public route https://{{ cloudflared_test_host }}/ -> HTTP {{ cloudflared_public_status.stdout }}"
+          - "Unit follows below with token-like values redacted."
+
+    - name: Print redacted cloudflared unit
+      ansible.builtin.debug:
+        var: cloudflared_unit_redacted.stdout_lines
