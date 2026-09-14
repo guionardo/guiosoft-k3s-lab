@@ -10,7 +10,7 @@ need() {
   }
 }
 
-for cmd in flux kubectl helm python3 diff; do
+for cmd in flux kubectl helm diff; do
   need "$cmd"
 done
 
@@ -18,14 +18,15 @@ echo "Observability GitOps staging reconciliation"
 echo
 
 # Capture the current Helm release chart/version state before Flux creates the
-# suspended HelmRelease objects.
+# suspended HelmRelease objects. Go templates avoid shell/Python quoting issues.
 before="$(mktemp)"
 after="$(mktemp)"
 trap 'rm -f "$before" "$after"' EXIT
 
-helm list -n "$NAMESPACE" -o json \
-  | python3 -c 'import json,sys; data=json.load(sys.stdin); print("\n".join(sorted(f"{x[\"name\"]}\t{x[\"chart\"]}\t{x[\"status\"]}" for x in data)))' \
-  > "$before"
+helm list -n "$NAMESPACE" \
+  -o template \
+  --template '{{range .}}{{.Name}}{{"\t"}}{{.Chart}}{{"\t"}}{{.Status}}{{"\n"}}{{end}}' \
+  | sort > "$before"
 
 echo "Current Helm releases:"
 cat "$before"
@@ -54,13 +55,13 @@ for name in "${expected[@]}"; do
 done
 
 echo
-
 echo "HelmRepository readiness:"
 kubectl get helmrepository -n "$NAMESPACE"
 
-helm list -n "$NAMESPACE" -o json \
-  | python3 -c 'import json,sys; data=json.load(sys.stdin); print("\n".join(sorted(f"{x[\"name\"]}\t{x[\"chart\"]}\t{x[\"status\"]}" for x in data)))' \
-  > "$after"
+helm list -n "$NAMESPACE" \
+  -o template \
+  --template '{{range .}}{{.Name}}{{"\t"}}{{.Chart}}{{"\t"}}{{.Status}}{{"\n"}}{{end}}' \
+  | sort > "$after"
 
 if ! diff -u "$before" "$after"; then
   echo "error: Helm release chart/version/status changed during staging" >&2
