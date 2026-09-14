@@ -30,7 +30,7 @@
 - [x] classificar serviços LAN/cluster/loopback e implementar role `firewall` isolado em nftables;
 - [x] validar live trial do firewall com rollback automático e testes externos pela LAN;
 - [x] configurar persistência via `guiosoft-host-firewall.service` sem tomar posse do ruleset global;
-- [ ] validar persistência do firewall após reboot real do host.
+- [x] validar persistência do firewall após reboot real do host, com SSH/kubectl LAN, K3s, workloads e Firecrawl funcionais.
 
 ## Fase 2 — K3s
 
