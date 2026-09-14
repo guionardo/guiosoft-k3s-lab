@@ -175,6 +175,17 @@ Os arquivos SOPS mantêm `apiVersion`, `kind` e `metadata` legíveis e criptogra
 
 O recipient público age permanece no repositório; a identidade privada continua fora do Git e precisa de backup independente para DR.
 
+Após o bootstrap do Flux, o Secret runtime pode ser criado ou atualizado de forma idempotente pelo playbook:
+
+```bash
+ansible-playbook -i ansible/inventory/production.yml \
+  ansible/playbooks/flux-sops-age.yml
+```
+
+O playbook usa a identidade já criada pela role `secrets`, exige que o namespace `flux-system` exista, usa o kubeconfig administrativo do K3s e aplica `flux-system/sops-age` sem imprimir a chave privada. As tarefas que manipulam a identidade ou o Secret usam `no_log: true`.
+
+A validação recomendada é executar o playbook duas vezes: a primeira execução pode criar/atualizar o Secret; a segunda deve ser idempotente. Essa validação runtime ainda deve ser registrada antes de considerar o bootstrap totalmente comprovado para DR.
+
 ## Testes de recuperação, drift e rollback
 
 As provas realizadas até agora cobrem:
@@ -225,11 +236,12 @@ Concluído:
 - Tempo sob HelmRelease Flux;
 - Loki sob HelmRelease Flux;
 - kube-prometheus-stack sob HelmRelease Flux;
-- toda a stack atual de observabilidade reconciliada por Flux.
+- toda a stack atual de observabilidade reconciliada por Flux;
+- playbook pós-bootstrap para criar/atualizar `flux-system/sops-age` sem expor a chave privada.
 
-Pendências relacionadas ao GitOps:
+Pendências relacionadas ao GitOps/DR:
 
-1. tornar o bootstrap do Secret runtime `sops-age` reproduzível após bootstrap do Flux, sem expor a identidade privada;
+1. validar o playbook `flux-sops-age.yml` em duas execuções consecutivas e registrar a idempotência;
 2. manter backup off-host independente da identidade privada age;
 3. expandir o modelo GitOps apenas quando novos workloads forem incorporados.
 
