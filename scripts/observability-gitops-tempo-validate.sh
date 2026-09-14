@@ -13,7 +13,7 @@ need() {
   }
 }
 
-for cmd in flux kubectl helm grep; do
+for cmd in flux kubectl helm grep bash; do
   need "$cmd"
 done
 
@@ -95,12 +95,13 @@ if [[ -n "$pvc_state" && "$pvc_state" != "Bound" ]]; then
 fi
 
 # Existing integration test exercises app -> OTel Collector -> Tempo -> trace lookup.
-if [[ -x "$REPO_ROOT/scripts/otel-go-demo.sh" ]]; then
+TRACE_HELPER="$REPO_ROOT/scripts/otel-go-demo.sh"
+if [[ -f "$TRACE_HELPER" ]]; then
   echo
   echo "Running distributed trace validation through OTel Collector -> Tempo..."
-  "$REPO_ROOT/scripts/otel-go-demo.sh" test
+  bash "$TRACE_HELPER" test
 else
-  echo "error: scripts/otel-go-demo.sh is not executable or missing" >&2
+  echo "error: scripts/otel-go-demo.sh is missing" >&2
   exit 1
 fi
 
