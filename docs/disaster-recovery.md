@@ -28,9 +28,11 @@ No host atual já foram validados:
 - restore R2 -> local com comparação SHA-256 byte a byte;
 - readiness check de DR com todos os pré-requisitos atuais acessíveis;
 - rehearsal isolado usando exclusivamente o snapshot remoto do R2 como fonte;
-- bootstrap idempotente de `flux-system/sops-age` a partir da identidade age local, com segunda execução `changed=0` e `failed=0`.
+- bootstrap idempotente de `flux-system/sops-age` a partir da identidade age local, com segunda execução `changed=0` e `failed=0`;
+- backup off-host real da identidade privada age para mídia removível FAT32, cifrado com senha de DR independente;
+- restore isolado da identidade age para `/tmp`, validação do recipient e descriptografia bem-sucedida de Secrets SOPS reais do Cloudflare e Firecrawl usando exclusivamente a chave restaurada.
 
-Isso prova a qualidade e recuperabilidade do artefato de backup e que a identidade age recuperada pode ser reinjetada no Flux declarativamente. O passo que ainda falta é subir um K3s separado usando esse datastore restaurado.
+Isso prova a qualidade e recuperabilidade dos artefatos de backup e que a cadeia Git + identidade age off-host + SOPS é operacional. O passo que ainda falta é subir um K3s separado usando o datastore restaurado.
 
 ## Dependências que não podem depender do servidor perdido
 
@@ -43,7 +45,7 @@ Uma recuperação real exige que os itens abaixo existam fora do host original:
 - senha/segredo necessário para acessar o repositório Restic, recuperável via SOPS;
 - documentação deste repositório.
 
-A identidade privada `age` é especialmente crítica: o recipient público versionado no Git não permite descriptografar os secrets. A identidade privada precisa ter uma cópia externa independente e protegida.
+A identidade privada `age` é especialmente crítica: o recipient público versionado no Git não permite descriptografar os secrets. A identidade privada possui agora uma cópia externa independente, cifrada e testada por restore real em caminho isolado.
 
 ## Backup independente da identidade age
 
@@ -88,6 +90,8 @@ AGE_BACKUP_PASSPHRASE_FILE=/run/user/$UID/age-dr-passphrase \
 
 O arquivo de senha não deve ser versionado nem armazenado junto ao backup cifrado.
 
+Filesystems como FAT32/exFAT/NTFS podem não aceitar `chmod` por arquivo; nesses casos, o helper mantém o backup cifrado e usa as permissões definidas pela montagem do filesystem, sem tratar a ausência de POSIX mode como falha.
+
 ### Rehearsal de restore da identidade age
 
 O restore deve ser ensaiado para um caminho isolado, nunca sobrescrevendo a identidade ativa:
@@ -113,7 +117,7 @@ SOPS_AGE_KEY_FILE=/tmp/age-dr-test/keys.txt \
   sops -d kubernetes/secrets/cloudflare/cloudflared-token.sops.yaml >/dev/null
 ```
 
-Somente depois de executar backup real em mídia/off-host e um restore isolado bem-sucedido a pendência de cópia externa da identidade age deve ser considerada concluída.
+Em 2026-09-14 foi executado um rehearsal real usando um pendrive FAT32 como destino off-host. O arquivo cifrado e checksum foram criados e verificados; a identidade foi restaurada em `/tmp/age-dr-test/keys.txt`; `age-keygen -y` confirmou o recipient esperado; e os Secrets SOPS de Cloudflare e Firecrawl foram descriptografados sem erro usando exclusivamente a identidade restaurada. A pendência de cópia off-host independente da identidade age está, portanto, concluída.
 
 ## Readiness check
 
@@ -249,6 +253,8 @@ VM/host Debian isolado
 git clone guiosoft-k3s-lab
    ↓
 restaurar identidade age fora do Git
+   ↓
+validar descriptografia SOPS com a identidade restaurada
    ↓
 make ansible-deps
    ↓
