@@ -2,14 +2,14 @@
 
 ## Decisão
 
-A Fase 7 adotará **Flux** como controlador GitOps do cluster.
+A Fase 7 adotou **Flux** como controlador GitOps do cluster.
 
 A escolha foi feita principalmente por aderência ao estado atual do projeto:
 
 - o repositório já contém manifests Kubernetes e configurações Helm versionadas;
 - SOPS + age já é o padrão de secrets do laboratório;
 - o `kustomize-controller` do Flux possui decriptação SOPS nativa;
-- o bootstrap oficial pode gravar os manifests do próprio Flux no repositório e depois reconciliá-los a partir do Git;
+- o bootstrap oficial grava os manifests do próprio Flux no repositório e depois os reconcilia a partir do Git;
 - não precisamos introduzir uma UI/CD server adicional somente para operar o laboratório;
 - o modelo pull-based combina com o objetivo de reconstrução declarativa do cluster.
 
@@ -23,22 +23,26 @@ Versão de referência escolhida em 2026-09-14:
 Flux v2.9.5
 ```
 
-A versão deve continuar pinada/registrada na automação de instalação, em vez de depender silenciosamente de `latest`.
+A versão está pinada na automação de instalação.
 
-## Layout GitOps planejado
+## Layout GitOps atual
 
-O bootstrap usará:
+O bootstrap usa:
 
 ```text
 clusters/
 └── guiosoft-info/
-    └── flux-system/
-        ├── gotk-components.yaml
-        ├── gotk-sync.yaml
-        └── kustomization.yaml
+    ├── flux-system/
+    │   ├── gotk-components.yaml
+    │   ├── gotk-sync.yaml
+    │   └── kustomization.yaml
+    ├── cloudflare-namespace.yaml
+    ├── cloudflare-secrets.yaml
+    ├── cloudflared.yaml
+    └── kustomization.yaml
 ```
 
-Os manifests de aplicações continuam organizados sob `kubernetes/`. A primeira etapa não reorganizará todos os manifests de uma vez: a adoção será incremental para manter rollback simples.
+Os manifests de aplicações continuam organizados sob `kubernetes/`. A adoção é incremental para manter rollback simples.
 
 ## Bootstrap GitHub
 
@@ -48,7 +52,7 @@ O repositório é:
 guionardo/guiosoft-k3s-lab
 ```
 
-O bootstrap recomendado usa chave SSH/deploy key para o acesso runtime do Flux ao GitHub:
+O bootstrap foi executado com chave SSH/deploy key para o acesso runtime do Flux ao GitHub:
 
 ```bash
 flux check --pre
@@ -62,38 +66,39 @@ flux bootstrap github \
   --token-auth=false
 ```
 
-Um GitHub token/PAT é necessário para a operação de bootstrap no GitHub, mas com `--token-auth=false` o acesso runtime do Flux ao repositório usa SSH/deploy key em vez de manter o PAT como credencial Git do cluster.
+Um GitHub token/PAT foi necessário apenas para a operação de bootstrap no GitHub. Com `--token-auth=false`, o acesso runtime do Flux ao repositório usa SSH/deploy key em vez de manter o PAT como credencial Git do cluster.
 
-Não versionar o PAT.
+## Primeira adoção: cloudflared
 
-## Estratégia de adoção
+O `cloudflared` foi escolhido como primeiro workload real sob Flux por ser pequeno, stateless, declarativo e possuir rollback simples.
 
-A ordem será deliberadamente incremental:
+A adoção foi feita sem recriar o workload: os recursos Kubernetes já existentes foram assumidos pela reconciliação do Flux e permaneceram operacionais durante a transição.
 
-1. bootstrap do Flux e validação dos controllers;
-2. confirmar que `flux-system` reconcilia o próprio bootstrap a partir do Git;
-3. criar uma `Kustomization` pequena para um workload de laboratório;
-4. validar drift/self-healing controlado;
-5. integrar SOPS + age ao `kustomize-controller`;
-6. migrar `cloudflared`, que já possui manifests simples e Secret SOPS;
-7. migrar Firecrawl;
-8. migrar observabilidade/Helm por último, preservando os procedimentos atuais durante a transição.
+A ordem atual de reconciliação é:
 
-Não colocaremos todos os recursos sob reconciliação automática em uma única mudança.
+```text
+cloudflare-namespace
+        ↓
+cloudflare-secrets
+        ↓
+cloudflared
+```
+
+Isso garante que o namespace exista antes de aplicar Secrets e que o Deployment só reconcilie depois que os secrets necessários estiverem disponíveis.
 
 ## SOPS + age
 
-O Flux suporta decriptação SOPS diretamente em `Kustomization`:
+O Flux usa decriptação SOPS diretamente em `Kustomization`:
 
 ```yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
-  name: example
+  name: cloudflare-secrets
   namespace: flux-system
 spec:
   interval: 10m
-  path: ./kubernetes/apps/example
+  path: ./kubernetes/secrets
   prune: true
   sourceRef:
     kind: GitRepository
@@ -104,43 +109,68 @@ spec:
       name: sops-age
 ```
 
-A identidade privada age necessária para decriptação será instalada no namespace `flux-system` como Secret runtime e **não será versionada em plaintext**.
+A identidade privada age necessária para decriptação é instalada no namespace `flux-system` como Secret runtime e **não é versionada em plaintext**.
 
-Antes de mover secrets existentes para reconciliação Flux, verificar se o formato SOPS atual é compatível com o `kustomize-controller`. Em particular, `apiVersion`, `kind` e `metadata` devem permanecer legíveis e a criptografia deve se concentrar em `data`/`stringData`.
+O arquivo SOPS deve manter `apiVersion`, `kind` e `metadata` legíveis, criptografando apenas `data`/`stringData`. O Secret do Tunnel segue esse padrão.
+
+## Teste de recuperação do Secret
+
+Em 2026-09-14 foi validado o fluxo completo de recuperação:
+
+1. o Secret `cloudflared-tunnel-token` foi removido manualmente do namespace `cloudflare`;
+2. `cloudflare-secrets` foi reconciliado pelo Flux;
+3. o Secret foi recriado a partir do manifesto cifrado no Git;
+4. o `cloudflared` permaneceu saudável;
+5. `https://k3s-test.guiosoft.info/` continuou respondendo HTTP 200.
+
+Isso valida a cadeia:
+
+```text
+Git cifrado -> Flux -> SOPS/age -> Kubernetes Secret -> workload operacional
+```
+
+O recipient público age permanece no repositório; a identidade privada continua fora do Git e precisa de backup independente para DR.
 
 ## Prune e segurança
 
-No começo, `prune` será habilitado apenas em escopos pequenos e conhecidos. Recursos críticos não serão transferidos para Flux sem antes confirmar:
+`prune` está habilitado apenas em escopos pequenos e conhecidos. Recursos críticos não serão transferidos para Flux sem antes confirmar:
 
 - ownership declarativo claro;
 - backup/rollback apropriado;
 - ausência de recursos gerados manualmente dentro do mesmo escopo;
-- resultado de `flux diff`/build quando aplicável.
+- resultado de build/diff quando aplicável.
 
 Terraform continua responsável por Cloudflare/R2 e Ansible continua responsável pelo host/K3s. Flux não substitui essas camadas.
 
-## Critério de sucesso do bootstrap
+## Estado atual da adoção
 
-O bootstrap estará concluído quando:
+Concluído:
+
+- Flux CLI via Ansible;
+- bootstrap GitHub;
+- controllers Flux operacionais;
+- `flux-system` reconciliando a própria configuração;
+- namespace `cloudflare` sob Flux;
+- Secret SOPS do Tunnel sob Flux;
+- workload `cloudflared` sob Flux;
+- dependências explícitas entre namespace, secrets e workload;
+- recuperação real do Secret a partir de Git + SOPS + age sem indisponibilidade pública.
+
+Próximos candidatos de adoção:
+
+1. executar teste simples de drift/rollback declarativo no `cloudflared`;
+2. migrar Firecrawl para Flux;
+3. migrar observabilidade/Helm por último.
+
+## Rollback operacional
+
+A primeira resposta a problemas de reconciliação deve ser suspender a Kustomization afetada, não remover o Flux:
 
 ```bash
-flux check
-kubectl get pods -n flux-system
-flux get sources git -A
-flux get kustomizations -A
+flux suspend kustomization cloudflared -n flux-system
 ```
 
-mostrarem todos os controllers saudáveis, source Git Ready e a Kustomization `flux-system` reconciliada.
-
-## Rollback inicial
-
-Enquanto apenas o bootstrap estiver sob GitOps, rollback continua simples: suspender a reconciliação antes de qualquer intervenção manual relevante.
-
-```bash
-flux suspend kustomization flux-system -n flux-system
-```
-
-A remoção completa do Flux não será usada como primeira resposta a incidentes. Primeiro suspenderemos a reconciliação e analisaremos o drift/erro.
+Mudanças declarativas devem ser revertidas no Git e reconciliadas novamente. A remoção completa do Flux não é o mecanismo normal de rollback.
 
 ## Fontes oficiais
 
