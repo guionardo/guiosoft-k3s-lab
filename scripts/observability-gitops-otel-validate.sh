@@ -12,7 +12,7 @@ need() {
   }
 }
 
-for cmd in flux kubectl helm grep; do
+for cmd in flux kubectl helm grep awk; do
   need "$cmd"
 done
 
@@ -24,7 +24,6 @@ flux reconcile kustomization observability-helm
 flux reconcile helmrelease "$RELEASE" -n "$NAMESPACE"
 
 echo
-
 echo "HelmRelease status:"
 kubectl get helmrelease -n "$NAMESPACE" "$RELEASE" \
   -o custom-columns='NAME:.metadata.name,SUSPEND:.spec.suspend,READY:.status.conditions[?(@.type=="Ready")].status,REVISION:.status.history[0].chartVersion' \
@@ -77,11 +76,32 @@ if [[ -n "$not_ready" ]]; then
   exit 1
 fi
 
-# Verify the OTLP Service is still exposed on both standard ports.
-svc_ports="$(kubectl get service -n "$NAMESPACE" "$RELEASE" -o jsonpath='{range .spec.ports[*]}{.port}{"\n"}{end}' 2>/dev/null || true)"
-if ! grep -qx '4317' <<<"$svc_ports" || ! grep -qx '4318' <<<"$svc_ports"; then
-  echo "error: $RELEASE service does not expose both OTLP ports 4317 and 4318" >&2
-  kubectl get service -n "$NAMESPACE" "$RELEASE" -o yaml >&2 || true
+# Discover the Service by Helm release label; the chart-generated Service name
+# is not necessarily identical to the Helm release name.
+service_names="$(kubectl get service -n "$NAMESPACE" \
+  -l app.kubernetes.io/instance="$RELEASE" \
+  -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}')"
+
+[[ -n "$service_names" ]] || {
+  echo "error: no Service found for Helm release '$RELEASE'" >&2
+  exit 1
+}
+
+service_ok=""
+while IFS= read -r service_name; do
+  [[ -n "$service_name" ]] || continue
+  svc_ports="$(kubectl get service -n "$NAMESPACE" "$service_name" \
+    -o jsonpath='{range .spec.ports[*]}{.port}{"\n"}{end}')"
+
+  if grep -qx '4317' <<<"$svc_ports" && grep -qx '4318' <<<"$svc_ports"; then
+    service_ok="$service_name"
+    break
+  fi
+done <<<"$service_names"
+
+if [[ -z "$service_ok" ]]; then
+  echo "error: no Service for release '$RELEASE' exposes both OTLP ports 4317 and 4318" >&2
+  kubectl get service -n "$NAMESPACE" -l app.kubernetes.io/instance="$RELEASE" -o wide >&2 || true
   exit 1
 fi
 
@@ -102,6 +122,6 @@ alloy_suspend="$(kubectl get helmrelease -n "$NAMESPACE" alloy -o jsonpath='{.sp
 echo
 echo "HelmRelease/otel-collector: Ready"
 echo "OpenTelemetry Collector Pods: Running/Ready"
-echo "OTLP service ports 4317/4318: OK"
+echo "OTLP service ports 4317/4318: OK ($service_ok)"
 echo "Tempo, Loki and kube-prometheus-stack remain suspended."
 echo "OpenTelemetry Collector Flux adoption validation: OK"
