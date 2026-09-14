@@ -1,163 +1,135 @@
 # Estado atual e decisões de escopo
 
-Atualizado após discovery, limpeza manual do host, instalação do K3s, validação do acesso externo via Cloudflare Tunnel, configuração administrativa do `kubectl` e auditoria pós-K3s do firewall.
+Atualizado em 2026-09-14 após a migração do Firecrawl para K3s, consolidação da observabilidade, hardening dos serviços do host, cutover LAN-only do Firecrawl e implantação controlada da política de firewall.
 
 ## Host
 
 - Debian 13 (trixie)
 - Intel Core i5-8500, 6 cores
 - 16 GB RAM
-- Docker/containerd ativos
-- Cloudflare Tunnel ativo via systemd
+- K3s `v1.36.4+k3s1` single-node operacional
+- Docker preservado temporariamente para rollback de workloads antigos, sem Firecrawl ativo
+- `cloudflared` ainda executando via systemd no host
 - Tailscale removido
-- K3s `v1.36.4+k3s1` instalado e operacional
-- `kubectl` standalone configurado para o usuário administrativo local
-
-## Validação pós-limpeza
-
-A validação manual confirmou:
-
-- `/etc/resolv.conf` gerenciado pelo `dhcpcd` da interface `enp2s0`;
-- resolução DNS externa funcionando;
-- rota default pela interface LAN preservada;
-- apenas o stack Firecrawl permanece ativo no Docker entre os workloads relevantes;
-- Tailscale não aparece mais entre interfaces/rotas/serviços observados.
-
-Após a instalação do K3s, as portas TCP 80 e 443 passaram a ser utilizadas pelo Traefik/ServiceLB, conforme esperado.
+- NFS/RPC, PCP e Cockpit desabilitados
+- Avahi mantido deliberadamente por enquanto
+- política nftables dedicada `inet guiosoft_host` ativa
 
 ## Cluster K3s
 
-O cluster single-node está operacional com:
+O cluster está operacional com node `guiosoft-info` em estado `Ready`, CoreDNS, metrics-server, local-path-provisioner, Traefik/ServiceLB e todos os workloads atuais saudáveis.
 
-- node em estado `Ready`;
-- CoreDNS em execução;
-- metrics-server em execução;
-- local-path-provisioner em execução;
-- Traefik em execução;
-- ServiceLB do Traefik publicado no endereço LAN do host.
+O `kubectl` administrativo funciona sem `sudo`. O target `make kubeconfig-external` gera kubeconfig com o `InternalIP` do node (`192.168.88.9`) e o acesso a partir de outra máquina da LAN já foi validado.
 
-O namespace `lab` contém um workload de teste baseado em `traefik/whoami`, publicado por Service e Ingress no hostname:
+O local-path provisioner grava fisicamente abaixo de:
 
 ```text
-k3s-test.guiosoft.info
+/mnt/store1/k3s/local-path
 ```
 
-O caminho local foi validado com sucesso:
+## Workloads
+
+### Firecrawl
+
+O Firecrawl é o primeiro workload real migrado para K3s. Os cinco componentes estão em execução:
+
+- API;
+- PostgreSQL/NuQ;
+- Playwright;
+- RabbitMQ;
+- Redis.
+
+As imagens estão pinadas por digest. No perfil atual PostgreSQL/NuQ, Redis e RabbitMQ são deliberadamente efêmeros via `emptyDir` e não existem PVCs Firecrawl.
+
+A antiga stack Docker Compose está parada; containers e volumes foram preservados apenas durante a janela de rollback.
+
+O acesso é LAN-only via split-horizon DNS no MikroTik:
 
 ```text
-127.0.0.1:80
-    ↓
-Traefik
-    ↓
-Ingress
-    ↓
-Service
-    ↓
-Pod
+firecrawl.guiosoft.info -> 192.168.88.9
 ```
 
-O `kubectl` administrativo também foi validado sem `sudo`, utilizando kubeconfig próprio do usuário em `~/.kube/config`.
+Hermes e OpenCode/MCP foram validados consumindo esse caminho interno.
 
-## Serviços atuais
+No Cloudflare Tunnel existe uma regra explícita anterior ao wildcard:
 
-### firecrawl
+```text
+firecrawl.guiosoft.info -> http_status:404
+```
 
-Deve ser preservado durante a evolução do laboratório. Atualmente utiliza externamente a porta TCP `3002`; PostgreSQL, Redis, RabbitMQ e Playwright permanecem internos à rede Docker.
+Assim, o hostname continua utilizável na LAN, mas é bloqueado na rota pública. A antiga aplicação Cloudflare Access e os Service Tokens Hermes/OpenCode foram removidos declarativamente.
 
-Qualquer migração futura será uma decisão separada.
+### Lab e observabilidade
 
-### escoteirando-suite
+O namespace `lab` mantém o workload `k3s-test` e a aplicação Go instrumentada com OpenTelemetry.
 
-Removido do host e fora do escopo deste laboratório.
+A observabilidade inclui:
 
-### gitea
+- Prometheus / Alertmanager / Grafana;
+- Tempo;
+- OpenTelemetry Collector;
+- Loki;
+- Grafana Alloy;
+- node-exporter;
+- métricas customizadas, traces distribuídos, logs correlacionados e alertas validados.
 
-Removido do host e fora do escopo deste laboratório.
-
-### OpenShip
-
-A publicação do OpenShip foi removida do Cloudflare. A situação local do serviço ainda pode ser verificada separadamente antes de qualquer limpeza adicional no host.
-
-## Tailscale
-
-Tailscale já foi desinstalado manualmente e a rede/DNS foram validados após a remoção.
+Um incident drill controlado já confirmou o fluxo de detecção, correlação e recuperação.
 
 ## Cloudflare
 
-O `cloudflared` atual continua executando no host durante esta fase da migração.
-
-A configuração de ingress relevante do Tunnel utiliza:
+O `cloudflared` continua no host por enquanto. A rota geral é:
 
 ```text
-*.guiosoft.info -> http://127.0.0.1:80
+*.guiosoft.info -> Cloudflare Tunnel -> http://127.0.0.1:80 -> Traefik
 ```
 
-O uso explícito de `127.0.0.1` é intencional. `localhost` resolvia primeiro para `::1`, onde não havia listener na porta 80, causando falha do origin no `cloudflared`.
+O wildcard permite que Ingresses Kubernetes publicados explicitamente sejam alcançados pelo Tunnel. Hostnames sem Ingress retornam 404 no Traefik.
 
-O wildcard DNS `*.guiosoft.info`, que anteriormente apontava para um endereço IPv4 de origin legado, foi alterado para apontar para o Cloudflare Tunnel.
+Workloads classificados como LAN-only e cobertos pelo wildcard devem possuir regra explícita de bloqueio no Tunnel antes do wildcard, como já ocorre com o Firecrawl.
 
-Hostnames com registros DNS específicos continuam podendo apontar para outros Tunnels e têm precedência sobre o wildcard.
+A infraestrutura Cloudflare relevante está sob Terraform.
 
-Com isso, novos hostnames sem registro DNS específico podem chegar ao Traefik do K3s por meio do wildcard e ser roteados por Ingress.
+## Firewall e hardening
 
-O fluxo externo foi validado com HTTP 200:
+A superfície do host foi classificada antes de aplicar qualquer default-deny. O MikroTik possui somente a regra padrão de `srcnat masquerade` e nenhum `dstnat`/port-forward direto para `192.168.88.9`.
+
+A política do host usa uma tabela nftables isolada:
 
 ```text
-Internet
-    ↓
-Cloudflare
-    ↓
-Cloudflare Tunnel
-    ↓
-cloudflared no host
-    ↓
-127.0.0.1:80
-    ↓
-Traefik no K3s
-    ↓
-Ingress
-    ↓
-Service
-    ↓
-Pod
+table inet guiosoft_host
 ```
 
-O teste `https://k3s-test.guiosoft.info/` retornou a resposta do workload `whoami`, incluindo os headers encaminhados pelo Cloudflare e pelo Traefik.
+Ela possui hook apenas em `INPUT`, não executa `flush ruleset` e não toma posse das chains/tabelas de FORWARD/NAT gerenciadas por K3s, Flannel ou Docker.
 
-Um hostname coberto pelo wildcard, mas sem Ingress correspondente, foi testado tanto local quanto externamente e retornou HTTP 404. Portanto, o wildcard não publica automaticamente workloads desconhecidos.
+A política atual:
 
-## Firewall e listeners
+- aceita loopback;
+- aceita conexões `established,related`;
+- descarta estado inválido;
+- preserva ICMP/ICMPv6 e DHCP;
+- permite `22`, `80`, `443` e `6443/TCP` pela LAN `192.168.88.0/24`;
+- mantém mDNS 5353 para Avahi;
+- confia nas interfaces `cni0` e `flannel.1` para tráfego local do cluster;
+- mantém 8472/UDP fechado para a LAN enquanto o cluster for single-node;
+- aplica `policy drop` ao restante do INPUT.
 
-A auditoria pós-K3s confirmou:
+O primeiro enforcement foi executado com rollback automático de cinco minutos. Após validação externa de SSH, kubeconfig/Kubernetes e Firecrawl, o rollback foi cancelado e a policy permaneceu ativa.
 
-- K3s ativo;
-- Docker ativo;
-- `cloudflared` ativo;
-- Kubernetes API operacional;
-- UFW instalado, mas inativo.
+A persistência está configurada por `guiosoft-host-firewall.service`, separado do `nftables.service` global. O unit está habilitado para o boot e carrega somente `/etc/nftables.d/guiosoft-host.nft`. A validação definitiva dessa persistência após reboot ainda está pendente.
 
-Foram observados listeners em todas as interfaces para serviços como SSH, NFS/RPC, Firecrawl, PCP, Kubernetes API, kubelet e Cockpit. A existência desses listeners não comprova exposição à Internet; isso depende também do roteador, NAT e demais regras de rede externas ao host.
+## Backup e DR
 
-A decisão atual é **não habilitar UFW automaticamente** até classificar cada serviço por escopo de acesso e validar impacto em K3s, Docker, NFS e administração remota. A política e as pendências estão registradas em `docs/firewall.md`.
+O K3s possui backup local verificável do SQLite + server token, timer systemd e retenção. A cadeia off-host usa Restic para Cloudflare R2, com `restic check` e rehearsal isolado de restore já validados.
 
-## Diretriz para publicação de novos workloads
+O restore destrutivo possui guards explícitos e só é permitido em host marcado como alvo DR. Um teste completo em segundo host/VM continua adiado até existir recurso disponível.
 
-Para aplicações públicas que sigam o caminho padrão do cluster, a publicação exige principalmente um Ingress Kubernetes para um hostname `*.guiosoft.info`.
+## Secrets
 
-Convenções atuais:
-
-- `ingressClassName: traefik` explícito;
-- Service `ClusterIP` por padrão;
-- publicação externa preferencial via Cloudflare Tunnel;
-- sem catch-all Ingress público;
-- hostname sem Ingress conhecido retorna 404;
-- serviços administrativos devem receber política de acesso própria.
+SOPS + age estão configurados. A identidade privada age permanece fora do repositório e `.sops.yaml` contém somente o recipient público. O fluxo encrypt/decrypt e aplicação de Kubernetes Secret cifrado foi validado.
 
 ## Próximos passos
 
-Os próximos blocos de infraestrutura são:
-
-1. classificar serviços e definir a política de firewall antes de qualquer alteração de regras;
-2. criar o role `storage` e definir o layout persistente;
-3. iniciar gerenciamento gradual do Cloudflare por Terraform, importando recursos existentes em vez de recriá-los;
-4. definir estratégia SOPS + age para secrets.
+1. reiniciar o host e validar que `guiosoft-host-firewall.service` carrega a tabela antes do K3s/cloudflared sem perda de acesso;
+2. migrar `cloudflared` do systemd do host para Kubernetes;
+3. iniciar a fase GitOps, escolhendo Argo CD ou Flux;
+4. avançar pendências de storage/DR conforme necessidade operacional.
