@@ -1,6 +1,6 @@
 # Estado atual e decisões de escopo
 
-Atualizado em 2026-09-14 após a validação do firewall em reboot real e a migração do Cloudflare Tunnel connector do systemd do host para o K3s.
+Atualizado em 2026-09-14 após a validação do firewall em reboot real, a migração do Cloudflare Tunnel connector do systemd do host para o K3s e a adoção inicial do Flux com SOPS + age.
 
 ## Host
 
@@ -27,15 +27,48 @@ O local-path provisioner grava fisicamente abaixo de:
 /mnt/store1/k3s/local-path
 ```
 
+## GitOps com Flux
+
+O Flux v2.9.5 foi adotado como controlador GitOps e o bootstrap no GitHub foi concluído no path:
+
+```text
+clusters/guiosoft-info
+```
+
+O acesso runtime do Flux ao repositório usa SSH/deploy key. O `flux-system` já reconcilia sua própria configuração a partir da branch `main`.
+
+O primeiro workload adotado foi o `cloudflared`. A reconciliação foi separada em três camadas explícitas:
+
+```text
+cloudflare-namespace
+        ↓
+cloudflare-secrets
+        ↓
+cloudflared
+```
+
+As dependências são declaradas com `dependsOn`. O namespace é criado antes dos secrets, e o workload só reconcilia depois dos secrets.
+
+A identidade privada age usada pelo Flux permanece fora do Git e é disponibilizada como Secret runtime `sops-age` no namespace `flux-system`. O manifesto `cloudflared-token.sops.yaml` mantém `apiVersion`, `kind` e `metadata` em claro e cifra apenas `data`.
+
+Em 2026-09-14 foi executado um teste real de recuperação: o Secret `cloudflared-tunnel-token` foi apagado manualmente, `cloudflare-secrets` foi reconciliado e o Secret foi recriado a partir do Git cifrado. O Tunnel permaneceu operacional e `https://k3s-test.guiosoft.info/` respondeu HTTP 200 após a recuperação.
+
+Esse teste valida a cadeia:
+
+```text
+Git cifrado -> Flux -> SOPS/age -> Kubernetes Secret -> workload operacional
+```
+
 ## Cloudflare Tunnel no Kubernetes
 
-O connector do Cloudflare Tunnel foi migrado do host para o namespace `cloudflare` no K3s.
+O connector do Cloudflare Tunnel foi migrado do host para o namespace `cloudflare` no K3s e agora é reconciliado pelo Flux.
 
 Estado atual:
 
 - Deployment `cloudflared` com 2 réplicas;
 - imagem `cloudflare/cloudflared:2026.9.1`;
 - token do Tunnel armazenado como Kubernetes Secret cifrado no Git com SOPS + age;
+- namespace, Secret e workload reconciliados pelo Flux;
 - `/ready` usado por readiness/liveness probes;
 - endpoint `/metrics` exposto por Service `cloudflared-metrics` e selecionado por `ServiceMonitor`;
 - ServiceAccount token não é montado no Pod;
@@ -156,16 +189,19 @@ O K3s possui backup local verificável do SQLite + server token, timer systemd e
 
 O restore destrutivo possui guards explícitos e só é permitido em host marcado como alvo DR. Um teste completo em segundo host/VM continua adiado até existir recurso disponível.
 
+A identidade privada age passa a ser ainda mais crítica porque é necessária também para o Flux reconstruir secrets SOPS. Uma cópia off-host independente dessa identidade continua pendente na fase de DR.
+
 ## Secrets
 
 SOPS + age estão configurados. A identidade privada age permanece fora do repositório e `.sops.yaml` contém somente o recipient público. O fluxo encrypt/decrypt e aplicação de Kubernetes Secret cifrado foi validado.
 
-O token do Cloudflare Tunnel segue o mesmo padrão: plaintext não é versionado; somente o Secret SOPS pode entrar no Git.
+O token do Cloudflare Tunnel segue o mesmo padrão e agora está integrado ao Flux. O teste de exclusão e recriação do Secret confirmou que o cluster consegue recuperar o credential a partir do Git cifrado desde que a identidade privada age esteja disponível no `flux-system`.
 
 ## Próximos passos
 
-1. iniciar a fase GitOps, escolhendo Argo CD ou Flux;
-2. integrar os manifests e Secrets SOPS ao fluxo de reconciliação;
-3. remover o runtime antigo do Firecrawl somente após encerrar sua janela de rollback;
-4. pinçar `cloudflared` também por digest após registrar o `imageID` validado em runtime;
-5. avançar pendências de storage/DR conforme necessidade operacional.
+1. executar um teste controlado de drift/rollback declarativo no `cloudflared`;
+2. migrar Firecrawl para reconciliação Flux;
+3. migrar observabilidade/Helm depois dos workloads mais simples;
+4. remover o runtime antigo do Firecrawl somente após encerrar sua janela de rollback;
+5. pinçar `cloudflared` também por digest após registrar o `imageID` validado em runtime;
+6. avançar pendências de storage/DR conforme necessidade operacional.
