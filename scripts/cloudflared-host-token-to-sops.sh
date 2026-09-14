@@ -29,7 +29,7 @@ raise SystemExit(1)
   exit 1
 }
 
-CLOUDFLARE_TUNNEL_TOKEN="$TOKEN" "${ROOT_DIR}/scripts/cloudflared-token-secret.sh"
+CLOUDFLARE_TUNNEL_TOKEN="$TOKEN" bash "${ROOT_DIR}/scripts/cloudflared-token-secret.sh"
 unset TOKEN UNIT CLOUDFLARE_TUNNEL_TOKEN
 
 echo "Cloudflare Tunnel token copied from host systemd configuration into encrypted SOPS Secret."
