@@ -37,6 +37,8 @@ Durante a migração, os serviços atuais continuarão rodando no host Debian. C
 
 O cluster single-node K3s está operacional. Traefik, CoreDNS, metrics-server e local-path-provisioner estão funcionando, o acesso administrativo com `kubectl` já funciona sem `sudo`, e o caminho externo Cloudflare -> Tunnel -> Traefik -> Ingress -> Service -> Pod foi validado.
 
+A limpeza pré-K3s foi concluída: Tailscale foi removido, OpenShip deixou de ter publicação Cloudflare e não possui container/unidade systemd local, e os registros DNS explícitos legados `git.guiosoft.info` e `git-ssh.guiosoft.info` foram removidos. O wildcard `*.guiosoft.info` continua sendo a rota padrão para o Tunnel.
+
 Hostnames desconhecidos sob o wildcard `*.guiosoft.info` chegam ao Traefik, mas recebem HTTP 404 quando não existe um Ingress explícito.
 
 O acesso `kubectl` a partir de outra máquina da LAN também foi validado usando `make kubeconfig-external`, que renderiza o kubeconfig administrativo com o `InternalIP` do servidor em vez de loopback. A API continua destinada somente à rede administrativa.
@@ -67,7 +69,7 @@ O controlled incident drill também foi validado em runtime. O target `make otel
 
 A Fase 4 usa o **Firecrawl como primeiro workload real**. A versão K3s foi implantada com os cinco componentes Ready, scrape funcional real validado e imagens pinadas por digest. PostgreSQL/NuQ, Redis e RabbitMQ foram deliberadamente classificados como efêmeros e usam `emptyDir`, sem PVCs Firecrawl. Uma corrida de startup com RabbitMQ foi corrigida com `initContainer`, e o novo Pod da API foi validado com `RESTARTS=0`.
 
-`firecrawl.guiosoft.info` está protegido por Cloudflare Access Service Auth. Hermes e OpenCode possuem Service Tokens separados; requests sem credencial recebem HTTP 401, enquanto ambos os tokens foram validados com `POST /v1/scrape` funcional. O Docker Compose antigo continua ativo somente como rollback durante o cutover final.
+`firecrawl.guiosoft.info` está protegido por Cloudflare Access Service Auth. Hermes e OpenCode possuem Service Tokens separados; requests sem credencial recebem HTTP 401, enquanto ambos os tokens foram validados com `POST /v1/scrape` funcional. O cutover para K3s foi concluído: o Docker Compose antigo está parado e seus containers/volumes permanecem preservados apenas para rollback. Após o cutover, os cinco Pods K3s permaneceram `Ready`, com `RESTARTS=0` e sem warnings relevantes; a remoção definitiva do runtime Docker antigo continua deliberadamente pendente até o encerramento da janela de rollback.
 
 ## Divisão de responsabilidades
 
@@ -248,7 +250,7 @@ Detalhes em [`docs/observability.md`](docs/observability.md), [`docs/otel-go-dem
 
 ## Firecrawl
 
-O primeiro workload real escolhido para migração é o Firecrawl. A versão Kubernetes já está funcionalmente validada; o Docker Compose antigo permanece temporariamente como rollback.
+O primeiro workload real escolhido para migração é o Firecrawl. A versão Kubernetes está funcionalmente validada e atende o serviço após o cutover; o Docker Compose antigo está parado, com containers e volumes preservados temporariamente para rollback.
 
 O perfil Kubernetes atual tomou duas decisões explícitas:
 
@@ -286,7 +288,7 @@ A autenticação pública é feita por Cloudflare Access Service Auth, com um Se
 
 Os Client Secrets dos Service Tokens existem também no state local do Terraform e devem ser tratados como segredo. Nunca devem ser adicionados ao Git, logs ou exemplos de documentação.
 
-O próximo passo de cutover é parar, mas ainda não remover, o Docker Compose antigo. Depois disso, o K3s deve ser observado sozinho antes da remoção definitiva de containers/volumes antigos.
+Após a parada do Compose, a observação do K3s sozinho confirmou os cinco Deployments disponíveis, Pods `Ready`, `RESTARTS=0`, sem eventos Warning recentes e consumo compatível com o baseline anterior. O runtime Docker antigo não deve ser removido ainda: manter containers e volumes preservados até o encerramento explícito da janela de rollback; não executar `docker compose down -v` durante essa janela.
 
 Detalhes em [`docs/firecrawl-migration.md`](docs/firecrawl-migration.md) e a semântica de PVC/local-path em [`docs/storage.md`](docs/storage.md).
 
@@ -356,6 +358,7 @@ A evolução atual foi baseada em:
 - auditoria read-only do Docker Compose Firecrawl, identificação de volumes/digests e preparação do perfil K3s efêmero com Ingress público;
 - validação real do Firecrawl K3s com scrape funcional, correção da corrida de startup e `RESTARTS=0` após redeploy;
 - validação real do Cloudflare Access Service Auth: HTTP 401 sem Service Token e `/v1/scrape` autenticado com Hermes e OpenCode;
+- validação pós-cutover do Firecrawl com Docker Compose parado e K3s atendendo sozinho com cinco Pods Ready, zero restarts e sem warnings relevantes;
 - Prometheus Go client `v1.24.1` para métricas customizadas;
 - documentação oficial do Prometheus Operator sobre `ServiceMonitor` e `PrometheusRule`;
 - documentação oficial do Prometheus sobre alerting rules;
