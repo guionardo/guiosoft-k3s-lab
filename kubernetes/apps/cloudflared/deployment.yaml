@@ -8,9 +8,9 @@ metadata:
     app.kubernetes.io/name: cloudflared
     app.kubernetes.io/part-of: guiosoft-networking
 spec:
-  # During migration this starts as one Kubernetes replica while the host
-  # systemd connector remains active. After cutover we can scale this to two.
-  replicas: 1
+  # Two replicas provide connector/process redundancy. On the current
+  # single-node cluster this does not protect against a node failure.
+  replicas: 2
   strategy:
     type: RollingUpdate
     rollingUpdate:
