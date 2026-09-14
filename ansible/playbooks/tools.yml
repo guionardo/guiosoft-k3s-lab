@@ -9,3 +9,4 @@
     - role: secrets
     - role: restic
     - role: helm
+    - role: flux
