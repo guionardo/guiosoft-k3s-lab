@@ -28,7 +28,7 @@ resource "cloudflare_zero_trust_tunnel_cloudflared_config" "homelab" {
         origin_request = {}
       },
       {
-        hostname       = "*.guiosoft.info"
+        hostname = "*.guiosoft.info"
         # This origin must be reachable by both the current host systemd
         # connector and the future cloudflared Pod during the migration.
         # Do not use 127.0.0.1 here: inside Kubernetes it would point at the
