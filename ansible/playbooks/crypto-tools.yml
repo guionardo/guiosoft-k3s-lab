@@ -1,0 +1,8 @@
+---
+- name: Install cryptographic tools required for SOPS recovery
+  hosts: k3s_servers
+  become: true
+  gather_facts: true
+
+  roles:
+    - role: crypto_tools
