@@ -8,6 +8,11 @@ k3s_version: v1.36.4+k3s1
 kubectl_version: v1.36.4
 kubectl_arch: amd64
 
+# Cryptographic tools used by SOPS recovery and GitOps bootstrap.
+# age is installed from the Debian repository; SOPS is pinned for reproducibility.
+sops_version: v3.13.3
+sops_arch: amd64
+
 # Helm is used for cluster add-ons such as kube-prometheus-stack.
 helm_version: v4.3.0
 helm_arch: amd64
