@@ -1,4 +1,12 @@
 ---
+- name: Ensure K3s configuration directory exists
+  ansible.builtin.file:
+    path: /etc/rancher/k3s
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
 - name: Write K3s server configuration
   ansible.builtin.copy:
     dest: /etc/rancher/k3s/config.yaml
