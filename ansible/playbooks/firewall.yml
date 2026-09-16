@@ -1,0 +1,8 @@
+---
+- name: Stage or enforce host firewall policy
+  hosts: k3s_servers
+  become: true
+  gather_facts: true
+
+  roles:
+    - role: firewall

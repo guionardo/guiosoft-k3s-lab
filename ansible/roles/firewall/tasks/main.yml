@@ -1,0 +1,152 @@
+---
+- name: Assert firewall safety inputs
+  ansible.builtin.assert:
+    that:
+      - firewall_lan_interface | length > 0
+      - firewall_lan_cidr | length > 0
+      - 22 in firewall_lan_tcp_ports
+      - firewall_rollback_seconds | int >= 60
+    fail_msg: "Firewall inputs are incomplete; SSH and a rollback window must remain available before enforcement."
+
+- name: Ensure nftables include directory exists
+  ansible.builtin.file:
+    path: /etc/nftables.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Render isolated host firewall ruleset
+  ansible.builtin.template:
+    src: guiosoft-host.nft.j2
+    dest: "{{ firewall_ruleset_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+  register: firewall_render
+
+- name: Validate rendered ruleset syntax without loading it
+  ansible.builtin.command: "nft --check --file {{ firewall_ruleset_path }}"
+  changed_when: false
+
+- name: Show staged firewall policy
+  ansible.builtin.command: "cat {{ firewall_ruleset_path }}"
+  register: firewall_rendered_policy
+  changed_when: false
+
+- name: Print staged firewall policy
+  ansible.builtin.debug:
+    var: firewall_rendered_policy.stdout_lines
+
+- name: Reset stale rollback unit state before live trial
+  ansible.builtin.command: "systemctl reset-failed {{ firewall_rollback_unit }}.timer {{ firewall_rollback_unit }}.service"
+  when: firewall_enforce | bool
+  changed_when: false
+  failed_when: false
+
+- name: Stop stale rollback timer before live trial
+  ansible.builtin.command: "systemctl stop {{ firewall_rollback_unit }}.timer"
+  when: firewall_enforce | bool
+  changed_when: false
+  failed_when: false
+
+- name: Arm automatic firewall rollback before loading rules
+  ansible.builtin.command:
+    argv:
+      - systemd-run
+      - --unit={{ firewall_rollback_unit }}
+      - --on-active={{ firewall_rollback_seconds }}s
+      - /usr/sbin/nft
+      - delete
+      - table
+      - inet
+      - "{{ firewall_table_name }}"
+  when: firewall_enforce | bool
+  register: firewall_rollback_arm
+  changed_when: true
+
+- name: Remove previous isolated table before reloading trial policy
+  ansible.builtin.command: "nft delete table inet {{ firewall_table_name }}"
+  when: firewall_enforce | bool
+  changed_when: true
+  failed_when: false
+
+- name: Apply isolated host firewall table when explicitly enabled
+  ansible.builtin.command: "nft --file {{ firewall_ruleset_path }}"
+  when: firewall_enforce | bool
+  changed_when: true
+
+- name: Verify isolated table is loaded when enforcing
+  ansible.builtin.command: "nft list table inet {{ firewall_table_name }}"
+  when: firewall_enforce | bool
+  changed_when: false
+
+- name: Verify Kubernetes API remains healthy locally
+  ansible.builtin.command: "k3s kubectl get --raw=/readyz"
+  when: firewall_enforce | bool
+  register: firewall_k3s_readyz
+  changed_when: false
+  failed_when: firewall_k3s_readyz.stdout | trim != 'ok'
+
+- name: Verify Traefik still answers locally
+  ansible.builtin.command:
+    argv:
+      - curl
+      - --fail-with-body
+      - --silent
+      - --show-error
+      - --output
+      - /dev/null
+      - --write-out
+      - "%{http_code}"
+      - --header
+      - "Host: nonexistent.guiosoft.info"
+      - http://127.0.0.1/
+  when: firewall_enforce | bool
+  register: firewall_traefik_status
+  changed_when: false
+  failed_when: firewall_traefik_status.stdout | trim != '404'
+
+- name: Show live-trial rollback instructions
+  ansible.builtin.debug:
+    msg:
+      - "LIVE FIREWALL TRIAL ACTIVE. Automatic rollback is armed for {{ firewall_rollback_seconds }} seconds."
+      - "From another LAN machine, validate SSH to this host, kubectl against 192.168.88.9:6443, and HTTP access to firecrawl.guiosoft.info."
+      - "Only after external validation, run: ansible-playbook -K playbooks/firewall-confirm.yml"
+      - "If connectivity is lost, do nothing: the rollback unit will delete table inet {{ firewall_table_name }} automatically."
+  when: firewall_enforce | bool
+
+- name: Install persistent firewall systemd unit after accepted trial
+  ansible.builtin.template:
+    src: guiosoft-host-firewall.service.j2
+    dest: "/etc/systemd/system/{{ firewall_systemd_unit }}"
+    owner: root
+    group: root
+    mode: "0644"
+  when: firewall_persist | bool
+  register: firewall_systemd_template
+
+- name: Reload systemd after installing firewall unit
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+  when:
+    - firewall_persist | bool
+    - firewall_systemd_template is changed
+
+- name: Enable persistent firewall loader without reapplying live policy
+  ansible.builtin.systemd_service:
+    name: "{{ firewall_systemd_unit }}"
+    enabled: true
+  when: firewall_persist | bool
+
+- name: Verify persistent firewall loader is enabled
+  ansible.builtin.command: "systemctl is-enabled {{ firewall_systemd_unit }}"
+  when: firewall_persist | bool
+  register: firewall_persist_enabled
+  changed_when: false
+  failed_when: firewall_persist_enabled.stdout | trim != 'enabled'
+
+- name: Remind that staged mode made no live firewall change
+  ansible.builtin.debug:
+    msg: "firewall_enforce=false: rules were rendered and syntax-checked but NOT loaded."
+  when: not firewall_enforce | bool

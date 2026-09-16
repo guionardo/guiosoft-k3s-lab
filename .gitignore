@@ -1,0 +1,62 @@
+# Secrets
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+*.pfx
+*.age
+*.secret
+secrets/
+
+# Allow SOPS-encrypted infrastructure secret manifests only.
+!secrets/
+secrets/*
+!secrets/README.md
+!secrets/*.sops.yaml
+
+# Allow only encrypted Kubernetes secret manifests and their documentation.
+!kubernetes/secrets/
+kubernetes/secrets/*
+!kubernetes/secrets/README.md
+!kubernetes/secrets/*.sops.yaml
+
+# Kubernetes
+kubeconfig
+kubeconfig.*
+*.kubeconfig
+
+# Terraform
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+.terraform.lock.hcl
+crash.log
+crash.*.log
+
+# Ansible
+*.retry
+.vault-password
+vault-password*
+
+# Discovery reports may contain infrastructure metadata.
+# Review manually and selectively copy sanitized information to docs/.
+discovery-output/
+
+# Backups / databases
+*.dump
+*.sql
+*.sqlite
+*.db
+backup/
+backups/
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store
+*~
+*.swp

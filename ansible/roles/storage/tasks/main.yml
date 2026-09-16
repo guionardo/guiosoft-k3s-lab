@@ -1,0 +1,72 @@
+---
+- name: Verify primary storage mount exists
+  ansible.builtin.command: "mountpoint -q {{ storage_primary_mount }}"
+  register: storage_primary_mount_check
+  changed_when: false
+  failed_when: false
+
+- name: Verify backup storage mount exists
+  ansible.builtin.command: "mountpoint -q {{ storage_backup_mount }}"
+  register: storage_backup_mount_check
+  changed_when: false
+  failed_when: false
+
+- name: Refuse storage provisioning when expected disks are not mounted
+  ansible.builtin.assert:
+    that:
+      - storage_primary_mount_check.rc == 0
+      - storage_backup_mount_check.rc == 0
+    fail_msg: >-
+      Expected storage mounts are not available. Refusing to create directories because
+      that could silently place persistent data on the root filesystem.
+
+- name: Create physical K3s storage directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - "{{ storage_primary_root }}"
+    - "{{ storage_local_path_dir }}"
+    - "{{ storage_persistent_dir }}"
+    - "{{ storage_backup_root }}"
+    - "{{ storage_backup_dir }}"
+
+- name: Create stable storage namespace under /srv
+  ansible.builtin.file:
+    path: "{{ storage_root }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Create stable links to physical storage locations
+  ansible.builtin.file:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    state: link
+    force: false
+  loop:
+    - src: "{{ storage_local_path_dir }}"
+      dest: "{{ storage_root }}/local-path"
+    - src: "{{ storage_persistent_dir }}"
+      dest: "{{ storage_root }}/persistent"
+    - src: "{{ storage_backup_dir }}"
+      dest: "{{ storage_root }}/backups"
+
+- name: Read storage capacity
+  ansible.builtin.command: "df -h {{ storage_primary_mount }} {{ storage_backup_mount }}"
+  register: storage_capacity
+  changed_when: false
+
+- name: Show storage layout summary
+  ansible.builtin.debug:
+    msg:
+      - "Primary persistent storage: {{ storage_root }}/persistent -> {{ storage_persistent_dir }}"
+      - "Future local-path storage: {{ storage_root }}/local-path -> {{ storage_local_path_dir }}"
+      - "Local backup staging: {{ storage_root }}/backups -> {{ storage_backup_dir }}"
+      - "No existing data was moved or deleted."
+      - "The current K3s local-path StorageClass is not changed by this role."
+      - "Capacity: {{ storage_capacity.stdout_lines }}"

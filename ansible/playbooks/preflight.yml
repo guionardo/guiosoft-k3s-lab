@@ -1,0 +1,78 @@
+---
+- name: Validate host before K3s installation
+  hosts: k3s_servers
+  become: true
+  gather_facts: true
+
+  tasks:
+    - name: Check DNS resolution
+      ansible.builtin.command: getent hosts deb.debian.org
+      changed_when: false
+
+    - name: Check that Tailscale interface is absent
+      ansible.builtin.command: ip link show tailscale0
+      register: tailscale_interface
+      changed_when: false
+      failed_when: false
+
+    - name: Assert Tailscale is no longer active
+      ansible.builtin.assert:
+        that:
+          - tailscale_interface.rc != 0
+        fail_msg: "tailscale0 still exists. Remove/disable Tailscale before continuing."
+
+    - name: Check whether K3s is already installed
+      ansible.builtin.stat:
+        path: /usr/local/bin/k3s
+      register: k3s_binary
+
+    - name: Check listeners on ports 80 and 443
+      ansible.builtin.shell: |
+        set -o pipefail
+        ss -lntH | awk '$4 ~ /:(80|443)$/ {print}'
+      args:
+        executable: /bin/bash
+      register: ingress_port_listeners
+      changed_when: false
+
+    - name: Assert ingress ports are free before first K3s install
+      ansible.builtin.assert:
+        that:
+          - ingress_port_listeners.stdout | trim == ''
+        fail_msg: |-
+          Ports 80/443 are already in use. K3s Traefik/ServiceLB would conflict:
+          {{ ingress_port_listeners.stdout }}
+      when: not k3s_binary.stat.exists
+
+    - name: Check Docker service state
+      ansible.builtin.command: systemctl is-active docker
+      register: docker_state
+      changed_when: false
+      failed_when: false
+
+    - name: Assert Docker remains active when preservation is requested
+      ansible.builtin.assert:
+        that:
+          - not preserve_docker or docker_state.stdout == 'active'
+        fail_msg: "Docker must remain active because Firecrawl is being preserved."
+
+    - name: Check Cloudflare Tunnel service state
+      ansible.builtin.command: systemctl is-active cloudflared
+      register: cloudflared_state
+      changed_when: false
+      failed_when: false
+
+    - name: Assert cloudflared remains active when preservation is requested
+      ansible.builtin.assert:
+        that:
+          - not preserve_cloudflared or cloudflared_state.stdout == 'active'
+        fail_msg: "cloudflared must remain active during the initial K3s rollout."
+
+    - name: Show preflight summary
+      ansible.builtin.debug:
+        msg:
+          - "DNS resolution: OK"
+          - "Tailscale interface: absent"
+          - "K3s already installed: {{ k3s_binary.stat.exists }}"
+          - "Docker: {{ docker_state.stdout }}"
+          - "cloudflared: {{ cloudflared_state.stdout }}"

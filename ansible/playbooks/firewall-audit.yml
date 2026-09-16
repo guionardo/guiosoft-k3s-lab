@@ -1,0 +1,94 @@
+---
+- name: Audit firewall and exposed services after K3s bootstrap
+  hosts: k3s_servers
+  become: true
+  gather_facts: true
+
+  tasks:
+    - name: Check K3s service state
+      ansible.builtin.command: systemctl is-active k3s
+      register: k3s_state
+      changed_when: false
+      failed_when: false
+
+    - name: Assert K3s is active
+      ansible.builtin.assert:
+        that:
+          - k3s_state.stdout == 'active'
+        fail_msg: "K3s must be active before running the post-bootstrap firewall audit."
+
+    - name: Check Docker service state
+      ansible.builtin.command: systemctl is-active docker
+      register: docker_state
+      changed_when: false
+      failed_when: false
+
+    - name: Check Cloudflare Tunnel service state
+      ansible.builtin.command: systemctl is-active cloudflared
+      register: cloudflared_state
+      changed_when: false
+      failed_when: false
+
+    - name: Assert preserved host services remain active
+      ansible.builtin.assert:
+        that:
+          - not preserve_docker or docker_state.stdout == 'active'
+          - not preserve_cloudflared or cloudflared_state.stdout == 'active'
+        fail_msg: "A preserved host service is no longer active."
+
+    - name: Read UFW status
+      ansible.builtin.command: ufw status verbose
+      register: ufw_status
+      changed_when: false
+      failed_when: false
+
+    - name: Read TCP listeners
+      ansible.builtin.command: ss -lntp
+      register: tcp_listeners
+      changed_when: false
+
+    - name: Read UDP listeners
+      ansible.builtin.command: ss -lnup
+      register: udp_listeners
+      changed_when: false
+
+    - name: Read nftables ruleset
+      ansible.builtin.command: nft list ruleset
+      register: nft_ruleset
+      changed_when: false
+      failed_when: false
+
+    - name: Verify Traefik HTTP endpoint is listening locally
+      ansible.builtin.uri:
+        url: http://127.0.0.1/
+        method: GET
+        headers:
+          Host: nao-existe-k3s.guiosoft.info
+        status_code: 404
+        return_content: false
+
+    - name: Verify Kubernetes API readiness
+      ansible.builtin.command: /usr/local/bin/k3s kubectl get --raw=/readyz
+      register: kubernetes_ready
+      changed_when: false
+
+    - name: Show firewall audit summary
+      ansible.builtin.debug:
+        msg:
+          - "K3s: {{ k3s_state.stdout }}"
+          - "Docker daemon: {{ docker_state.stdout }}"
+          - "cloudflared: {{ cloudflared_state.stdout }}"
+          - "Kubernetes API: {{ kubernetes_ready.stdout | trim }}"
+          - "UFW return code: {{ ufw_status.rc }}"
+          - "UFW status: {{ ufw_status.stdout_lines | default([]) }}"
+          - "TCP listeners: {{ tcp_listeners.stdout_lines }}"
+          - "UDP listeners: {{ udp_listeners.stdout_lines }}"
+          - "nftables ruleset lines: {{ nft_ruleset.stdout_lines | default([]) | length }}"
+
+# This playbook is intentionally read-only. preserve_docker means preserving the
+# Docker daemon, not keeping any specific Docker workload alive. Firecrawl's old
+# Compose stack is currently stopped and retained only as rollback material, so
+# port 3002 is intentionally not asserted here.
+#
+# A future firewall role must coexist with the nftables rules managed by
+# Docker/K3s instead of taking ownership of the complete ruleset.

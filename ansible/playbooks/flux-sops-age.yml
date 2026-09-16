@@ -1,0 +1,88 @@
+---
+- name: Bootstrap Flux SOPS age runtime secret
+  hosts: k3s_servers
+  gather_facts: false
+
+  vars:
+    flux_namespace: flux-system
+    flux_sops_age_secret_name: sops-age
+    flux_user_home: "{{ lookup('env', 'HOME') }}"
+    flux_kubeconfig: "{{ lookup('env', 'KUBECONFIG') | default(lookup('env', 'HOME') ~ '/.kube/config', true) }}"
+    flux_sops_age_identity_file: "{{ lookup('env', 'HOME') }}/.config/sops/age/keys.txt"
+
+  tasks:
+    - name: Verify age identity exists
+      ansible.builtin.stat:
+        path: "{{ flux_sops_age_identity_file }}"
+      register: flux_sops_age_identity
+      no_log: true
+
+    - name: Require existing age identity
+      ansible.builtin.assert:
+        that:
+          - flux_sops_age_identity.stat.exists
+          - flux_sops_age_identity.stat.isreg
+        fail_msg: >-
+          The local SOPS age identity is missing. Run ansible/playbooks/tools.yml
+          first and restore the off-host age identity before bootstrapping Flux secrets.
+      no_log: true
+
+    - name: Verify user kubeconfig exists
+      ansible.builtin.stat:
+        path: "{{ flux_kubeconfig }}"
+      register: flux_kubeconfig_stat
+
+    - name: Require an existing user kubeconfig
+      ansible.builtin.assert:
+        that:
+          - flux_kubeconfig_stat.stat.exists
+          - flux_kubeconfig_stat.stat.isreg
+        fail_msg: >-
+          Kubernetes user kubeconfig was not found at {{ flux_kubeconfig }}.
+          Ensure kubectl works without sudo before bootstrapping the Flux SOPS Secret.
+
+    - name: Verify Flux namespace exists
+      ansible.builtin.command:
+        argv:
+          - kubectl
+          - --kubeconfig
+          - "{{ flux_kubeconfig }}"
+          - get
+          - namespace
+          - "{{ flux_namespace }}"
+      changed_when: false
+
+    - name: Create or update Flux SOPS age Secret
+      ansible.builtin.shell: |
+        set -o pipefail
+        kubectl --kubeconfig {{ flux_kubeconfig | quote }} \
+          -n {{ flux_namespace | quote }} create secret generic {{ flux_sops_age_secret_name | quote }} \
+          --from-file=age.agekey={{ flux_sops_age_identity_file | quote }} \
+          --dry-run=client -o yaml \
+        | kubectl --kubeconfig {{ flux_kubeconfig | quote }} apply -f -
+      args:
+        executable: /bin/bash
+      register: flux_sops_age_apply
+      changed_when: "'unchanged' not in flux_sops_age_apply.stdout"
+      no_log: true
+
+    - name: Verify Flux SOPS age Secret exists
+      ansible.builtin.command:
+        argv:
+          - kubectl
+          - --kubeconfig
+          - "{{ flux_kubeconfig }}"
+          - -n
+          - "{{ flux_namespace }}"
+          - get
+          - secret
+          - "{{ flux_sops_age_secret_name }}"
+      changed_when: false
+      no_log: true
+
+    - name: Confirm Flux SOPS age bootstrap
+      ansible.builtin.debug:
+        msg:
+          - "Secret {{ flux_namespace }}/{{ flux_sops_age_secret_name }} is present."
+          - "The private age identity was not printed or written to Git."
+          - "Keep an independent off-host backup of the age identity for disaster recovery."

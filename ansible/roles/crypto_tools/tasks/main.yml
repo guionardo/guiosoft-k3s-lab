@@ -1,0 +1,31 @@
+---
+- name: Install age from Debian repositories
+  ansible.builtin.apt:
+    name: age
+    state: present
+    update_cache: true
+
+- name: Download pinned SOPS binary
+  ansible.builtin.get_url:
+    url: "https://github.com/getsops/sops/releases/download/{{ sops_version }}/sops-{{ sops_version }}.linux.{{ sops_arch }}"
+    dest: /usr/local/bin/sops
+    owner: root
+    group: root
+    mode: "0755"
+    checksum: "sha256:https://github.com/getsops/sops/releases/download/{{ sops_version }}/sops-{{ sops_version }}.checksums.txt"
+
+- name: Read installed age version
+  ansible.builtin.command: age-keygen --version
+  register: age_version_output
+  changed_when: false
+
+- name: Read installed SOPS version
+  ansible.builtin.command: sops --version
+  register: sops_version_output
+  changed_when: false
+
+- name: Show crypto tools versions
+  ansible.builtin.debug:
+    msg:
+      - "{{ age_version_output.stdout }}"
+      - "{{ sops_version_output.stdout }}"

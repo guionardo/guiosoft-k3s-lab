@@ -1,0 +1,53 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: otel-go-demo
+  namespace: monitoring
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: otel-go-demo.rules
+      rules:
+        - alert: OtelGoDemoHighErrorRate
+          expr: |
+            (
+              sum(rate(otel_demo_http_requests_total{service="otel-go-demo",status=~"5.."}[5m]))
+              /
+              clamp_min(sum(rate(otel_demo_http_requests_total{service="otel-go-demo"}[5m])), 0.001)
+            ) > 0.05
+            and
+            sum(rate(otel_demo_http_requests_total{service="otel-go-demo"}[5m])) > 0.02
+          for: 5m
+          labels:
+            severity: warning
+            service: otel-go-demo
+          annotations:
+            summary: OTel Go demo HTTP error rate is above 5%
+            description: More than 5% of frontend HTTP requests are returning 5xx responses for 5 minutes.
+
+        - alert: OtelGoDemoHighP95Latency
+          expr: |
+            histogram_quantile(
+              0.95,
+              sum by (le) (
+                rate(otel_demo_http_request_duration_seconds_bucket{service="otel-go-demo",path="/work"}[5m])
+              )
+            ) > 0.5
+          for: 5m
+          labels:
+            severity: warning
+            service: otel-go-demo
+          annotations:
+            summary: OTel Go demo p95 latency is above 500 ms
+            description: The /work p95 latency has remained above 500 ms for 5 minutes.
+
+        - alert: OtelGoDemoDownstreamErrors
+          expr: sum(rate(otel_demo_downstream_errors_total{service="otel-go-demo"}[5m])) > 0
+          for: 5m
+          labels:
+            severity: warning
+            service: otel-go-demo
+          annotations:
+            summary: OTel Go demo is seeing downstream errors
+            description: The frontend has recorded downstream request failures continuously for 5 minutes.
