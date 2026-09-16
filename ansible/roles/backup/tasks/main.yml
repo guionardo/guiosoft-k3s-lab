@@ -230,24 +230,33 @@
     name: k3s-backup.timer
     enabled: true
     state: started
+  when: not ansible_check_mode
 
+# In --check mode the preceding copy task correctly predicts creation of the new
+# unit, but systemd cannot enable a unit that does not physically exist yet.
+# Skip this runtime operation during dry-run; the unit diff above remains visible.
 - name: Enable and start consistent recovery-set timer
   ansible.builtin.systemd:
     name: k3s-consistent-backup.timer
     enabled: true
     state: started
-  when: k3s_consistent_backup_enabled | bool
+  when:
+    - k3s_consistent_backup_enabled | bool
+    - not ansible_check_mode
 
 - name: Read K3s backup timer state
   ansible.builtin.command: systemctl list-timers k3s-backup.timer --no-pager
   register: backup_timer_state
   changed_when: false
+  when: not ansible_check_mode
 
 - name: Read consistent recovery-set timer state
   ansible.builtin.command: systemctl list-timers k3s-consistent-backup.timer --no-pager
   register: consistent_backup_timer_state
   changed_when: false
-  when: k3s_consistent_backup_enabled | bool
+  when:
+    - k3s_consistent_backup_enabled | bool
+    - not ansible_check_mode
 
 - name: Show K3s backup timer summary
   ansible.builtin.debug:
@@ -259,5 +268,5 @@
       - "Daily schedule: {{ k3s_backup_on_calendar }} with random delay {{ k3s_backup_randomized_delay }}"
       - "Consistent recovery-set enabled: {{ k3s_consistent_backup_enabled }}"
       - "Consistent schedule: {{ k3s_consistent_backup_on_calendar }} with random delay {{ k3s_consistent_backup_randomized_delay }}"
-      - "{{ backup_timer_state.stdout_lines }}"
-      - "{{ consistent_backup_timer_state.stdout_lines | default([]) }}"
+      - "{{ backup_timer_state.stdout_lines | default(['dry-run: timer state not queried']) }}"
+      - "{{ consistent_backup_timer_state.stdout_lines | default(['dry-run: timer state not queried']) }}"
