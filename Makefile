@@ -7,6 +7,7 @@ help:
 	@echo
 	@echo "Targets disponíveis:"
 	@echo "  make discovery             Executa discovery read-only deste host"
+	@echo "  make ansible-check-prod    Dry-run do backup Ansible em produção (sem aplicar)"
 	@echo "  make ansible-deps          Instala Ansible e collections necessárias"
 	@echo "  make preflight             Valida DNS, Tailscale, portas e serviços preservados"
 	@echo "  make bootstrap             Prepara Debian e ferramentas de IaC para K3s"
@@ -421,3 +422,14 @@ tf-r2-plan:
 
 tf-r2-apply:
 	cd terraform/r2 && terraform apply
+.PHONY: ansible-check-prod
+ansible-check-prod:
+	@test -f ansible/inventory/prod.yml || { \
+	  echo "ERROR: ansible/inventory/prod.yml not found; copy prod.example.yml and configure it first." >&2; \
+	  exit 1; \
+	}
+	ANSIBLE_CONFIG="$(CURDIR)/ansible/ansible.cfg" \
+	ansible-playbook \
+	  -i "$(CURDIR)/ansible/inventory/prod.yml" \
+	  "$(CURDIR)/ansible/playbooks/backup.yml" \
+	  --check --diff -k -K
