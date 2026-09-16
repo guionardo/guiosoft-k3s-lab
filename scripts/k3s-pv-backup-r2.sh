@@ -6,8 +6,8 @@ TAG="${K3S_PV_RESTIC_TAG:-k3s-persistent-volumes}"
 PROD_HOSTNAME="${DR_PRODUCTION_HOSTNAME:-guiosoft-info}"
 PROD_IP="${DR_PRODUCTION_IP:-192.168.88.9}"
 RESTIC_ENV="${RESTIC_R2_ENV:-/etc/k3s-backup/r2.env}"
-RESTIC_PASSWORD_FILE="${RESTIC_PASSWORD_FILE:-/etc/k3s-backup/restic.password}"
-RESTIC_REPOSITORY_FILE="${RESTIC_REPOSITORY_FILE:-/etc/k3s-backup/restic.repository}"
+RESTIC_PASSWORD_PATH="${K3S_PV_RESTIC_PASSWORD_FILE:-/etc/k3s-backup/restic.password}"
+RESTIC_REPOSITORY_PATH="${K3S_PV_RESTIC_REPOSITORY_FILE:-/etc/k3s-backup/restic.repository}"
 CONFIRM_EXPECTED="backup-production-pvs"
 HOST="$(hostname -s)"
 
@@ -16,7 +16,7 @@ HOST="$(hostname -s)"
 ip -o -4 addr show scope global | awk '{print $4}' | cut -d/ -f1 | grep -Fxq "$PROD_IP" || { echo "error: production IP $PROD_IP is not present" >&2; exit 1; }
 [[ "${K3S_PV_BACKUP_CONFIRM:-}" == "$CONFIRM_EXPECTED" ]] || { echo "error: explicit confirmation required: K3S_PV_BACKUP_CONFIRM=$CONFIRM_EXPECTED" >&2; exit 1; }
 [[ -d "$PV_ROOT" ]] || { echo "error: PV root not found: $PV_ROOT" >&2; exit 1; }
-for f in "$RESTIC_ENV" "$RESTIC_PASSWORD_FILE" "$RESTIC_REPOSITORY_FILE"; do [[ -s "$f" ]] || { echo "error: required Restic runtime file missing: $f" >&2; exit 1; }; done
+for f in "$RESTIC_ENV" "$RESTIC_PASSWORD_PATH" "$RESTIC_REPOSITORY_PATH"; do [[ -s "$f" ]] || { echo "error: required Restic runtime file missing: $f" >&2; exit 1; }; done
 command -v restic >/dev/null || { echo "error: restic not installed" >&2; exit 1; }
 command -v python3 >/dev/null || { echo "error: python3 not installed" >&2; exit 1; }
 
@@ -31,8 +31,12 @@ set -a
 # shellcheck disable=SC1090
 source "$RESTIC_ENV"
 set +a
-export RESTIC_PASSWORD_FILE
-export RESTIC_REPOSITORY="$(cat "$RESTIC_REPOSITORY_FILE")"
+# The parent consistent-backup process may export RESTIC_REPOSITORY_FILE for its
+# own Restic calls. Do not inherit both repository selectors: Restic rejects -r /
+# RESTIC_REPOSITORY together with RESTIC_REPOSITORY_FILE.
+unset RESTIC_REPOSITORY_FILE RESTIC_REPOSITORY
+export RESTIC_PASSWORD_FILE="$RESTIC_PASSWORD_PATH"
+export RESTIC_REPOSITORY_FILE="$RESTIC_REPOSITORY_PATH"
 
 restic snapshots >/dev/null
 restic backup "$PV_ROOT" --tag "$TAG" --host "$HOST"
