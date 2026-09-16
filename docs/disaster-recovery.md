@@ -68,6 +68,31 @@ DR_PV_TARGET_NODE=$(hostname -s)
 
 Override them explicitly when the production or recovery host uses a different layout.
 
+## Bounded-consistency production recovery sets
+
+`scripts/k3s-consistent-backup.sh` closes the historical RPO gap between independently scheduled control-plane and persistent-volume backups. It first validates the K3s API and the off-host Restic/R2 repository, then records original writer replica counts, gracefully quiesces Grafana, Tempo and Loki StatefulSets, and changes Prometheus through its operator-managed Prometheus CR rather than fighting the generated StatefulSet. It never force-deletes production writer pods.
+
+While writers remain quiesced, the orchestrator creates and locally verifies a new SQLite/token archive, uploads that exact archive and checksum to R2, resolves the exact Restic snapshot by archive content, creates the PV Restic snapshot, runs repository integrity checking, records both exact snapshot IDs/timestamps, and finally restores the original writer state through a safety trap. Repository/lock failures are checked before quiescing so known off-host failures do not unnecessarily interrupt writers.
+
+The first complete production recovery set passed on 2026-09-16:
+
+```text
+backup_set_id=20260916T114220Z
+quiesced_at=2026-09-16T11:42:34Z
+control_plane_snapshot=6709a96774a79ded9e3435591074d9445d9f814127b0b1a4ba3041d6a39f3882
+control_plane_snapshot_time=2026-09-16T08:42:39.504576398-03:00
+pv_snapshot=1830fedfe1c6f293cef2eb971f390f28fd761ba1e929c75b9e06c2a007da190e
+pv_snapshot_time=2026-09-16T08:43:00.7110975-03:00
+completed_backup_window_at=2026-09-16T11:43:38Z
+consistency_window_seconds=64
+writers_restored_at=2026-09-16T11:44:21Z
+result=PASS
+```
+
+`scripts/k3s-consistent-backup-verify.sh` independently re-opened the R2 repository and verified that the metadata is PASS, both exact snapshots exist, the control-plane snapshot contains the recorded archive, the PV snapshot contains the expected local-path root, and both snapshot timestamps fall inside the recorded bounded-consistency window. The independent verification result was `PASS`.
+
+This is a bounded-consistency recovery set rather than an atomic distributed snapshot: the applications are quiesced for the entire capture interval, and the measured interval between quiesce and completion of both backup captures was **64 seconds**. The writers were subsequently restored successfully.
+
 ## Neutralization and reset invariants
 
 `dr-neutralize.sh` must fail closed. It now verifies from the API that Flux GitRepositories/Kustomizations/HelmReleases are suspended and that cloudflare/firecrawl/lab/monitoring Deployments plus monitoring StatefulSets have `spec.replicas=0` before announcing success.
