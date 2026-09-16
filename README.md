@@ -11,6 +11,7 @@ Infrastructure-as-code and operational tooling for the `guiosoft.info` self-host
 - Observability with Prometheus, Alertmanager, Grafana, Loki, Tempo, Alloy and OpenTelemetry Collector.
 - K3s SQLite control-plane backups and off-host Restic backups in Cloudflare R2.
 - Persistent local-path volume backup and disaster-recovery tooling.
+- Verified bounded-consistency recovery sets pairing control-plane and persistent-volume Restic snapshots while persistent writers are quiesced.
 
 ## Disaster recovery
 
@@ -21,12 +22,16 @@ Two recovery levels are maintained:
 
 A full recovery rehearsal was successfully performed in September 2026 on a separate Debian 13 host while production remained operational. The recovered cluster was WAN-isolated, its local PVs were remapped to the replacement node, and Grafana, Tempo, Loki and Prometheus successfully consumed their restored persistent data.
 
+The first independently verified bounded-consistency production recovery set was created on 2026-09-16. Persistent writers were quiesced for the backup window; the exact control-plane and PV Restic snapshots were recorded and independently verified in R2. The measured consistency window was **64 seconds**.
+
 Key safety/tooling components:
 
 - `scripts/dr-target-init.sh` — mark a machine as an isolated DR target.
 - `scripts/dr-network-isolation.sh` — independent nftables WAN barrier.
 - `scripts/dr-preflight.sh` — consolidated safety/readiness checks.
 - `scripts/dr-restore-k3s.sh` — guarded SQLite/token restore with bootstrap-state handling.
+- `scripts/k3s-consistent-backup.sh` — orchestrate a bounded-consistency control-plane + PV recovery set with fail-closed writer restoration.
+- `scripts/k3s-consistent-backup-verify.sh` — independently verify a completed recovery set against its exact R2 snapshots.
 - `scripts/k3s-pv-backup-r2.sh` — consistent persistent-volume backup after writers are stopped.
 - `scripts/k3s-pv-export-r2.sh` — portable snapshot staging from R2.
 - `scripts/dr-pv-import.sh` — guarded local PV archive import.
