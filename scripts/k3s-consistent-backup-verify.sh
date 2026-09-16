@@ -31,12 +31,13 @@ export RESTIC_REPOSITORY_FILE="$RESTIC_REPOSITORY_PATH" RESTIC_PASSWORD_FILE="$R
 restic cat config >/dev/null || die "Restic repository unavailable"
 CP="${M[control_plane_restic_snapshot_id]}"; PV="${M[pv_restic_snapshot_id]}"; CP_BASE="${M[control_plane_archive]}"
 restic snapshots "$CP" --json | python3 -c 'import json,sys; x=json.load(sys.stdin); sys.exit(0 if x else 1)' || die "control-plane snapshot not found: $CP"
-restic ls "$CP" | awk '{print $NF}' | grep -Fqx "/mnt/store2/k3s/backups/k3s/$CP_BASE" || restic ls "$CP" | awk '{print $NF}' | grep -Fqx "/srv/k3s/backups/k3s/$CP_BASE" || die "control-plane archive absent from snapshot $CP"
+CP_LIST="$(mktemp)"; PV_LIST="$(mktemp)"; trap 'rm -f "$CP_LIST" "$PV_LIST"' EXIT
+restic ls "$CP" >"$CP_LIST"
+awk '{print $NF}' "$CP_LIST" | awk -F/ -v expected="$CP_BASE" '$NF == expected {found=1} END {exit !found}' || die "control-plane archive absent from snapshot $CP"
 restic snapshots "$PV" --json | python3 -c 'import json,sys; x=json.load(sys.stdin); sys.exit(0 if x else 1)' || die "PV snapshot not found: $PV"
 # `restic ls` may list the root itself as /mnt/store1/k3s/local-path before any
 # child entry. Accept either the exact root or descendants, and avoid grep -q so
 # pipefail cannot turn grep's early exit/SIGPIPE into a false verification error.
-PV_LIST="$(mktemp)"; trap 'rm -f "$PV_LIST"' EXIT
 restic ls "$PV" >"$PV_LIST"
 awk '{print $NF}' "$PV_LIST" | grep -E '^/mnt/store1/k3s/local-path(/|$)' >/dev/null || die "PV snapshot does not contain expected local-path root"
 python3 - "${M[quiesced_at]}" "${M[control_plane_restic_snapshot_time]}" "${M[pv_restic_snapshot_time]}" "${M[completed_backup_window_at]}" <<'PY'
