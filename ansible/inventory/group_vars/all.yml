@@ -44,6 +44,13 @@ k3s_backup_keep: 14
 k3s_backup_on_calendar: "*-*-* 03:15:00"
 k3s_backup_randomized_delay: 15m
 
+# Bounded-consistency recovery set. Kept separate from the low-impact daily
+# control-plane backup because this job deliberately quiesces persistent writers.
+k3s_consistent_backup_enabled: true
+k3s_consistent_backup_on_calendar: "Sun *-*-* 04:15:00"
+k3s_consistent_backup_randomized_delay: 15m
+k3s_consistent_backup_repo_root: /opt/guiosoft-k3s-lab
+
 # Off-host Restic repository in Cloudflare R2. Runtime credentials stay under
 # /etc/k3s-backup and are installed from the SOPS-encrypted repository secret.
 restic_r2_enabled: true

@@ -77,6 +77,24 @@
     mode: "0750"
   when: restic_r2_enabled | bool
 
+- name: Install consistent-backup scripts
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../scripts/{{ item.src }}"
+    dest: "/usr/local/sbin/{{ item.dest }}"
+    owner: root
+    group: root
+    mode: "0750"
+  loop:
+    - { src: k3s-consistent-backup-run.sh, dest: k3s-consistent-backup-run }
+    - { src: k3s-consistent-backup.sh, dest: k3s-consistent-backup }
+    - { src: k3s-consistent-backup-readiness.sh, dest: k3s-consistent-backup-readiness }
+    - { src: k3s-consistent-backup-verify.sh, dest: k3s-consistent-backup-verify }
+    - { src: k3s-backup.sh, dest: k3s-backup }
+    - { src: k3s-backup-verify.sh, dest: k3s-backup-verify }
+    - { src: restic-r2-sync.sh, dest: restic-r2-sync }
+    - { src: k3s-pv-backup-r2.sh, dest: k3s-pv-backup-r2 }
+  when: k3s_consistent_backup_enabled | bool
+
 - name: Install K3s backup service
   ansible.builtin.copy:
     dest: /etc/systemd/system/k3s-backup.service
@@ -131,7 +149,80 @@
       WantedBy=timers.target
   notify: Reload systemd
 
-- name: Flush systemd reload before enabling timer
+- name: Install consistent recovery-set service
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/k3s-consistent-backup.service
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=Create and independently verify a bounded-consistency K3s recovery set
+      Wants=network-online.target
+      After=network-online.target k3s.service k3s-backup.service
+      Conflicts=k3s-backup.service
+
+      [Service]
+      Type=oneshot
+      Environment=GUIOSOFT_K3S_REPO_ROOT=/usr/local/lib/guiosoft-k3s-backup
+      ExecStart=/usr/local/sbin/k3s-consistent-backup-run
+      ExecStart=/usr/local/sbin/k3s-consistent-backup-verify
+      Nice=10
+      IOSchedulingClass=best-effort
+      IOSchedulingPriority=7
+      PrivateTmp=true
+      NoNewPrivileges=true
+  when: k3s_consistent_backup_enabled | bool
+  notify: Reload systemd
+
+- name: Install consistent recovery-set timer
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/k3s-consistent-backup.timer
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=Run bounded-consistency K3s recovery set backup weekly
+
+      [Timer]
+      OnCalendar={{ k3s_consistent_backup_on_calendar }}
+      Persistent=true
+      RandomizedDelaySec={{ k3s_consistent_backup_randomized_delay }}
+      Unit=k3s-consistent-backup.service
+
+      [Install]
+      WantedBy=timers.target
+  when: k3s_consistent_backup_enabled | bool
+  notify: Reload systemd
+
+- name: Install self-contained consistent-backup script directory
+  ansible.builtin.file:
+    path: /usr/local/lib/guiosoft-k3s-backup/scripts
+    state: directory
+    owner: root
+    group: root
+    mode: "0750"
+  when: k3s_consistent_backup_enabled | bool
+
+- name: Install orchestrator dependencies in self-contained directory
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../scripts/{{ item }}"
+    dest: "/usr/local/lib/guiosoft-k3s-backup/scripts/{{ item }}"
+    owner: root
+    group: root
+    mode: "0750"
+  loop:
+    - k3s-consistent-backup.sh
+    - k3s-consistent-backup-readiness.sh
+    - k3s-consistent-backup-verify.sh
+    - k3s-backup.sh
+    - k3s-backup-verify.sh
+    - restic-r2-sync.sh
+    - k3s-pv-backup-r2.sh
+  when: k3s_consistent_backup_enabled | bool
+
+- name: Flush systemd reload before enabling timers
   ansible.builtin.meta: flush_handlers
 
 - name: Enable and start K3s backup timer
@@ -140,10 +231,23 @@
     enabled: true
     state: started
 
+- name: Enable and start consistent recovery-set timer
+  ansible.builtin.systemd:
+    name: k3s-consistent-backup.timer
+    enabled: true
+    state: started
+  when: k3s_consistent_backup_enabled | bool
+
 - name: Read K3s backup timer state
   ansible.builtin.command: systemctl list-timers k3s-backup.timer --no-pager
   register: backup_timer_state
   changed_when: false
+
+- name: Read consistent recovery-set timer state
+  ansible.builtin.command: systemctl list-timers k3s-consistent-backup.timer --no-pager
+  register: consistent_backup_timer_state
+  changed_when: false
+  when: k3s_consistent_backup_enabled | bool
 
 - name: Show K3s backup timer summary
   ansible.builtin.debug:
@@ -152,5 +256,8 @@
       - "Local retention: keep {{ k3s_backup_keep }} complete archives"
       - "Off-host Restic R2 enabled: {{ restic_r2_enabled }}"
       - "Remote retention: {{ restic_r2_keep_daily }} daily / {{ restic_r2_keep_weekly }} weekly / {{ restic_r2_keep_monthly }} monthly"
-      - "Schedule: {{ k3s_backup_on_calendar }} with random delay {{ k3s_backup_randomized_delay }}"
+      - "Daily schedule: {{ k3s_backup_on_calendar }} with random delay {{ k3s_backup_randomized_delay }}"
+      - "Consistent recovery-set enabled: {{ k3s_consistent_backup_enabled }}"
+      - "Consistent schedule: {{ k3s_consistent_backup_on_calendar }} with random delay {{ k3s_consistent_backup_randomized_delay }}"
       - "{{ backup_timer_state.stdout_lines }}"
+      - "{{ consistent_backup_timer_state.stdout_lines | default([]) }}"
