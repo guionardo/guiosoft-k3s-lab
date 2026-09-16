@@ -8,6 +8,7 @@ PROD_IP="${DR_PRODUCTION_IP:-192.168.88.9}"
 RESTIC_ENV="${RESTIC_R2_ENV:-/etc/k3s-backup/r2.env}"
 RESTIC_PASSWORD_PATH="${K3S_PV_RESTIC_PASSWORD_FILE:-/etc/k3s-backup/restic.password}"
 RESTIC_REPOSITORY_PATH="${K3S_PV_RESTIC_REPOSITORY_FILE:-/etc/k3s-backup/restic.repository}"
+SKIP_CHECK="${K3S_PV_RESTIC_SKIP_CHECK:-0}"
 CONFIRM_EXPECTED="backup-production-pvs"
 HOST="$(hostname -s)"
 
@@ -15,6 +16,7 @@ HOST="$(hostname -s)"
 [[ "$HOST" == "$PROD_HOSTNAME" ]] || { echo "error: refusing PV export outside production hostname '$PROD_HOSTNAME'" >&2; exit 1; }
 ip -o -4 addr show scope global | awk '{print $4}' | cut -d/ -f1 | grep -Fxq "$PROD_IP" || { echo "error: production IP $PROD_IP is not present" >&2; exit 1; }
 [[ "${K3S_PV_BACKUP_CONFIRM:-}" == "$CONFIRM_EXPECTED" ]] || { echo "error: explicit confirmation required: K3S_PV_BACKUP_CONFIRM=$CONFIRM_EXPECTED" >&2; exit 1; }
+[[ "$SKIP_CHECK" == 0 || "$SKIP_CHECK" == 1 ]] || { echo "error: K3S_PV_RESTIC_SKIP_CHECK must be 0 or 1" >&2; exit 1; }
 [[ -d "$PV_ROOT" ]] || { echo "error: PV root not found: $PV_ROOT" >&2; exit 1; }
 for f in "$RESTIC_ENV" "$RESTIC_PASSWORD_PATH" "$RESTIC_REPOSITORY_PATH"; do [[ -s "$f" ]] || { echo "error: required Restic runtime file missing: $f" >&2; exit 1; }; done
 command -v restic >/dev/null || { echo "error: restic not installed" >&2; exit 1; }
@@ -31,22 +33,23 @@ set -a
 # shellcheck disable=SC1090
 source "$RESTIC_ENV"
 set +a
-# The parent consistent-backup process may export RESTIC_REPOSITORY_FILE for its
-# own Restic calls. Do not inherit both repository selectors: Restic rejects -r /
-# RESTIC_REPOSITORY together with RESTIC_REPOSITORY_FILE.
 unset RESTIC_REPOSITORY_FILE RESTIC_REPOSITORY
 export RESTIC_PASSWORD_FILE="$RESTIC_PASSWORD_PATH"
 export RESTIC_REPOSITORY_FILE="$RESTIC_REPOSITORY_PATH"
 
 restic snapshots >/dev/null
 restic backup "$PV_ROOT" --tag "$TAG" --host "$HOST"
-restic check
+if [[ "$SKIP_CHECK" == 1 ]]; then
+  echo "Full Restic repository check deferred by K3S_PV_RESTIC_SKIP_CHECK=1."
+else
+  restic check
+fi
 snapshot_json="$(restic snapshots --host "$HOST" --tag "$TAG" --json | python3 -c 'import json,sys,datetime; x=json.load(sys.stdin); s=max(x,key=lambda v:datetime.datetime.fromisoformat(v["time"].replace("Z","+00:00"))) if x else None; print(json.dumps({"id":s["id"],"time":s["time"]}) if s else "")')"
 [[ -n "$snapshot_json" ]] || { echo "error: unable to resolve created PV snapshot" >&2; exit 1; }
 snapshot_id="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["id"])' "$snapshot_json")"
 snapshot_time="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["time"])' "$snapshot_json")"
 
-echo "Persistent-volume backup completed and repository check passed."
+echo "Persistent-volume backup completed."
 echo "tag=$TAG"
 echo "path=$PV_ROOT"
 echo "host=$HOST"
