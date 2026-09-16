@@ -1,0 +1,87 @@
+---
+- name: Ensure K3s configuration directory exists
+  ansible.builtin.file:
+    path: /etc/rancher/k3s
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Write K3s server configuration
+  ansible.builtin.copy:
+    dest: /etc/rancher/k3s/config.yaml
+    owner: root
+    group: root
+    mode: "0600"
+    content: |
+      node-name: "{{ k3s_node_name }}"
+      data-dir: "{{ k3s_data_dir }}"
+      cluster-cidr: "{{ k3s_cluster_cidr | default('10.42.0.0/16') }}"
+      service-cidr: "{{ k3s_service_cidr | default('10.43.0.0/16') }}"
+      write-kubeconfig-mode: "{{ k3s_write_kubeconfig_mode | default('0640') }}"
+      default-local-storage-path: "{{ storage_local_path_dir }}"
+      disable-agent: {{ k3s_disable_agent | default(false) | bool | lower }}
+  notify: Restart k3s
+
+- name: Check installed K3s version
+  ansible.builtin.command: /usr/local/bin/k3s --version
+  register: installed_k3s
+  changed_when: false
+  failed_when: false
+
+- name: Decide whether K3s installation is required
+  ansible.builtin.set_fact:
+    install_k3s_required: >-
+      {{ installed_k3s.rc != 0 or (k3s_version | default('v1.36.4+k3s1')) not in installed_k3s.stdout }}
+
+- name: Ensure installer directory exists
+  ansible.builtin.file:
+    path: /usr/local/src
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  when: install_k3s_required
+
+- name: Download official K3s installer
+  ansible.builtin.get_url:
+    url: https://get.k3s.io
+    dest: /usr/local/src/install-k3s.sh
+    owner: root
+    group: root
+    mode: "0755"
+  when: install_k3s_required
+
+- name: Install pinned K3s release
+  ansible.builtin.command: /usr/local/src/install-k3s.sh
+  environment:
+    INSTALL_K3S_VERSION: "{{ k3s_version | default('v1.36.4+k3s1') }}"
+    INSTALL_K3S_EXEC: server
+  when: install_k3s_required
+  notify: Restart k3s
+
+- name: Ensure K3s service is enabled and running
+  ansible.builtin.systemd_service:
+    name: k3s
+    enabled: true
+    state: started
+
+- name: Flush handlers before readiness check
+  ansible.builtin.meta: flush_handlers
+
+- name: Wait for Kubernetes API
+  ansible.builtin.command: /usr/local/bin/k3s kubectl get --raw=/readyz
+  register: k3s_ready
+  retries: 30
+  delay: 2
+  until: k3s_ready.rc == 0
+  changed_when: false
+
+- name: Read node status
+  ansible.builtin.command: /usr/local/bin/k3s kubectl get nodes -o wide
+  register: k3s_nodes
+  changed_when: false
+
+- name: Show node status
+  ansible.builtin.debug:
+    var: k3s_nodes.stdout_lines
