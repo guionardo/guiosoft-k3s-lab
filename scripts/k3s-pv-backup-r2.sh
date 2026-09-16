@@ -13,28 +13,15 @@ HOST="$(hostname -s)"
 
 [[ ${EUID} -eq 0 ]] || { echo "error: run as root" >&2; exit 1; }
 [[ "$HOST" == "$PROD_HOSTNAME" ]] || { echo "error: refusing PV export outside production hostname '$PROD_HOSTNAME'" >&2; exit 1; }
-ip -o -4 addr show scope global | awk '{print $4}' | cut -d/ -f1 | grep -Fxq "$PROD_IP" || {
-  echo "error: production IP $PROD_IP is not present" >&2; exit 1;
-}
-[[ "${K3S_PV_BACKUP_CONFIRM:-}" == "$CONFIRM_EXPECTED" ]] || {
-  echo "error: explicit confirmation required: K3S_PV_BACKUP_CONFIRM=$CONFIRM_EXPECTED" >&2; exit 1;
-}
+ip -o -4 addr show scope global | awk '{print $4}' | cut -d/ -f1 | grep -Fxq "$PROD_IP" || { echo "error: production IP $PROD_IP is not present" >&2; exit 1; }
+[[ "${K3S_PV_BACKUP_CONFIRM:-}" == "$CONFIRM_EXPECTED" ]] || { echo "error: explicit confirmation required: K3S_PV_BACKUP_CONFIRM=$CONFIRM_EXPECTED" >&2; exit 1; }
 [[ -d "$PV_ROOT" ]] || { echo "error: PV root not found: $PV_ROOT" >&2; exit 1; }
-for f in "$RESTIC_ENV" "$RESTIC_PASSWORD_FILE" "$RESTIC_REPOSITORY_FILE"; do
-  [[ -s "$f" ]] || { echo "error: required Restic runtime file missing: $f" >&2; exit 1; }
-done
+for f in "$RESTIC_ENV" "$RESTIC_PASSWORD_FILE" "$RESTIC_REPOSITORY_FILE"; do [[ -s "$f" ]] || { echo "error: required Restic runtime file missing: $f" >&2; exit 1; }; done
 command -v restic >/dev/null || { echo "error: restic not installed" >&2; exit 1; }
+command -v python3 >/dev/null || { echo "error: python3 not installed" >&2; exit 1; }
 
-# Consistency is deliberately external to this script. The operator/automation
-# must stop the relevant writers first. This guard requires the four currently
-# protected observability StatefulSets to be at zero replicas.
 KUBECTL=(k3s kubectl -n monitoring)
-writers=(
-  kube-prometheus-stack-grafana
-  tempo
-  loki
-  prometheus-kube-prometheus-stack-prometheus
-)
+writers=(kube-prometheus-stack-grafana tempo loki prometheus-kube-prometheus-stack-prometheus)
 for sts in "${writers[@]}"; do
   replicas="$("${KUBECTL[@]}" get statefulset "$sts" -o jsonpath='{.spec.replicas}')"
   [[ "${replicas:-0}" == "0" ]] || { echo "error: writer StatefulSet $sts has replicas=$replicas; refusing inconsistent backup" >&2; exit 1; }
@@ -50,6 +37,14 @@ export RESTIC_REPOSITORY="$(cat "$RESTIC_REPOSITORY_FILE")"
 restic snapshots >/dev/null
 restic backup "$PV_ROOT" --tag "$TAG" --host "$HOST"
 restic check
+snapshot_json="$(restic snapshots --host "$HOST" --tag "$TAG" --json | python3 -c 'import json,sys,datetime; x=json.load(sys.stdin); s=max(x,key=lambda v:datetime.datetime.fromisoformat(v["time"].replace("Z","+00:00"))) if x else None; print(json.dumps({"id":s["id"],"time":s["time"]}) if s else "")')"
+[[ -n "$snapshot_json" ]] || { echo "error: unable to resolve created PV snapshot" >&2; exit 1; }
+snapshot_id="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["id"])' "$snapshot_json")"
+snapshot_time="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["time"])' "$snapshot_json")"
 
 echo "Persistent-volume backup completed and repository check passed."
-echo "tag=$TAG path=$PV_ROOT host=$HOST"
+echo "tag=$TAG"
+echo "path=$PV_ROOT"
+echo "host=$HOST"
+echo "snapshot_id=$snapshot_id"
+echo "snapshot_time=$snapshot_time"
