@@ -24,8 +24,6 @@ cp -a "$CONTROL_PLANE_ARCHIVE" "${CONTROL_PLANE_ARCHIVE}.sha256" "$OUT/backups/c
 cp -a "$PV_ARCHIVE" "${PV_ARCHIVE}.sha256" "$OUT/backups/persistent-volumes/"
 [[ ! -s "${PV_ARCHIVE}.metadata" ]] || cp -a "${PV_ARCHIVE}.metadata" "$OUT/backups/persistent-volumes/"
 
-# Only already-encrypted recovery material is accepted. This deliberately does
-# not copy a directory blindly: accidental plaintext credentials must fail.
 if [[ -n "$ENCRYPTED_DIR" ]]; then
   [[ -d "$ENCRYPTED_DIR" ]] || { echo "error: encrypted material directory missing: $ENCRYPTED_DIR" >&2; exit 1; }
   while IFS= read -r -d '' file; do
@@ -49,15 +47,47 @@ EOF
 cat >"$OUT/RECOVERY.txt" <<'EOF'
 guiosoft-k3s-lab offline full-DR bundle
 
-1. Verify this bundle before using any artifact:
-     tooling/scripts/dr-bundle-verify.sh <bundle>
-2. Bootstrap the clean target using tooling/ansible before WAN isolation.
-3. Initialize the DR marker and enable tooling/scripts/dr-network-isolation.sh.
-4. Keep WAN isolation active through datastore/PV restore and workload validation.
-5. Never expose restored cloudflared/Flux/application workloads before deliberate neutralization.
+SAFETY BOUNDARY
+- Never run this recovery on production hostname/IP.
+- Keep WAN isolation active from the isolated stage through final validation.
+- Never start cloudflared or unsuspend Flux during a rehearsal.
+- The control-plane archive contains the K3s server token; protect this bundle.
 
-The bundle must not contain plaintext credentials or a plaintext private age identity.
-Encrypted material still requires its independently held decryption identity/passphrase.
+PREPARE CLEAN TARGET
+1. Verify the bundle:
+     sudo tooling/scripts/dr-bundle-verify.sh <bundle>
+2. Bootstrap clean K3s from tooling/ansible while WAN access is still available.
+3. Run clean preflight before isolation:
+     sudo tooling/scripts/dr-preflight.sh clean
+4. Set `disable-agent: true` in /etc/rancher/k3s/config.yaml and restart K3s.
+   Confirm the API is ready. The recovery orchestrator will refuse to continue
+   unless this explicit agentless boundary is present.
+
+DESTRUCTIVE ISOLATED RECOVERY
+5. Run the checkpointed recovery transaction:
+     sudo env DR_RECOVERY_CONFIRM=recover-isolated-k3s \
+       tooling/scripts/dr-recover.sh <bundle>
+   This initializes the DR marker, enables WAN isolation, restores the control
+   plane, neutralizes Flux/public/application workloads, imports/remaps PVs and
+   installs the OCI preload. Completed stages are recorded under
+   /var/lib/guiosoft-k3s-dr/recovery and are resumable.
+
+CONTROLLED ACTIVATION
+6. Activate only the four approved persistent observability workloads:
+     sudo env DR_ACTIVATE_CONFIRM=activate-isolated-observability \
+       tooling/scripts/dr-activate-observability.sh
+   This removes disable-agent, restarts K3s and starts only Tempo, Loki,
+   Prometheus and Grafana after rechecking PV/Flux/cloudflared safety.
+
+FORMAL RESULT
+7. Close the rehearsal and compare RTO with the 4029-second baseline:
+     sudo tooling/scripts/dr-rehearsal-report.sh <bundle>
+   A PASS requires full preflight success while WAN isolation remains active
+   and cloudflared remains inactive.
+
+DO NOT disable WAN isolation merely to update Git or fetch missing files. A
+valid bundle is self-contained for the recovery path. Encrypted material still
+requires its independently held decryption identity/passphrase.
 EOF
 
 (
