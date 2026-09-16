@@ -78,4 +78,6 @@ PY
 
 printf 'K3s backup restore rehearsal OK:\n  archive: %s\n' "${ARCHIVE}"
 echo "Verified SHA-256, archive extraction, server token presence, SQLite metadata, and SQLite integrity."
-echo "No live K3s files were modified. A full disaster-recovery restore remains a separate destructive test."
+if [[ "${K3S_BACKUP_VERIFY_QUIET_CONTEXT:-0}" != "1" ]]; then
+  echo "No live K3s files were modified. A full disaster-recovery restore remains a separate destructive test."
+fi
