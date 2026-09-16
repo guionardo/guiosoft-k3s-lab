@@ -12,6 +12,7 @@ Infrastructure-as-code and operational tooling for the `guiosoft.info` self-host
 - K3s SQLite control-plane backups and off-host Restic backups in Cloudflare R2.
 - Persistent local-path volume backup and disaster-recovery tooling.
 - Verified bounded-consistency recovery sets pairing control-plane and persistent-volume Restic snapshots while persistent writers are quiesced.
+- Verified portable offline DR bundle v2 bound to one exact bounded-consistency recovery set, including control-plane, PV, OCI and recovery tooling material.
 
 ## Disaster recovery
 
@@ -24,6 +25,8 @@ A full recovery rehearsal was successfully performed in September 2026 on a sepa
 
 The first independently verified bounded-consistency production recovery set was created on 2026-09-16. Persistent writers were quiesced for the backup window; the exact control-plane and PV Restic snapshots were recorded and independently verified in R2. The measured consistency window was **64 seconds**.
 
+That recovery set was subsequently materialized into the first verified portable offline DR bundle v2. Bundle `backup_set_id=20260916T114220Z` is cryptographically/checksum-bound to control-plane Restic snapshot `6709a96774a79ded9e3435591074d9445d9f814127b0b1a4ba3041d6a39f3882` and PV Restic snapshot `1830fedfe1c6f293cef2eb971f390f28fd761ba1e929c75b9e06c2a007da190e`, preserving the same **64-second** consistency window. The bundle verifier passed before publication.
+
 Key safety/tooling components:
 
 - `scripts/dr-target-init.sh` — mark a machine as an isolated DR target.
@@ -34,6 +37,10 @@ Key safety/tooling components:
 - `scripts/k3s-consistent-backup-verify.sh` — independently verify a completed recovery set against its exact R2 snapshots.
 - `scripts/k3s-pv-backup-r2.sh` — consistent persistent-volume backup after writers are stopped.
 - `scripts/k3s-pv-export-r2.sh` — portable snapshot staging from R2.
+- `scripts/dr-recovery-set-export.sh` — export the exact identity of a successful bounded-consistency recovery set.
+- `scripts/dr-recovery-set-materialize.sh` — materialize the exact CP/PV Restic snapshots identified by a recovery set.
+- `scripts/dr-recovery-set-materialize-verify.sh` — independently verify materialized recovery-set identity and artifacts.
+- `scripts/dr-recovery-bundle-build.sh` — build and verify a complete portable offline DR bundle from one exact recovery set.
 - `scripts/dr-pv-import.sh` — guarded local PV archive import.
 - `scripts/dr-pv-remap.sh` — transactional PV/PVC recreation for a replacement node.
 - `scripts/dr-oci-kit-build.sh` — build an offline, checksummed OCI recovery kit.
