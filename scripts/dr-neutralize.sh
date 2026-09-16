@@ -18,17 +18,43 @@ suspend_kind(){
   local resource="$1" items
   items="$($K get "$resource" -A -o jsonpath='{range .items[*]}{.metadata.namespace}{" "}{.metadata.name}{"\n"}{end}' 2>/dev/null || true)"
   [[ -z "$items" ]] && return 0
-  while read -r ns name; do [[ -z "$name" ]] || $K -n "$ns" patch "$resource" "$name" --type=merge -p '{"spec":{"suspend":true}}' >/dev/null; done <<<"$items"
+  while read -r ns name; do
+    [[ -z "$name" ]] || $K -n "$ns" patch "$resource" "$name" --type=merge -p '{"spec":{"suspend":true}}' >/dev/null
+  done <<<"$items"
 }
+
 scale_deployments(){
   local ns="$1" selector="${2:-}" args=(-n "$ns" get deploy)
   [[ -z "$selector" ]] || args+=(-l "$selector")
-  local items; items="$($K "${args[@]}" -o name 2>/dev/null || true)"
-  [[ -z "$items" ]] || while read -r item; do [[ -z "$item" ]] || $K -n "$ns" scale "$item" --replicas=0 >/dev/null; done <<<"$items"
+  local items
+  items="$($K "${args[@]}" -o name 2>/dev/null || true)"
+  [[ -z "$items" ]] && return 0
+  while read -r item; do
+    [[ -z "$item" ]] || $K -n "$ns" scale "$item" --replicas=0 >/dev/null
+  done <<<"$items"
 }
+
 scale_statefulsets(){
-  local ns="$1" items; items="$($K -n "$ns" get sts -o name 2>/dev/null || true)"
-  [[ -z "$items" ]] || while read -r item; do [[ -z "$item" ]] || $K -n "$ns" scale "$item" --replicas=0 >/dev/null; done <<<"$items"
+  local ns="$1" items
+  items="$($K -n "$ns" get sts -o name 2>/dev/null || true)"
+  [[ -z "$items" ]] && return 0
+  while read -r item; do
+    [[ -z "$item" ]] || $K -n "$ns" scale "$item" --replicas=0 >/dev/null
+  done <<<"$items"
+}
+
+verify_zero_replicas(){
+  local ns="$1" kind="$2" selector="${3:-}" args=(-n "$ns" get "$kind")
+  [[ -z "$selector" ]] || args+=(-l "$selector")
+  local bad
+  bad="$($K "${args[@]}" -o jsonpath='{range .items[?(@.spec.replicas!=0)]}{.metadata.name}{"="}{.spec.replicas}{"\n"}{end}' 2>/dev/null || true)"
+  [[ -z "$bad" ]] || fail "$ns $kind not neutralized: ${bad//$'\n'/ }"
+}
+
+verify_suspended(){
+  local resource="$1" bad
+  bad="$($K get "$resource" -A -o jsonpath='{range .items[?(@.spec.suspend!=true)]}{.metadata.namespace}{"/"}{.metadata.name}{"\n"}{end}' 2>/dev/null || true)"
+  [[ -z "$bad" ]] || fail "$resource not fully suspended: ${bad//$'\n'/ }"
 }
 
 # Stop reconcilers before changing restored desired state.
@@ -54,9 +80,18 @@ for ds in $($K -n monitoring get ds -o name 2>/dev/null || true); do
   $K -n monitoring patch "$ds" --type=merge -p '{"spec":{"template":{"spec":{"nodeSelector":{"guiosoft.info/dr-neutralized":"true"}}}}}' >/dev/null
 done
 
-# Flux controllers themselves may remain scheduled; all sources and reconcilers
-# are suspended and WAN is rejected independently by nftables.
-echo "Restored cluster neutralized."
+# Never announce success based only on kubectl exit status. Verify the desired
+# safety state from the API so a future reconciliation/race fails closed here.
+verify_suspended kustomizations.kustomize.toolkit.fluxcd.io
+verify_suspended helmreleases.helm.toolkit.fluxcd.io
+verify_suspended gitrepositories.source.toolkit.fluxcd.io
+verify_zero_replicas cloudflare deploy
+verify_zero_replicas firecrawl deploy
+verify_zero_replicas lab deploy
+verify_zero_replicas monitoring deploy
+verify_zero_replicas monitoring sts
+
+echo "Restored cluster neutralized and postconditions verified."
 echo "Flux sources/Kustomizations/HelmReleases: suspended"
 echo "cloudflare/firecrawl/lab/monitoring Deployments: replicas=0"
 echo "monitoring StatefulSets: replicas=0"
