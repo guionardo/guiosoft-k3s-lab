@@ -9,6 +9,7 @@ ENV_FILE="$CONFIG_DIR/r2.env"
 KEEP_DAILY="${RESTIC_R2_KEEP_DAILY:-14}"
 KEEP_WEEKLY="${RESTIC_R2_KEEP_WEEKLY:-8}"
 KEEP_MONTHLY="${RESTIC_R2_KEEP_MONTHLY:-12}"
+SKIP_RETENTION="${RESTIC_R2_SKIP_RETENTION:-0}"
 HOST="$(hostname -s)"
 TAG="k3s-control-plane"
 EXPLICIT_ARCHIVE="${1:-}"
@@ -18,6 +19,7 @@ for file in "$REPO_FILE" "$PASSWORD_FILE" "$ENV_FILE"; do [[ -s "$file" ]] || { 
 command -v restic >/dev/null || { echo "error: restic not found" >&2; exit 1; }
 command -v readlink >/dev/null || { echo "error: readlink not found" >&2; exit 1; }
 for value in "$KEEP_DAILY" "$KEEP_WEEKLY" "$KEEP_MONTHLY"; do [[ "$value" =~ ^[0-9]+$ ]] && (( value >= 1 )) || { echo "error: Restic retention values must be positive integers" >&2; exit 1; }; done
+[[ "$SKIP_RETENTION" == 0 || "$SKIP_RETENTION" == 1 ]] || { echo "error: RESTIC_R2_SKIP_RETENTION must be 0 or 1" >&2; exit 1; }
 
 set -a
 # shellcheck disable=SC1090
@@ -43,8 +45,12 @@ CHECKSUM="${ARCHIVE}.sha256"
 if ! restic cat config >/dev/null 2>&1; then echo "Initializing encrypted Restic repository in Cloudflare R2..."; restic init; fi
 echo "Uploading verified K3s backup to Cloudflare R2..."
 restic backup "$ARCHIVE" "$CHECKSUM" --tag "$TAG" --host "$HOST"
-echo "Applying Restic snapshot retention..."
-restic forget --host "$HOST" --tag "$TAG" --keep-daily "$KEEP_DAILY" --keep-weekly "$KEEP_WEEKLY" --keep-monthly "$KEEP_MONTHLY" --prune
+if [[ "$SKIP_RETENTION" == 1 ]]; then
+  echo "Restic retention deferred by RESTIC_R2_SKIP_RETENTION=1."
+else
+  echo "Applying Restic snapshot retention..."
+  restic forget --host "$HOST" --tag "$TAG" --keep-daily "$KEEP_DAILY" --keep-weekly "$KEEP_WEEKLY" --keep-monthly "$KEEP_MONTHLY" --prune
+fi
 restic snapshots --host "$HOST" --tag "$TAG" --latest 1
 echo "Cloudflare R2 off-host backup OK."
 echo "Uploaded: $(basename "$ARCHIVE") and $(basename "$CHECKSUM")"
