@@ -1,0 +1,17 @@
+---
+all:
+  children:
+    k3s_servers:
+      hosts:
+        dr-k3s:
+          ansible_host: 192.168.88.125
+          ansible_user: guionardo
+          ansible_python_interpreter: /usr/bin/python3.13
+
+          k3s_node_name: guionote-hp
+          k3s_admin_user: guionardo
+          k3s_data_dir: /var/lib/rancher/k3s
+          storage_local_path_dir: /var/lib/rancher/k3s/storage
+
+          preserve_docker: true
+          preserve_cloudflared: false

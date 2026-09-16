@@ -1,7 +1,0 @@
-all:
-  children:
-    k3s_servers:
-      hosts:
-        guiosoft-info:
-          ansible_connection: local
-          ansible_host: 127.0.0.1
