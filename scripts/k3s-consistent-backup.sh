@@ -8,13 +8,16 @@ CONFIRM_EXPECTED="backup-consistent-production-state"
 HOST="$(hostname -s)"
 NAMESPACE="${K3S_CONSISTENT_BACKUP_NAMESPACE:-monitoring}"
 WAIT_TIMEOUT="${K3S_CONSISTENT_BACKUP_WAIT_TIMEOUT:-180s}"
-QUIESCE_TIMEOUT_SECONDS="${K3S_CONSISTENT_BACKUP_QUIESCE_TIMEOUT_SECONDS:-600}"
+QUIESCE_TIMEOUT_SECONDS="${K3S_CONSISTENT_BACKUP_QUIESCE_TIMEOUT_SECONDS:-300}"
 STATE_ROOT="${K3S_CONSISTENT_BACKUP_STATE_ROOT:-/var/lib/guiosoft-k3s-backup/consistent}"
 BACKUP_DIR="${K3S_BACKUP_DIR:-/srv/k3s/backups/k3s}"
 RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)"
 RUN_DIR="$STATE_ROOT/$RUN_ID"
 K=(k3s kubectl)
-WRITERS=(kube-prometheus-stack-grafana tempo loki prometheus-kube-prometheus-stack-prometheus)
+PROM_CR="kube-prometheus-stack-prometheus"
+PROM_STS="prometheus-kube-prometheus-stack-prometheus"
+DIRECT_WRITERS=(kube-prometheus-stack-grafana tempo loki)
+WRITERS=("${DIRECT_WRITERS[@]}" "$PROM_STS")
 
 die(){ echo "error: $*" >&2; exit 1; }
 [[ ${EUID} -eq 0 ]] || die "run as root"
@@ -25,20 +28,26 @@ ip -o -4 addr show scope global | awk '{print $4}' | cut -d/ -f1 | grep -Fxq "$P
 for cmd in k3s restic python3; do command -v "$cmd" >/dev/null || die "$cmd not found"; done
 for script in k3s-backup.sh k3s-backup-verify.sh restic-r2-sync.sh k3s-pv-backup-r2.sh; do [[ -s "$REPO_ROOT/scripts/$script" ]] || die "required script missing: $script"; done
 "${K[@]}" get --raw=/readyz >/dev/null || die "K3s API not ready"
+"${K[@]}" -n "$NAMESPACE" get prometheus "$PROM_CR" >/dev/null || die "Prometheus CR missing: $PROM_CR"
 install -d -m 0700 "$RUN_DIR"
 
 restore_writers(){
   local rc=$? failed=0
   trap - EXIT INT TERM
   echo "Restoring production writer replicas..."
-  for sts in "${WRITERS[@]}"; do
+  prom_replicas="$(cat "$RUN_DIR/prometheus.replicas" 2>/dev/null || true)"
+  if [[ "$prom_replicas" =~ ^[0-9]+$ ]]; then
+    "${K[@]}" -n "$NAMESPACE" patch prometheus "$PROM_CR" --type=merge -p "{\"spec\":{\"replicas\":$prom_replicas}}" >/dev/null || failed=1
+  else
+    echo "CRITICAL: missing saved Prometheus CR replica count" >&2; failed=1
+  fi
+  for sts in "${DIRECT_WRITERS[@]}"; do
     replicas="$(awk -v n="$sts" '$1==n {print $2}' "$RUN_DIR/writers.tsv" 2>/dev/null || true)"
     [[ "$replicas" =~ ^[0-9]+$ ]] || { echo "CRITICAL: missing saved replica count for $sts" >&2; failed=1; continue; }
     "${K[@]}" -n "$NAMESPACE" scale statefulset "$sts" --replicas="$replicas" >/dev/null || failed=1
   done
   for sts in "${WRITERS[@]}"; do
-    replicas="$(awk -v n="$sts" '$1==n {print $2}' "$RUN_DIR/writers.tsv" 2>/dev/null || true)"
-    if [[ "$replicas" =~ ^[0-9]+$ ]] && (( replicas > 0 )); then "${K[@]}" -n "$NAMESPACE" rollout status statefulset "$sts" --timeout="$WAIT_TIMEOUT" || failed=1; fi
+    "${K[@]}" -n "$NAMESPACE" rollout status statefulset "$sts" --timeout="$WAIT_TIMEOUT" || failed=1
   done
   printf 'writers_restored_at=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >>"$RUN_DIR/metadata"
   if (( failed )); then printf 'result=FAILED_WRITER_RESTORE\n' >>"$RUN_DIR/metadata"; return 1; fi
@@ -48,22 +57,29 @@ restore_writers(){
 trap restore_writers EXIT INT TERM
 
 : >"$RUN_DIR/writers.tsv"
-for sts in "${WRITERS[@]}"; do
+for sts in "${DIRECT_WRITERS[@]}"; do
   replicas="$("${K[@]}" -n "$NAMESPACE" get statefulset "$sts" -o jsonpath='{.spec.replicas}')" || die "writer missing: $sts"
   [[ "$replicas" =~ ^[0-9]+$ ]] || die "invalid replicas for $sts: $replicas"
   printf '%s\t%s\n' "$sts" "$replicas" >>"$RUN_DIR/writers.tsv"
 done
-chmod 0600 "$RUN_DIR/writers.tsv"
+PROM_REPLICAS="$("${K[@]}" -n "$NAMESPACE" get prometheus "$PROM_CR" -o jsonpath='{.spec.replicas}')"
+[[ "$PROM_REPLICAS" =~ ^[0-9]+$ ]] || die "invalid Prometheus CR replicas: $PROM_REPLICAS"
+printf '%s\n' "$PROM_REPLICAS" >"$RUN_DIR/prometheus.replicas"
+chmod 0600 "$RUN_DIR/writers.tsv" "$RUN_DIR/prometheus.replicas"
 cat >"$RUN_DIR/metadata" <<EOF
 format=guiosoft-k3s-consistent-backup-v2
 backup_set_id=$RUN_ID
 started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 hostname=$HOST
+prometheus_original_replicas=$PROM_REPLICAS
 EOF
 chmod 0600 "$RUN_DIR/metadata"
 
 echo "Quiescing persistent writers (graceful timeout ${QUIESCE_TIMEOUT_SECONDS}s)..."
-for sts in "${WRITERS[@]}"; do "${K[@]}" -n "$NAMESPACE" scale statefulset "$sts" --replicas=0 >/dev/null; done
+for sts in "${DIRECT_WRITERS[@]}"; do "${K[@]}" -n "$NAMESPACE" scale statefulset "$sts" --replicas=0 >/dev/null; done
+# Prometheus StatefulSet is reconciled by Prometheus Operator. Change the CR,
+# not the generated StatefulSet, otherwise the operator restores replicas=1.
+"${K[@]}" -n "$NAMESPACE" patch prometheus "$PROM_CR" --type=merge -p '{"spec":{"replicas":0}}' >/dev/null
 QUIESCE_DEADLINE=$(( $(date +%s) + QUIESCE_TIMEOUT_SECONDS ))
 for sts in "${WRITERS[@]}"; do
   while :; do
@@ -77,11 +93,11 @@ for sts in "${WRITERS[@]}"; do
     sleep 2
   done
 done
+[[ "$("${K[@]}" -n "$NAMESPACE" get prometheus "$PROM_CR" -o jsonpath='{.spec.replicas}')" == 0 ]] || die "Prometheus CR did not remain at replicas=0"
 QUIESCED_EPOCH="$(date +%s)"
 printf 'quiesced_at=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >>"$RUN_DIR/metadata"
 
-before_list="$RUN_DIR/control-plane.before"
-after_list="$RUN_DIR/control-plane.after"
+before_list="$RUN_DIR/control-plane.before"; after_list="$RUN_DIR/control-plane.after"
 find "$BACKUP_DIR" -maxdepth 1 -type f -name 'k3s-*.tar.gz' -printf '%p\n' | sort >"$before_list"
 bash "$REPO_ROOT/scripts/k3s-backup.sh"
 find "$BACKUP_DIR" -maxdepth 1 -type f -name 'k3s-*.tar.gz' -printf '%p\n' | sort >"$after_list"
@@ -107,7 +123,6 @@ env K3S_PV_BACKUP_CONFIRM=backup-production-pvs bash "$REPO_ROOT/scripts/k3s-pv-
 PV_SNAPSHOT="$(awk -F= '$1=="snapshot_id"{print $2;exit}' "$PV_OUTPUT")"
 PV_TIME="$(awk -F= '$1=="snapshot_time"{print $2;exit}' "$PV_OUTPUT")"
 [[ -n "$PV_SNAPSHOT" && -n "$PV_TIME" ]] || die "PV backup did not report snapshot identity"
-
 COMPLETED_EPOCH="$(date +%s)"
 cat >>"$RUN_DIR/metadata" <<EOF
 control_plane_archive=$CP_BASE
