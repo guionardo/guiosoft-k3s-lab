@@ -49,7 +49,6 @@ k3s_backup_randomized_delay: 15m
 k3s_consistent_backup_enabled: true
 k3s_consistent_backup_on_calendar: "Sun *-*-* 04:15:00"
 k3s_consistent_backup_randomized_delay: 15m
-k3s_consistent_backup_repo_root: /opt/guiosoft-k3s-lab
 
 # Off-host Restic repository in Cloudflare R2. Runtime credentials stay under
 # /etc/k3s-backup and are installed from the SOPS-encrypted repository secret.
