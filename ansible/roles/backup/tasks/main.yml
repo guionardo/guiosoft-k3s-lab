@@ -166,8 +166,6 @@
       Environment=RESTIC_R2_KEEP_WEEKLY={{ restic_r2_keep_weekly }}
       Environment=RESTIC_R2_KEEP_MONTHLY={{ restic_r2_keep_monthly }}
       ExecStart=/usr/local/sbin/k3s-consistent-backup-run
-      ExecStart=/usr/local/sbin/k3s-consistent-backup-verify
-      ExecStart=/usr/local/sbin/k3s-restic-maintenance
       Nice=10
       IOSchedulingClass=best-effort
       IOSchedulingPriority=7
