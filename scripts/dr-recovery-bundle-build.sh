@@ -15,7 +15,7 @@ die(){ echo "error: $*" >&2; exit 1; }
 [[ -n "$FINAL" ]] || die "output bundle path required"
 [[ ! -e "$FINAL" ]] || die "output already exists: $FINAL"
 [[ -d "$TOOLING_KIT" && -d "$OCI_KIT" ]] || die "DR_TOOLING_KIT and DR_OCI_KIT are required"
-for s in dr-recovery-set-export.sh dr-recovery-set-materialize.sh dr-bundle-build.sh dr-bundle-verify.sh; do [[ -x "$SCRIPT_DIR/$s" || -f "$SCRIPT_DIR/$s" ]] || die "missing script: $s"; done
+for s in dr-recovery-set-export.sh dr-recovery-set-materialize.sh dr-recovery-set-materialize-verify.sh dr-bundle-build.sh dr-bundle-verify.sh; do [[ -f "$SCRIPT_DIR/$s" ]] || die "missing script: $s"; done
 RUN_DIR="$STATE_ROOT/$SET_ID"; [[ -s "$RUN_DIR/metadata" ]] || die "consistent recovery-set state not found: $RUN_DIR/metadata"
 grep -qx 'result=PASS' "$RUN_DIR/metadata" || die "recovery set is not PASS"
 
@@ -26,6 +26,7 @@ PORTABLE="$WORK/recovery-set.metadata"; MATERIAL="$WORK/materialized"; CANDIDATE
 bash "$SCRIPT_DIR/dr-recovery-set-export.sh" "$RUN_DIR" "$PORTABLE"
 [[ "$(awk -F= '$1=="backup_set_id"{print $2}' "$PORTABLE")" == "$SET_ID" ]] || die "exported recovery-set ID mismatch"
 bash "$SCRIPT_DIR/dr-recovery-set-materialize.sh" "$PORTABLE" "$MATERIAL"
+bash "$SCRIPT_DIR/dr-recovery-set-materialize-verify.sh" "$MATERIAL"
 CP="$(awk -F= '$1=="control_plane_archive"{print $2}' "$MATERIAL/MANIFEST")"
 PV="$(awk -F= '$1=="pv_archive"{print $2}' "$MATERIAL/MANIFEST")"
 [[ -s "$MATERIAL/control-plane/$CP" && -s "$MATERIAL/persistent-volumes/$PV" ]] || die "materialized archives missing"
