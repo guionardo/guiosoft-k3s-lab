@@ -11,18 +11,15 @@ KEEP_WEEKLY="${RESTIC_R2_KEEP_WEEKLY:-8}"
 KEEP_MONTHLY="${RESTIC_R2_KEEP_MONTHLY:-12}"
 HOST="$(hostname -s)"
 TAG="k3s-control-plane"
+EXPLICIT_ARCHIVE="${1:-}"
 
 [[ ${EUID} -eq 0 ]] || { echo "error: this script must run as root" >&2; exit 1; }
 for file in "$REPO_FILE" "$PASSWORD_FILE" "$ENV_FILE"; do
   [[ -s "$file" ]] || { echo "error: missing runtime config: $file" >&2; exit 1; }
 done
 command -v restic >/dev/null || { echo "error: restic not found" >&2; exit 1; }
-
 for value in "$KEEP_DAILY" "$KEEP_WEEKLY" "$KEEP_MONTHLY"; do
-  [[ "$value" =~ ^[0-9]+$ ]] && (( value >= 1 )) || {
-    echo "error: Restic retention values must be positive integers" >&2
-    exit 1
-  }
+  [[ "$value" =~ ^[0-9]+$ ]] && (( value >= 1 )) || { echo "error: Restic retention values must be positive integers" >&2; exit 1; }
 done
 
 set -a
@@ -32,33 +29,28 @@ set +a
 export RESTIC_REPOSITORY_FILE="$REPO_FILE"
 export RESTIC_PASSWORD_FILE="$PASSWORD_FILE"
 
-ARCHIVE="$(find "$BACKUP_DIR" -maxdepth 1 -type f -name 'k3s-*.tar.gz' -printf '%T@ %p\n' | sort -nr | head -n1 | cut -d' ' -f2-)"
+if [[ -n "$EXPLICIT_ARCHIVE" ]]; then
+  ARCHIVE="$(readlink -f "$EXPLICIT_ARCHIVE")"
+  [[ -f "$ARCHIVE" ]] || { echo "error: explicit archive not found: $EXPLICIT_ARCHIVE" >&2; exit 1; }
+  case "$ARCHIVE" in "$BACKUP_DIR"/*) ;; *) echo "error: explicit archive must be below $BACKUP_DIR" >&2; exit 1;; esac
+else
+  ARCHIVE="$(find "$BACKUP_DIR" -maxdepth 1 -type f -name 'k3s-*.tar.gz' -printf '%T@ %p\n' | sort -nr | head -n1 | cut -d' ' -f2-)"
+fi
 [[ -n "$ARCHIVE" ]] || { echo "error: no local K3s backup archive found" >&2; exit 1; }
 CHECKSUM="${ARCHIVE}.sha256"
 [[ -s "$CHECKSUM" ]] || { echo "error: checksum missing for $ARCHIVE" >&2; exit 1; }
-
-(
-  cd "$BACKUP_DIR"
-  sha256sum -c "$(basename "$CHECKSUM")"
-)
+(cd "$BACKUP_DIR"; sha256sum -c "$(basename "$CHECKSUM")")
 
 if ! restic cat config >/dev/null 2>&1; then
   echo "Initializing encrypted Restic repository in Cloudflare R2..."
   restic init
 fi
 
-echo "Uploading latest verified K3s backup to Cloudflare R2..."
+echo "Uploading verified K3s backup to Cloudflare R2..."
 restic backup "$ARCHIVE" "$CHECKSUM" --tag "$TAG" --host "$HOST"
 
 echo "Applying Restic snapshot retention..."
-restic forget \
-  --host "$HOST" \
-  --tag "$TAG" \
-  --keep-daily "$KEEP_DAILY" \
-  --keep-weekly "$KEEP_WEEKLY" \
-  --keep-monthly "$KEEP_MONTHLY" \
-  --prune
-
+restic forget --host "$HOST" --tag "$TAG" --keep-daily "$KEEP_DAILY" --keep-weekly "$KEEP_WEEKLY" --keep-monthly "$KEEP_MONTHLY" --prune
 restic snapshots --host "$HOST" --tag "$TAG" --latest 1
 
 echo "Cloudflare R2 off-host backup OK."
