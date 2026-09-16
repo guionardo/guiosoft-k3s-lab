@@ -72,7 +72,7 @@ Override them explicitly when the production or recovery host uses a different l
 
 `scripts/k3s-consistent-backup.sh` closes the historical RPO gap between independently scheduled control-plane and persistent-volume backups. It first validates the K3s API and the off-host Restic/R2 repository, then records original writer replica counts, gracefully quiesces Grafana, Tempo and Loki StatefulSets, and changes Prometheus through its operator-managed Prometheus CR rather than fighting the generated StatefulSet. It never force-deletes production writer pods.
 
-While writers remain quiesced, the orchestrator creates and locally verifies a new SQLite/token archive, uploads that exact archive and checksum to R2, resolves the exact Restic snapshot by archive content, creates the PV Restic snapshot, runs repository integrity checking, records both exact snapshot IDs/timestamps, and finally restores the original writer state through a safety trap. Repository/lock failures are checked before quiescing so known off-host failures do not unnecessarily interrupt writers.
+While writers remain quiesced, the orchestrator creates and locally verifies a new SQLite/token archive, uploads that exact archive and checksum to R2, resolves the exact Restic snapshot by archive content, creates the PV Restic snapshot, records both exact snapshot IDs/timestamps, and finally restores the original writer state through a safety trap. Expensive repository retention/prune/integrity maintenance is intentionally deferred until after writer restoration. Repository/lock failures are checked before quiescing so known off-host failures do not unnecessarily interrupt writers.
 
 The first complete production recovery set passed on 2026-09-16:
 
@@ -92,6 +92,30 @@ result=PASS
 `scripts/k3s-consistent-backup-verify.sh` independently re-opened the R2 repository and verified that the metadata is PASS, both exact snapshots exist, the control-plane snapshot contains the recorded archive, the PV snapshot contains the expected local-path root, and both snapshot timestamps fall inside the recorded bounded-consistency window. The independent verification result was `PASS`.
 
 This is a bounded-consistency recovery set rather than an atomic distributed snapshot: the applications are quiesced for the entire capture interval, and the measured interval between quiesce and completion of both backup captures was **64 seconds**. The writers were subsequently restored successfully.
+
+The scheduled weekly workflow is serialized with the normal daily backup through `/run/lock/guiosoft-k3s-backup.lock`. `k3s-consistent-backup-run` holds that same lock across recovery-set capture, independent verification and deferred Restic maintenance, preventing another backup process from entering the repository between those stages.
+
+## Portable recovery set and offline bundle v2
+
+A DR bundle must preserve the identity of one verified bounded-consistency recovery set instead of independently selecting a recent control-plane snapshot and a recent PV snapshot. `dr-recovery-set-export.sh` exports that identity; `dr-recovery-set-materialize.sh` restores the exact Restic snapshot IDs; `dr-recovery-set-materialize-verify.sh` independently validates the materialized pair; and `dr-recovery-bundle-build.sh` assembles and verifies the complete offline bundle before publication.
+
+The materializer fails closed if either exact Restic snapshot is absent, if its repository timestamp differs from the timestamp recorded in the recovery-set metadata, or if the exact control-plane snapshot does not contain exactly one archive with the recorded archive name. PV archive metadata is cross-bound to the exact PV snapshot ID and `backup_set_id`.
+
+The first complete portable bundle v2 was built and verified on 2026-09-16 from the successful recovery set above:
+
+```text
+backup_set_id=20260916T114220Z
+control_plane_archive=k3s-guiosoft-info-20260916T114234Z.tar.gz
+control_plane_restic_snapshot_id=6709a96774a79ded9e3435591074d9445d9f814127b0b1a4ba3041d6a39f3882
+pv_archive=k3s-persistent-volumes-20260916T114220Z-1830fedf.tar.gz
+pv_restic_snapshot_id=1830fedfe1c6f293cef2eb971f390f28fd761ba1e929c75b9e06c2a007da190e
+consistency_window_seconds=64
+bundle_verification=PASS
+```
+
+The bundle includes control-plane material, persistent-volume material, offline OCI images, recovery tooling and recovery-set metadata. SHA-256 validation passed for the component kits and final bundle, and the final output was published only after the bundle verifier passed. This establishes provenance from the production consistency window through exact Restic snapshot identity to the portable offline DR artifact.
+
+Future offline tooling kits include the recovery-set export, exact materialization, independent materialization verifier and unified portable bundle builder, so rebuilding the DR artifact does not require GitHub access during the isolated recovery phase.
 
 ## Neutralization and reset invariants
 
