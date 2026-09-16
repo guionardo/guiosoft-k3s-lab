@@ -8,6 +8,7 @@ CONFIRM_EXPECTED="backup-consistent-production-state"
 HOST="$(hostname -s)"
 NAMESPACE="${K3S_CONSISTENT_BACKUP_NAMESPACE:-monitoring}"
 WAIT_TIMEOUT="${K3S_CONSISTENT_BACKUP_WAIT_TIMEOUT:-180s}"
+QUIESCE_TIMEOUT_SECONDS="${K3S_CONSISTENT_BACKUP_QUIESCE_TIMEOUT_SECONDS:-600}"
 STATE_ROOT="${K3S_CONSISTENT_BACKUP_STATE_ROOT:-/var/lib/guiosoft-k3s-backup/consistent}"
 BACKUP_DIR="${K3S_BACKUP_DIR:-/srv/k3s/backups/k3s}"
 RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)"
@@ -20,6 +21,7 @@ die(){ echo "error: $*" >&2; exit 1; }
 [[ "$HOST" == "$PROD_HOSTNAME" ]] || die "refusing outside production hostname '$PROD_HOSTNAME'"
 ip -o -4 addr show scope global | awk '{print $4}' | cut -d/ -f1 | grep -Fxq "$PROD_IP" || die "production IP $PROD_IP is not present"
 [[ "${K3S_CONSISTENT_BACKUP_CONFIRM:-}" == "$CONFIRM_EXPECTED" ]] || die "set K3S_CONSISTENT_BACKUP_CONFIRM=$CONFIRM_EXPECTED"
+[[ "$QUIESCE_TIMEOUT_SECONDS" =~ ^[0-9]+$ ]] && (( QUIESCE_TIMEOUT_SECONDS >= 60 )) || die "invalid quiesce timeout"
 for cmd in k3s restic python3; do command -v "$cmd" >/dev/null || die "$cmd not found"; done
 for script in k3s-backup.sh k3s-backup-verify.sh restic-r2-sync.sh k3s-pv-backup-r2.sh; do [[ -s "$REPO_ROOT/scripts/$script" ]] || die "required script missing: $script"; done
 "${K[@]}" get --raw=/readyz >/dev/null || die "K3s API not ready"
@@ -60,16 +62,20 @@ hostname=$HOST
 EOF
 chmod 0600 "$RUN_DIR/metadata"
 
-echo "Quiescing persistent writers..."
+echo "Quiescing persistent writers (graceful timeout ${QUIESCE_TIMEOUT_SECONDS}s)..."
 for sts in "${WRITERS[@]}"; do "${K[@]}" -n "$NAMESPACE" scale statefulset "$sts" --replicas=0 >/dev/null; done
+QUIESCE_DEADLINE=$(( $(date +%s) + QUIESCE_TIMEOUT_SECONDS ))
 for sts in "${WRITERS[@]}"; do
-  pods=1
-  for _ in $(seq 1 90); do
+  while :; do
     pods="$("${K[@]}" -n "$NAMESPACE" get pods -o json | python3 -c 'import json,sys; n=sys.argv[1]; d=json.load(sys.stdin); print(sum(any(o.get("kind")=="StatefulSet" and o.get("name")==n for o in p["metadata"].get("ownerReferences",[])) for p in d["items"]))' "$sts")"
     [[ "$pods" == 0 ]] && break
+    if (( $(date +%s) >= QUIESCE_DEADLINE )); then
+      echo "error: graceful quiesce timed out for $sts; refusing to force-delete pods" >&2
+      "${K[@]}" -n "$NAMESPACE" get pods -o wide >&2 || true
+      die "writer pods still present for $sts after ${QUIESCE_TIMEOUT_SECONDS}s"
+    fi
     sleep 2
   done
-  [[ "$pods" == 0 ]] || die "writer pods still present for $sts"
 done
 QUIESCED_EPOCH="$(date +%s)"
 printf 'quiesced_at=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >>"$RUN_DIR/metadata"
