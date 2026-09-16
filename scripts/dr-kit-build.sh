@@ -18,6 +18,7 @@ scripts=(
   dr-rehearsal-status.sh
   dr-restore-k3s.sh
   k3s-backup-verify.sh
+  dr-neutralize.sh
   dr-pv-import.sh
   dr-pv-remap.sh
   dr-oci-preload.sh
@@ -29,8 +30,6 @@ for name in "${scripts[@]}"; do
   install -m 0755 "$src" "$OUT/scripts/$name"
 done
 
-# Include the Ansible bootstrap assets required before WAN isolation. Inventory
-# containing real host data remains operator-supplied and is never bundled.
 [[ -d "$REPO_ROOT/ansible" ]] || { echo "error: ansible directory missing" >&2; exit 1; }
 tar -C "$REPO_ROOT" --exclude='ansible/inventory' --exclude='*.retry' -cf - ansible | tar -C "$OUT" -xf -
 
@@ -53,7 +52,8 @@ identity, K3s server token, Restic password, or R2 secret keys.
 Before an isolated restore, verify SHA256SUMS. Recovery credentials and backup
 artifacts must be supplied independently from encrypted/off-host storage.
 The scripts directory is executable and is sufficient for the isolated restore
-steps; GitHub access is not required after the kit has been materialized.
+steps, including restored-cluster neutralization; GitHub access is not required
+after the kit has been materialized.
 EOF
 
 (
