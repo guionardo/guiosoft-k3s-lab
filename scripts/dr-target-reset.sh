@@ -4,6 +4,7 @@ set -euo pipefail
 PROD_HOSTNAME="${DR_PRODUCTION_HOSTNAME:-guiosoft-info}"
 PROD_IP="${DR_PRODUCTION_IP:-192.168.88.9}"
 MARKER_FILE="${DR_MARKER_FILE:-/etc/guiosoft-k3s-lab/dr-rehearsal-target}"
+STATE_ROOT="${DR_STATE_ROOT:-/var/lib/guiosoft-k3s-dr}"
 CONFIRM_EXPECTED="reset-dr-target"
 HOST="$(hostname -s)"
 
@@ -28,6 +29,14 @@ fi
 rm -rf /var/lib/rancher/k3s /etc/rancher/k3s
 rm -rf /var/tmp/k3s-dr-pv-export /var/tmp/k3s-dr-rehearsal /var/tmp/k3s-dr-live-restore
 rm -rf /var/lib/guiosoft-k3s-lab/dr-rehearsal
+
+# Recovery checkpoints/timers are per rehearsal. Keeping them makes a later
+# orchestrator incorrectly SKIP destructive steps. Preserve reports outside
+# STATE_ROOT before reset if they are needed as evidence.
+rm -rf "$STATE_ROOT/recovery" "$STATE_ROOT/rehearsal-current"
+
+[[ ! -e /var/lib/rancher/k3s ]] || { echo "error: K3s data dir survived reset" >&2; exit 1; }
+[[ ! -e /etc/rancher/k3s ]] || { echo "error: K3s config dir survived reset" >&2; exit 1; }
 rm -f "$MARKER_FILE"
 
 # Isolation is deliberately removed last, after K3s and recovered workloads are gone.
@@ -36,4 +45,5 @@ if nft list table inet dr_isolation >/dev/null 2>&1; then
 fi
 
 echo "DR target reset completed: $HOST"
-echo "Preserved intentionally: Debian, Docker, SSH, Git clone, age identity, encrypted recovery material and non-K3s disks."
+echo "K3s data/config and current recovery checkpoints removed and verified."
+echo "Preserved intentionally: Debian, Docker, SSH, Git clone, age identity, encrypted recovery material, historical rehearsal evidence outside current state, and non-K3s disks."
