@@ -56,7 +56,8 @@ EOF
     [[ -s "$STATE_FILE" ]] && { echo "--- timer ---"; cat "$STATE_FILE"; } || echo "timer: not started"
     [[ -s "$REPORT_FILE" ]] && { echo "--- latest report ---"; cat "$REPORT_FILE"; } || true
     echo "--- preflight ---"
-    "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/dr-preflight.sh" || true
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    bash "$SCRIPT_DIR/dr-preflight.sh" || true
     ;;
   *) echo "usage: $0 {start|status|finish}" >&2; exit 2 ;;
 esac
