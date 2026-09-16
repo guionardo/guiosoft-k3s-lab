@@ -52,29 +52,28 @@
   loop: "{{ restic_r2_config_files.results }}"
   when: restic_r2_enabled | bool
 
-- name: Install K3s backup script
+- name: Install K3s backup scripts
   ansible.builtin.copy:
-    src: "{{ playbook_dir }}/../../scripts/k3s-backup.sh"
-    dest: /usr/local/sbin/k3s-backup
+    src: "{{ playbook_dir }}/../../scripts/{{ item.src }}"
+    dest: "/usr/local/sbin/{{ item.dest }}"
     owner: root
     group: root
     mode: "0750"
+  loop:
+    - { src: k3s-backup.sh, dest: k3s-backup }
+    - { src: k3s-backup-prune.sh, dest: k3s-backup-prune }
+    - { src: k3s-backup-run.sh, dest: k3s-backup-run }
 
-- name: Install K3s backup retention script
+- name: Install Restic R2 scripts
   ansible.builtin.copy:
-    src: "{{ playbook_dir }}/../../scripts/k3s-backup-prune.sh"
-    dest: /usr/local/sbin/k3s-backup-prune
+    src: "{{ playbook_dir }}/../../scripts/{{ item.src }}"
+    dest: "/usr/local/sbin/{{ item.dest }}"
     owner: root
     group: root
     mode: "0750"
-
-- name: Install Restic R2 sync script
-  ansible.builtin.copy:
-    src: "{{ playbook_dir }}/../../scripts/restic-r2-sync.sh"
-    dest: /usr/local/sbin/restic-r2-sync
-    owner: root
-    group: root
-    mode: "0750"
+  loop:
+    - { src: restic-r2-sync.sh, dest: restic-r2-sync }
+    - { src: k3s-restic-maintenance.sh, dest: k3s-restic-maintenance }
   when: restic_r2_enabled | bool
 
 - name: Install consistent-backup scripts
@@ -93,6 +92,7 @@
     - { src: k3s-backup-verify.sh, dest: k3s-backup-verify }
     - { src: restic-r2-sync.sh, dest: restic-r2-sync }
     - { src: k3s-pv-backup-r2.sh, dest: k3s-pv-backup-r2 }
+    - { src: k3s-restic-maintenance.sh, dest: k3s-restic-maintenance }
   when: k3s_consistent_backup_enabled | bool
 
 - name: Install K3s backup service
@@ -117,11 +117,8 @@
       Environment=RESTIC_R2_KEEP_DAILY={{ restic_r2_keep_daily }}
       Environment=RESTIC_R2_KEEP_WEEKLY={{ restic_r2_keep_weekly }}
       Environment=RESTIC_R2_KEEP_MONTHLY={{ restic_r2_keep_monthly }}
-      ExecStart=/usr/local/sbin/k3s-backup
-      ExecStart=/usr/local/sbin/k3s-backup-prune
-      {% if restic_r2_enabled | bool %}
-      ExecStart=/usr/local/sbin/restic-r2-sync
-      {% endif %}
+      Environment=RESTIC_R2_ENABLED={{ 1 if restic_r2_enabled | bool else 0 }}
+      ExecStart=/usr/local/sbin/k3s-backup-run
       Nice=10
       IOSchedulingClass=best-effort
       IOSchedulingPriority=7
@@ -157,16 +154,20 @@
     mode: "0644"
     content: |
       [Unit]
-      Description=Create and independently verify a bounded-consistency K3s recovery set
+      Description=Create, verify, and maintain a bounded-consistency K3s recovery set
       Wants=network-online.target
-      After=network-online.target k3s.service k3s-backup.service
-      Conflicts=k3s-backup.service
+      After=network-online.target k3s.service
 
       [Service]
       Type=oneshot
       Environment=GUIOSOFT_K3S_REPO_ROOT=/usr/local/lib/guiosoft-k3s-backup
+      Environment=RESTIC_CONFIG_DIR={{ restic_r2_config_dir }}
+      Environment=RESTIC_R2_KEEP_DAILY={{ restic_r2_keep_daily }}
+      Environment=RESTIC_R2_KEEP_WEEKLY={{ restic_r2_keep_weekly }}
+      Environment=RESTIC_R2_KEEP_MONTHLY={{ restic_r2_keep_monthly }}
       ExecStart=/usr/local/sbin/k3s-consistent-backup-run
       ExecStart=/usr/local/sbin/k3s-consistent-backup-verify
+      ExecStart=/usr/local/sbin/k3s-restic-maintenance
       Nice=10
       IOSchedulingClass=best-effort
       IOSchedulingPriority=7
@@ -220,6 +221,7 @@
     - k3s-backup-verify.sh
     - restic-r2-sync.sh
     - k3s-pv-backup-r2.sh
+    - k3s-restic-maintenance.sh
   when: k3s_consistent_backup_enabled | bool
 
 - name: Flush systemd reload before enabling timers
@@ -232,9 +234,6 @@
     state: started
   when: not ansible_check_mode
 
-# In --check mode the preceding copy task correctly predicts creation of the new
-# unit, but systemd cannot enable a unit that does not physically exist yet.
-# Skip this runtime operation during dry-run; the unit diff above remains visible.
 - name: Enable and start consistent recovery-set timer
   ansible.builtin.systemd:
     name: k3s-consistent-backup.timer
