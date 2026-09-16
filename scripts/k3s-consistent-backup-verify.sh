@@ -17,7 +17,7 @@ if [[ -z "$RUN_DIR" ]]; then
 fi
 [[ -n "$RUN_DIR" && -d "$RUN_DIR" && -s "$RUN_DIR/metadata" ]] || die "consistent backup run not found"
 declare -A M=(); while IFS='=' read -r k v; do [[ -n "$k" ]] && M["$k"]="$v"; done <"$RUN_DIR/metadata"
-[[ "${M[format]:-}" == guiоsoft-k3s-consistent-backup-v2 || "${M[format]:-}" == guiosoft-k3s-consistent-backup-v2 ]] || die "unsupported metadata format: ${M[format]:-missing}"
+[[ "${M[format]:-}" == guiosoft-k3s-consistent-backup-v2 ]] || die "unsupported metadata format: ${M[format]:-missing}"
 [[ "${M[result]:-}" == PASS ]] || die "backup set result is not PASS"
 [[ "${M[hostname]:-}" == "$PROD_HOSTNAME" ]] || die "unexpected source hostname: ${M[hostname]:-missing}"
 for k in backup_set_id quiesced_at control_plane_archive control_plane_restic_snapshot_id control_plane_restic_snapshot_time pv_restic_snapshot_id pv_restic_snapshot_time completed_backup_window_at consistency_window_seconds writers_restored_at; do [[ -n "${M[$k]:-}" ]] || die "metadata field missing: $k"; done
@@ -33,7 +33,12 @@ CP="${M[control_plane_restic_snapshot_id]}"; PV="${M[pv_restic_snapshot_id]}"; C
 restic snapshots "$CP" --json | python3 -c 'import json,sys; x=json.load(sys.stdin); sys.exit(0 if x else 1)' || die "control-plane snapshot not found: $CP"
 restic ls "$CP" | awk '{print $NF}' | grep -Fqx "/mnt/store2/k3s/backups/k3s/$CP_BASE" || restic ls "$CP" | awk '{print $NF}' | grep -Fqx "/srv/k3s/backups/k3s/$CP_BASE" || die "control-plane archive absent from snapshot $CP"
 restic snapshots "$PV" --json | python3 -c 'import json,sys; x=json.load(sys.stdin); sys.exit(0 if x else 1)' || die "PV snapshot not found: $PV"
-restic ls "$PV" | awk '{print $NF}' | grep -q '^/mnt/store1/k3s/local-path/' || die "PV snapshot does not contain expected local-path root"
+# `restic ls` may list the root itself as /mnt/store1/k3s/local-path before any
+# child entry. Accept either the exact root or descendants, and avoid grep -q so
+# pipefail cannot turn grep's early exit/SIGPIPE into a false verification error.
+PV_LIST="$(mktemp)"; trap 'rm -f "$PV_LIST"' EXIT
+restic ls "$PV" >"$PV_LIST"
+awk '{print $NF}' "$PV_LIST" | grep -E '^/mnt/store1/k3s/local-path(/|$)' >/dev/null || die "PV snapshot does not contain expected local-path root"
 python3 - "${M[quiesced_at]}" "${M[control_plane_restic_snapshot_time]}" "${M[pv_restic_snapshot_time]}" "${M[completed_backup_window_at]}" <<'PY'
 import datetime,sys
 def dt(v): return datetime.datetime.fromisoformat(v.replace('Z','+00:00'))
