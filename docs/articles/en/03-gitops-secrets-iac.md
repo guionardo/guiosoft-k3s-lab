@@ -1,142 +1,82 @@
 # GitOps, secrets, and reproducible infrastructure
 
-After putting applications and observability into my K3s cluster, one question started bothering me:
+After putting applications and observability into my K3s cluster, one question started bothering me: **How much of this environment exists because it is declared—and how much exists only because I remember the commands I ran?**
 
-**How much of this environment exists because it is declared—and how much exists only because I remember the commands I ran?**
-
-The difference is small while the server is healthy. During a rebuild, it is enormous.
-
-The next stage of the homelab was therefore not another application. It was reducing the number of decisions that existed only in the current machine state.
+The next stage was reducing the number of decisions that existed only in the current machine state.
 
 ## Three layers, three responsibilities
 
-The project adopted a simple ownership model:
-
-```text
-Ansible
-  -> Debian and K3s host state
-
-Terraform
-  -> external resources
-
-Flux / Kubernetes / Helm
-  -> cluster-internal state
+```mermaid
+flowchart LR
+    A[Ansible] --> H[Debian and K3s host state]
+    T[Terraform] --> E[External resources]
+    F[Flux / Kubernetes / Helm] --> C[Cluster-internal state]
 ```
 
-I did not want Terraform installing K3s on the physical server or Flux configuring Debian. Tools can overlap in capability without overlapping in ownership.
-
-For me, reproducible infrastructure begins when it is clear **who owns each piece of state**.
+Tools can overlap in capability without overlapping in ownership. For me, reproducible infrastructure begins when it is clear **who owns each piece of state**.
 
 ## Why Flux?
 
-I chose Flux because the repository already contained Kubernetes manifests and Helm configuration, and I had already adopted SOPS + age for secrets.
-
-Native SOPS decryption in the Flux `kustomize-controller` made that combination particularly simple. The pull-based model also fit the lab: after bootstrap, the cluster reads the repository and reconciles itself without requiring a separate CD server.
-
-Other tools remain valid. Argo CD, for example, is an excellent alternative when UI and visual Application workflows are priorities. Flux simply fit the project's existing state better.
+I chose Flux because the repository already contained Kubernetes manifests and Helm configuration, and I had adopted SOPS + age for secrets. Native SOPS decryption in `kustomize-controller` and the pull-based model fit the lab well.
 
 ## Start with the least dangerous workload
 
 The first workload placed under Flux ownership was `cloudflared`: small, stateless, declarative, and easy to roll back.
 
-Its dependency chain became explicit:
-
-```text
-namespace
-   |
-SOPS secret
-   |
-cloudflared
+```mermaid
+flowchart TD
+    N[Namespace] --> S[SOPS-encrypted Secret]
+    S --> C[cloudflared]
 ```
 
-After validating that chain I tested manual drift, a versioned change, Git rollback, and deliberate Secret deletion followed by reconstruction from the encrypted repository state.
-
-GitOps without a reconstruction test can be little more than optimistic synchronization.
+After validating that chain I tested manual drift, a versioned change, Git rollback, and deliberate Secret deletion followed by reconstruction from encrypted repository state. GitOps without a reconstruction test can be little more than optimistic synchronization.
 
 ## Secrets in Git—but not plaintext
 
-My rule is simple: no plaintext secret is versioned.
-
-Sensitive manifests are encrypted with SOPS + age. The public recipient may live in the repository; the private identity may not.
-
-The flow is roughly:
-
-```text
-Git
- |
- | SOPS-encrypted Secret
- v
-Flux
- |
- | runtime age identity
- v
-Kubernetes Secret
- |
- v
-workload
+```mermaid
+flowchart LR
+    Git[Git: SOPS-encrypted Secret] --> Flux[Flux]
+    Age[Runtime age identity] --> Flux
+    Flux --> Secret[Kubernetes Secret]
+    Secret --> W[Workload]
 ```
 
-Metadata remains readable while `data`/`stringData` are encrypted. The private age identity is installed at runtime in `flux-system`, but its source remains outside Git.
-
-That has an important Disaster Recovery consequence: **Git alone cannot rebuild the cluster.** An independent copy of the private identity is also required. I later created that off-host backup and tested its recovery.
+The public age recipient may live in the repository; the private identity may not. Metadata remains readable while sensitive values are encrypted. This has an important DR consequence: **Git alone cannot rebuild the cluster.** The private identity needs an independent recovery path.
 
 ## Self-healing needs to be observed
 
-After `cloudflared`, I moved Firecrawl under Flux ownership. To test reconciliation without reducing availability, I manually scaled its API from one replica to two. This was positive drift: extra capacity rather than removed capacity.
+After `cloudflared`, I moved Firecrawl under Flux ownership and deliberately introduced positive drift by scaling its API from one replica to two.
 
-After reconciliation the Deployment returned to the single replica declared in Git and the endpoint continued responding.
-
-The test was intended to prove this chain:
-
-```text
-declared Git state
-       !=
-manual cluster state
-        |
-        v
-Flux reconciles
-        |
-        v
-state returns to Git
+```mermaid
+flowchart LR
+    G[Declared Git state: 1 replica] --> F[Flux reconciliation]
+    D[Manual cluster state: 2 replicas] --> F
+    F --> R[Cluster returns to 1 replica]
 ```
+
+The endpoint remained available while Flux restored the declared state.
 
 ## Adopting existing resources without recreating them
 
-Observability was more interesting because Prometheus, Grafana, Loki, Tempo, Alloy, and OpenTelemetry Collector were already running before Flux took ownership.
+Prometheus, Grafana, Loki, Tempo, Alloy, and OpenTelemetry Collector already existed before Flux ownership. HelmReleases were declared to match the existing releases, initially suspended, and activated conservatively:
 
-I did not want GitOps adoption to become a stack reinstall.
-
-The HelmReleases were declared with `releaseName`, `targetNamespace`, and `storageNamespace` matching the existing releases, initially suspended, and then activated one by one in a conservative order:
-
-```text
-Alloy
-  -> OpenTelemetry Collector
-  -> Tempo
-  -> Loki
-  -> kube-prometheus-stack
+```mermaid
+flowchart LR
+    A[Alloy] --> O[OpenTelemetry Collector]
+    O --> T[Tempo]
+    T --> L[Loki]
+    L --> K[kube-prometheus-stack]
 ```
 
-At every stage I validated HelmRelease readiness, deployed runtime releases, Pods, PVCs, and the functional metrics/logs/traces paths.
-
-GitOps adoption became an ownership migration rather than a blind redeployment.
+At every stage I validated HelmRelease readiness, runtime releases, Pods, PVCs, and functional metrics/logs/traces paths. GitOps adoption became an ownership migration rather than a blind redeployment.
 
 ## GitOps does not replace rollback
 
-I wanted to preserve the ability to stop automation. If reconciliation causes a problem, the first response does not need to be removing Flux. The affected Kustomization or HelmRelease can be suspended, the Git state corrected, and reconciliation resumed.
-
-The same principle appears throughout this project: automation is useful when it also has a clear interruption and rollback path.
+If reconciliation causes a problem, the affected Kustomization or HelmRelease can be suspended, Git corrected, and reconciliation resumed. Automation is useful when it also has a clear interruption and rollback path.
 
 ## Idempotency as evidence
 
-Ansible participates in rebuilding the SOPS runtime. Re-running the playbook that installs/updates the age identity in `flux-system` after the Secret already existed ended with:
-
-```text
-ok=8
-changed=0
-failed=0
-```
-
-More recently I split Ansible variables explicitly into common, production, and DR groups. The production dry-run after that change returned:
+Re-running the Ansible playbook that installs the age identity after the Secret already existed ended with `changed=0`. More recently, splitting Ansible variables into common, production, and DR groups produced a production dry-run of:
 
 ```text
 ok=16
@@ -144,30 +84,21 @@ changed=0
 failed=0
 ```
 
-The DR inventory, meanwhile, defaults consistent backup, R2, and `cloudflared` to `false`.
-
-This is not merely YAML organization. It reduces blast radius: a recovery host must not silently inherit production operating policies.
+The DR inventory defaults consistent backup, R2, and `cloudflared` to `false`. This is not merely YAML organization; it reduces blast radius.
 
 ## What can Git reconstruct?
 
-After this stage the repository represented much more of the system:
-
-```text
-Git -> Flux -> Kubernetes
-Encrypted Git -> SOPS/age -> Secrets
-Ansible -> host/K3s
-Terraform -> external resources
+```mermaid
+flowchart LR
+    Git[Git] --> Flux[Flux] --> K8s[Kubernetes]
+    Enc[Encrypted Git] --> SOPS[SOPS / age] --> Secrets[Secrets]
+    Ansible[Ansible] --> Host[Host / K3s]
+    Terraform[Terraform] --> External[External resources]
 ```
 
-But the reconstruction question was still unanswered.
-
-I had declarative configuration, encrypted secrets, and backups. Then came the question that changed the direction of the project:
-
-**If the server disappears, can I actually restore everything on another machine?**
+But the reconstruction question was still unanswered. I had declarative configuration, encrypted secrets, and backups. Then came the question that changed the project: **If the server disappears, can I actually restore everything on another machine?**
 
 Having backups and being able to perform Disaster Recovery are different things. I learned that by doing the restore for real.
-
-That is the next article.
 
 ---
 
