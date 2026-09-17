@@ -9,9 +9,9 @@ I had a control-plane backup and a volume backup. **That did not mean I had a co
 ```mermaid
 timeline
     title Two valid backups, different moments
-    10:00 : Control-plane backup
-    10:10 : Application keeps writing
-    10:20 : Persistent-volume backup
+    10h00 : Control-plane backup
+    10h10 : Application keeps writing
+    10h20 : Persistent-volume backup
 ```
 
 Both backups may be technically valid yet represent different moments. In my lab this became tangible when Tempo had to deal with an incomplete WAL block during an earlier restore.
@@ -47,11 +47,11 @@ The recovery set abandons “restore the latest backup” and records exact IDs 
 ```mermaid
 timeline
     title First successful consistent recovery set
-    11:42:34Z : Writers quiesced
-    11:42:39Z : Control-plane snapshot
-    11:43:00Z : PV snapshot
-    11:43:38Z : Backup window complete
-    11:44:21Z : Writers restored
+    11h42m34sZ : Writers quiesced
+    11h42m39sZ : Control-plane snapshot
+    11h43m00sZ : PV snapshot
+    11h43m38sZ : Backup window complete
+    11h44m21sZ : Writers restored
 ```
 
 | Field | Value |
