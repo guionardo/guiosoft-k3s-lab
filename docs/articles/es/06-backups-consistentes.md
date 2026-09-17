@@ -9,9 +9,9 @@ Tenía un backup del control plane y otro de los volúmenes. **Eso no significab
 ```mermaid
 timeline
     title Dos backups válidos, momentos diferentes
-    10:00 : Backup del control plane
-    10:10 : La aplicación sigue escribiendo
-    10:20 : Backup de persistent volumes
+    10h00 : Backup del control plane
+    10h10 : La aplicación sigue escribiendo
+    10h20 : Backup de persistent volumes
 ```
 
 Ambos backups pueden ser técnicamente válidos y representar instantes diferentes. En mi laboratorio esto se hizo tangible cuando Tempo tuvo que manejar un bloque WAL incompleto durante un restore anterior.
@@ -47,11 +47,11 @@ El recovery set abandona “restaurar el backup más reciente” y registra IDs 
 ```mermaid
 timeline
     title Primer recovery set consistente exitoso
-    11:42:34Z : Writers quiesced
-    11:42:39Z : Snapshot del control plane
-    11:43:00Z : Snapshot de PVs
-    11:43:38Z : Ventana de backup completa
-    11:44:21Z : Writers restaurados
+    11h42m34sZ : Writers quiesced
+    11h42m39sZ : Snapshot del control plane
+    11h43m00sZ : Snapshot de PVs
+    11h43m38sZ : Ventana de backup completa
+    11h44m21sZ : Writers restaurados
 ```
 
 | Campo | Valor |
