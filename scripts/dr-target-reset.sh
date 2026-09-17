@@ -8,6 +8,7 @@ STATE_ROOT="${DR_STATE_ROOT:-/var/lib/guiosoft-k3s-dr}"
 K3S_DATA_DIR="${DR_K3S_DATA_DIR:-/var/lib/rancher/k3s}"
 K3S_CONFIG_DIR="${DR_K3S_CONFIG_DIR:-/etc/rancher/k3s}"
 CONFIRM_EXPECTED="reset-dr-target"
+PREFLIGHT_ONLY="${DR_TARGET_RESET_PREFLIGHT_ONLY:-0}"
 HOST="$(hostname -s)"
 
 fail() {
@@ -28,6 +29,7 @@ require_safe_absolute_path() {
 }
 
 [[ ${EUID} -eq 0 ]] || fail "run as root"
+[[ "$PREFLIGHT_ONLY" == 0 || "$PREFLIGHT_ONLY" == 1 ]] || fail "DR_TARGET_RESET_PREFLIGHT_ONLY must be 0 or 1"
 [[ "$HOST" != "$PROD_HOSTNAME" ]] || fail "refusing reset on production hostname"
 ip -o -4 addr show scope global | awk '{print $4}' | cut -d/ -f1 | grep -Fxq "$PROD_IP" && fail "refusing reset on production IP"
 [[ -s "$MARKER_FILE" ]] || fail "DR target marker missing: $MARKER_FILE"
@@ -38,7 +40,7 @@ grep -qx 'mode=isolated-dr-rehearsal' "$MARKER_FILE" || fail "invalid DR target 
 require_safe_absolute_path "K3s data directory" "$K3S_DATA_DIR"
 require_safe_absolute_path "K3s config directory" "$K3S_CONFIG_DIR"
 require_safe_absolute_path "DR state root" "$STATE_ROOT"
-[[ "$STATE_ROOT" == /var/lib/guiosoft-k3s-dr || "$STATE_ROOT" == /var/lib/guiosoft-k3s-dr/* ]] || 
+[[ "$STATE_ROOT" == /var/lib/guiosoft-k3s-dr || "$STATE_ROOT" == /var/lib/guiosoft-k3s-dr/* ]] ||
   fail "DR state root must stay below /var/lib/guiosoft-k3s-dr: $STATE_ROOT"
 [[ "$K3S_DATA_DIR" == /var/lib/rancher/k3s || "$K3S_DATA_DIR" == /var/lib/rancher/k3s/* ]] ||
   fail "K3s data directory must stay below /var/lib/rancher/k3s: $K3S_DATA_DIR"
@@ -61,6 +63,13 @@ for protected in /home/guionardo/data; do
     done
   fi
 done
+
+if [[ "$PREFLIGHT_ONLY" == 1 ]]; then
+  echo "DR target reset preflight PASS: $HOST"
+  echo "Validated production guards, DR marker, explicit confirmation, reset namespaces, and protected-path separation."
+  echo "No services stopped, files removed, or firewall rules changed."
+  exit 0
+fi
 
 systemctl stop k3s 2>/dev/null || true
 [[ -x /usr/local/bin/k3s-killall.sh ]] && /usr/local/bin/k3s-killall.sh || true
