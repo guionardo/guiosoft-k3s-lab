@@ -12,15 +12,17 @@ Eu possuía um backup do control plane e um backup dos volumes.
 
 Imagine esta sequência:
 
-```text
-10:00 backup do control plane
-10:10 aplicação continua escrevendo
-10:20 backup dos volumes
+```mermaid
+sequenceDiagram
+    participant CP as Control plane
+    participant App as Aplicação
+    participant PV as Persistent Volumes
+    Note over CP: 10:00 backup
+    App->>PV: 10:10 continua escrevendo
+    Note over PV: 10:20 backup
 ```
 
-Os dois backups podem estar tecnicamente íntegros.
-
-Mesmo assim, eles representam instantes diferentes.
+Os dois backups podem estar tecnicamente íntegros. Mesmo assim, eles representam instantes diferentes.
 
 Dependendo da aplicação, o Kubernetes pode acreditar em um estado enquanto o volume persistente contém outro.
 
@@ -32,11 +34,14 @@ Eu não precisava construir um snapshot distribuído atomicamente perfeito para 
 
 Precisava de algo mais simples e verificável:
 
-1. parar temporariamente os writers persistentes;
-2. capturar control plane e PVs enquanto eles permanecem parados;
-3. registrar exatamente quais snapshots pertencem ao conjunto;
-4. restaurar os writers imediatamente;
-5. verificar independentemente os artefatos.
+```mermaid
+flowchart LR
+    Q[Quiesce dos writers] --> CP[Backup control plane]
+    CP --> PV[Backup dos PVs]
+    PV --> Meta[Registrar IDs e timestamps]
+    Meta --> Restore[Restaurar writers]
+    Restore --> Verify[Verificação independente]
+```
 
 Passei a chamar isso de **bounded-consistency recovery set**.
 
@@ -82,15 +87,9 @@ O primeiro recovery set completo ficou assim:
 
 ```text
 backup_set_id=20260916T114220Z
-
 quiesced_at=2026-09-16T11:42:34Z
-
-control_plane_snapshot=
-6709a96774a79ded9e3435591074d9445d9f814127b0b1a4ba3041d6a39f3882
-
-pv_snapshot=
-1830fedfe1c6f293cef2eb971f390f28fd761ba1e929c75b9e06c2a007da190e
-
+control_plane_snapshot=6709a96774a79ded9e3435591074d9445d9f814127b0b1a4ba3041d6a39f3882
+pv_snapshot=1830fedfe1c6f293cef2eb971f390f28fd761ba1e929c75b9e06c2a007da190e
 completed_backup_window_at=2026-09-16T11:43:38Z
 consistency_window_seconds=64
 writers_restored_at=2026-09-16T11:44:21Z
@@ -99,18 +98,21 @@ result=PASS
 
 A janela medida entre quiesce e conclusão das duas capturas foi de **64 segundos**.
 
+```mermaid
+timeline
+    title Recovery set 20260916T114220Z
+    11:42:34 : Writers quiesced
+    11:42:39 : Snapshot do control plane
+    11:43:00 : Snapshot dos PVs
+    11:43:38 : Janela de backup concluída — 64 s
+    11:44:21 : Writers restaurados
+```
+
 ## Verificar o próprio verificador
 
 O orquestrador terminar com `PASS` ainda não era evidência suficiente.
 
-Criei um verificador independente que reabre o repositório off-host e confirma:
-
-- metadata do recovery set em PASS;
-- existência dos dois snapshot IDs exatos;
-- timestamp real dos snapshots;
-- presença do archive de control plane registrado dentro do snapshot correto;
-- presença do root esperado dos volumes no snapshot PV;
-- timestamps dentro da janela registrada.
+Criei um verificador independente que reabre o repositório off-host e confirma metadata do recovery set, os dois snapshot IDs exatos, timestamps reais, presença do archive de control plane no snapshot correto, root esperado dos volumes no snapshot PV e timestamps dentro da janela registrada.
 
 Essa etapa também passou.
 
@@ -122,11 +124,7 @@ O servidor continua executando o backup diário normal.
 
 O recovery set consistente é semanal porque provoca uma pequena janela de quiesce.
 
-Os dois fluxos compartilham o mesmo lock:
-
-```text
-/run/lock/guiosoft-k3s-backup.lock
-```
+Os dois fluxos compartilham o mesmo lock: `/run/lock/guiosoft-k3s-backup.lock`.
 
 O wrapper semanal mantém o lock não apenas durante a captura, mas também durante verificação e manutenção Restic posterior. Assim outro processo de backup não entra no repositório no meio da sequência e altera o contexto que estou verificando.
 
@@ -138,41 +136,38 @@ Antes, um builder poderia selecionar independentemente um snapshot recente de co
 
 O bundle v2 agora nasce de um `backup_set_id` específico.
 
-O materializador restaura os snapshot IDs exatos, verifica timestamps, cruza metadata do PV com o mesmo backup set e só então monta o artefato offline contendo:
-
-```text
-control plane
-persistent volumes
-offline OCI images
-recovery tooling
-recovery-set metadata
-checksums
+```mermaid
+flowchart LR
+    Set[backup_set_id] --> CP[Snapshot CP exato]
+    Set --> PV[Snapshot PV exato]
+    CP --> Bundle[Bundle DR v2]
+    PV --> Bundle
+    OCI[Imagens OCI offline] --> Bundle
+    Tools[Recovery tooling] --> Bundle
+    Meta[Metadata + checksums] --> Bundle
+    Bundle --> Verify[Verificação completa]
 ```
+
+O materializador restaura os snapshot IDs exatos, verifica timestamps, cruza metadata do PV com o mesmo backup set e só então monta o artefato offline.
 
 O primeiro bundle portátil v2 foi construído a partir do recovery set de 64 segundos e passou sua verificação completa.
 
 ## O que mudou na minha definição de backup
 
-No começo do projeto, backup significava algo próximo de:
-
-```text
-arquivo existe fora do servidor
-```
+No começo do projeto, backup significava algo próximo de “arquivo existe fora do servidor”.
 
 Depois dos rehearsals, a definição ficou bem mais exigente:
 
-```text
-artefato existe
-+ checksum confere
-+ snapshot exato é conhecido
-+ timestamp é conhecido
-+ relação CP/PV é conhecida
-+ restore foi exercitado
-+ imagens estão disponíveis offline
-+ tooling está disponível offline
-+ secrets possuem recuperação independente
-+ pós-condições são verificadas
-```
+- artefato existe;
+- checksum confere;
+- snapshot exato é conhecido;
+- timestamp é conhecido;
+- relação CP/PV é conhecida;
+- restore foi exercitado;
+- imagens estão disponíveis offline;
+- tooling está disponível offline;
+- secrets possuem recuperação independente;
+- pós-condições são verificadas.
 
 Isso obviamente é mais trabalho.
 
