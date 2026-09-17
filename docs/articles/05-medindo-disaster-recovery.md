@@ -12,17 +12,21 @@ Foi quando passei a tratar os rehearsals não apenas como testes funcionais, mas
 
 ## O cronômetro precisa começar antes da parte confortável
 
-É tentador medir apenas o trecho automatizado do restore.
-
-Eu preferi uma definição mais dura.
+É tentador medir apenas o trecho automatizado do restore. Eu preferi uma definição mais dura.
 
 O T0 é registrado antes do bootstrap do K3s no alvo de DR. O RTO observado inclui bootstrap, execução dos scripts, espera, intervenção do operador e tempo gasto investigando problemas encontrados durante o processo.
 
-Isso piora o número.
-
-E melhora a informação.
+Isso piora o número. E melhora a informação.
 
 Se durante um incidente real eu precisar descobrir por que um PV não liga ou por que um workload não foi neutralizado, esse tempo faz parte da recuperação.
+
+```mermaid
+flowchart LR
+    T0[T0: antes do bootstrap] --> Bootstrap[Bootstrap K3s]
+    Bootstrap --> Restore[Restore e automação]
+    Restore --> Debug[Espera, intervenção e troubleshooting]
+    Debug --> T1[T1: estado recuperado verificável]
+```
 
 ## Rehearsal #2
 
@@ -64,14 +68,18 @@ Por exemplo, a neutralização passou a consultar novamente a API e verificar qu
 
 O terceiro rehearsal usou o bundle offline e repetiu a medição incluindo problemas descobertos durante a própria execução.
 
-Resultado:
+| Medição | Rehearsal #2 | Rehearsal #3 | Diferença |
+| --- | ---: | ---: | ---: |
+| RTO | 4029 s | 2823 s | -1206 s |
+| Tempo | 1h07m09s | 47m03s | -20m06s |
+| Melhoria | — | **29,9%** | — |
 
-```text
-Rehearsal #2: 4029 s = 1h 07m 09s
-Rehearsal #3: 2823 s =    47m 03s
-
-Delta:       -1206 s =   -20m 06s
-Melhoria: aproximadamente 29,9%
+```mermaid
+xychart-beta
+    title "RTO observado nos rehearsals"
+    x-axis ["Rehearsal #2", "Rehearsal #3"]
+    y-axis "segundos" 0 --> 4500
+    bar [4029, 2823]
 ```
 
 Eu não removi do cronômetro o tempo gasto corrigindo problemas porque isso produziria um número bonito e pouco útil.
@@ -96,23 +104,15 @@ O servidor de produção continuou operacional durante todo o exercício.
 
 ## Os bugs encontrados são parte do resultado
 
-O rehearsal #3 ainda encontrou problemas.
-
-E isso é uma coisa boa.
+O rehearsal #3 ainda encontrou problemas. E isso é uma coisa boa.
 
 Três deles viraram invariantes explícitos:
 
-**1. Neutralização precisa verificar pós-condições.**
+**1. Neutralização precisa verificar pós-condições.** Executar `kubectl scale` sem erro não basta. O script agora consulta o estado resultante antes de declarar sucesso.
 
-Executar `kubectl scale` sem erro não basta. O script agora consulta o estado resultante antes de declarar sucesso.
+**2. PV remap precisa aceitar o node DR futuro.** Durante o restore agentless, o Node do DR ainda não existe. A affinity pode e deve ser preparada para o hostname que será registrado depois.
 
-**2. PV remap precisa aceitar o node DR futuro.**
-
-Durante o restore agentless, o Node do DR ainda não existe. A affinity pode e deve ser preparada para o hostname que será registrado depois.
-
-**3. Reset precisa remover checkpoints antigos.**
-
-Arquivos `.done` sobreviventes de um rehearsal anterior podem fazer um orquestrador acreditar que uma etapa já foi executada. O reset passou a remover estado corrente e verificar que dados/config do K3s realmente desapareceram.
+**3. Reset precisa remover checkpoints antigos.** Arquivos `.done` sobreviventes de um rehearsal anterior podem fazer um orquestrador acreditar que uma etapa já foi executada. O reset passou a remover estado corrente e verificar que dados/config do K3s realmente desapareceram.
 
 Mais recentemente, esse reset também ganhou guards adicionais para paths destrutivos e um modo `PREFLIGHT_ONLY`. Os testes deliberadamente tentaram usar `/` como state root e um path fora do namespace permitido; ambos falharam antes de parar qualquer serviço. O preflight válido, por outro lado, passou mantendo K3s ativo, WAN isolada e o disco de dados protegido montado.
 
@@ -130,11 +130,7 @@ Isso posteriormente levou a uma melhoria maior: criar um par formal de control p
 
 ## Por que medir?
 
-Sem medição, eu provavelmente teria escrito algo como:
-
-```text
-restore automatizado e documentado
-```
+Sem medição, eu provavelmente teria escrito algo como “restore automatizado e documentado”.
 
 Com medição, consigo dizer:
 
