@@ -101,11 +101,11 @@ A janela medida entre quiesce e conclusão das duas capturas foi de **64 segundo
 ```mermaid
 timeline
     title Recovery set 20260916T114220Z
-    11:42:34 : Writers quiesced
-    11:42:39 : Snapshot do control plane
-    11:43:00 : Snapshot dos PVs
-    11:43:38 : Janela de backup concluída — 64 s
-    11:44:21 : Writers restaurados
+    11h42m34s : Writers quiesced
+    11h42m39s : Snapshot do control plane
+    11h43m00s : Snapshot dos PVs
+    11h43m38s : Janela de backup concluída — 64 s
+    11h44m21s : Writers restaurados
 ```
 
 ## Verificar o próprio verificador
