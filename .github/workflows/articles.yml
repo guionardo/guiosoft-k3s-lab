@@ -1,0 +1,64 @@
+name: Articles CI
+
+on:
+  push:
+    paths:
+      - "docs/articles/**"
+      - "scripts/validate-articles.py"
+      - "scripts/extract-mermaid.py"
+      - ".github/workflows/articles.yml"
+  pull_request:
+    paths:
+      - "docs/articles/**"
+      - "scripts/validate-articles.py"
+      - "scripts/extract-mermaid.py"
+      - ".github/workflows/articles.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Validate article structure and local assets
+        run: python3 scripts/validate-articles.py
+
+      - name: Extract Mermaid diagrams
+        run: python3 scripts/extract-mermaid.py
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Mermaid CLI
+        run: npm install --global @mermaid-js/mermaid-cli@11
+
+      - name: Render every Mermaid diagram
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          diagrams=(.artifacts/mermaid/*.mmd)
+          if (( ${#diagrams[@]} == 0 )); then
+            echo "No Mermaid diagrams extracted" >&2
+            exit 1
+          fi
+          mkdir -p .artifacts/mermaid-rendered
+          for diagram in "${diagrams[@]}"; do
+            name="$(basename "${diagram%.mmd}")"
+            echo "Rendering $diagram"
+            mmdc -i "$diagram" -o ".artifacts/mermaid-rendered/$name.svg" -b transparent
+          done
+          echo "Rendered ${#diagrams[@]} Mermaid diagrams successfully"
