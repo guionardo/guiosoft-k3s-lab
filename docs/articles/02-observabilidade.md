@@ -14,11 +14,16 @@ Foi aí que o projeto deixou de ter apenas monitoramento básico e passou a busc
 
 A stack que montei ficou conceitualmente assim:
 
-```text
-Metrics -> Prometheus
-Logs    -> Grafana Alloy -> Loki
-Traces  -> OpenTelemetry Collector -> Tempo
-UI      -> Grafana
+```mermaid
+flowchart LR
+    App[Aplicações] -->|métricas| Prometheus
+    App -->|logs| Alloy[Grafana Alloy]
+    Alloy --> Loki
+    App -->|OTLP traces| OTel[OpenTelemetry Collector]
+    OTel --> Tempo
+    Prometheus --> Grafana
+    Loki --> Grafana
+    Tempo --> Grafana
 ```
 
 Usei `kube-prometheus-stack` para Prometheus, Alertmanager, Grafana, Operator, kube-state-metrics e node-exporter. Tempo recebeu os traces. Loki armazenou logs. Alloy fez a coleta dos logs dos Pods. O OpenTelemetry Collector ficou no caminho de ingestão dos traces.
@@ -33,30 +38,26 @@ Um dos critérios do projeto é evitar considerar uma etapa concluída apenas po
 
 Então criei um pequeno workload em Go instrumentado com OpenTelemetry e métricas Prometheus. Depois ele evoluiu para dois serviços:
 
-```text
-otel-go-demo
-     |
-     | HTTP + W3C traceparent
-     v
-otel-go-downstream
+```mermaid
+sequenceDiagram
+    participant C as Cliente
+    participant A as otel-go-demo
+    participant D as otel-go-downstream
+    C->>A: HTTP request
+    A->>D: HTTP + W3C traceparent
+    D-->>A: response
+    A-->>C: response
 ```
 
 O objetivo não era construir uma aplicação interessante. Era produzir um sinal observável que eu pudesse seguir por toda a infraestrutura.
 
 Para tracing, o caminho validado ficou:
 
-```text
-Go application
-     |
-     | OTLP
-     v
-OpenTelemetry Collector
-     |
-     v
-Tempo
-     |
-     v
-Grafana
+```mermaid
+flowchart LR
+    Go[Aplicação Go] -->|OTLP| OTel[OpenTelemetry Collector]
+    OTel --> Tempo
+    Tempo --> Grafana
 ```
 
 O teste gera uma requisição, captura o `trace_id` e procura esse mesmo trace no Tempo. Depois o demo passou a propagar o contexto para o segundo processo, permitindo confirmar os dois `service.name` dentro do mesmo trace distribuído.
@@ -82,9 +83,10 @@ O teste automatizado então:
 
 Depois configurei os datasources do Grafana para permitir navegação nos dois sentidos:
 
-```text
-Loki log -> trace_id -> Tempo
-Tempo trace -> logs relacionados -> Loki
+```mermaid
+flowchart LR
+    Log[Log no Loki] -->|trace_id| Trace[Trace no Tempo]
+    Trace -->|logs relacionados| Log
 ```
 
 Foi nesse momento que métricas, logs e traces começaram a parecer uma única ferramenta de investigação, em vez de três produtos instalados lado a lado.
@@ -109,14 +111,7 @@ O teste foi alterado para primeiro confirmar que `/metrics` era um endpoint Prom
 
 ## Cardinalidade também faz parte do design
 
-As métricas do demo usam labels deliberadamente limitadas, como:
-
-```text
-service
-method
-path
-status
-```
+As métricas do demo usam labels deliberadamente limitadas: `service`, `method`, `path` e `status`.
 
 Não coloquei request IDs, trace IDs ou URLs arbitrárias como labels.
 
@@ -159,22 +154,20 @@ Esse tipo de decisão é outro benefício de construir o ambiente aos poucos: a 
 
 ## O resultado que realmente importava
 
-No final, a validação deixou de ser:
+No final, a validação deixou de ser “Grafana abriu?” e passou a verificar o caminho completo:
 
-```text
-Grafana abriu? Sim.
-```
-
-Ela passou a ser algo próximo de:
-
-```text
-request
-  |-- metric -> Prometheus
-  |-- trace  -> OTel Collector -> Tempo
-  `-- log    -> Alloy -> Loki
-
-trace_id conecta logs e traces
-Grafana consulta os três sinais
+```mermaid
+flowchart LR
+    Request[Request] --> App[Aplicação]
+    App -->|metric| Prometheus
+    App -->|trace| OTel[OTel Collector]
+    OTel --> Tempo
+    App -->|log + trace_id| Alloy
+    Alloy --> Loki
+    Prometheus --> Grafana
+    Tempo --> Grafana
+    Loki --> Grafana
+    Loki <-. correlação por trace_id .-> Tempo
 ```
 
 E os testes automatizados confirmam targets Prometheus, saúde dos componentes, PVCs, métricas customizadas, traces distribuídos e correlação de logs.
