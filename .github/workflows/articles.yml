@@ -45,6 +45,14 @@ jobs:
       - name: Install Mermaid CLI
         run: npm install --global @mermaid-js/mermaid-cli@11
 
+      - name: Configure Chromium for Mermaid CLI
+        run: |
+          cat > /tmp/puppeteer-config.json <<'JSON'
+          {
+            "args": ["--no-sandbox", "--disable-setuid-sandbox"]
+          }
+          JSON
+
       - name: Render every Mermaid diagram
         shell: bash
         run: |
@@ -59,6 +67,6 @@ jobs:
           for diagram in "${diagrams[@]}"; do
             name="$(basename "${diagram%.mmd}")"
             echo "Rendering $diagram"
-            mmdc -i "$diagram" -o ".artifacts/mermaid-rendered/$name.svg" -b transparent
+            mmdc -p /tmp/puppeteer-config.json -i "$diagram" -o ".artifacts/mermaid-rendered/$name.svg" -b transparent
           done
           echo "Rendered ${#diagrams[@]} Mermaid diagrams successfully"
