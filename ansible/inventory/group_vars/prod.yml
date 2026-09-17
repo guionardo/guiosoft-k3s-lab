@@ -1,0 +1,50 @@
+---
+# Production-only variables. Loaded only for hosts in the `prod` inventory group.
+k3s_node_name: guiosoft-info
+
+# Storage layout. Existing filesystems are reused in place; this role does not format,
+# repartition, mount, move, or delete existing data.
+storage_primary_mount: /mnt/store1
+storage_backup_mount: /mnt/store2
+storage_root: /srv/k3s
+storage_primary_root: /mnt/store1/k3s
+storage_backup_root: /mnt/store2/k3s
+storage_local_path_dir: /mnt/store1/k3s/local-path
+storage_persistent_dir: /mnt/store1/k3s/persistent
+storage_backup_dir: /mnt/store2/k3s/backups
+
+# K3s control-plane backup policy. The timer uses the server's local timezone.
+k3s_backup_dir: /srv/k3s/backups/k3s
+k3s_backup_keep: 14
+k3s_backup_on_calendar: "*-*-* 03:15:00"
+k3s_backup_randomized_delay: 15m
+
+# Bounded-consistency recovery set. Kept separate from the low-impact daily
+# control-plane backup because this job deliberately quiesces persistent writers.
+k3s_consistent_backup_enabled: true
+k3s_consistent_backup_on_calendar: "Sun *-*-* 04:15:00"
+k3s_consistent_backup_randomized_delay: 15m
+
+# Off-host Restic repository in Cloudflare R2. Runtime credentials stay under
+# /etc/k3s-backup and are installed from the SOPS-encrypted repository secret.
+restic_r2_enabled: true
+restic_r2_config_dir: /etc/k3s-backup
+restic_r2_keep_daily: 14
+restic_r2_keep_weekly: 8
+restic_r2_keep_monthly: 12
+
+preserve_docker: true
+preserve_cloudflared: true
+
+# Host hardening decisions validated on 2026-09-14. Packages are intentionally
+# retained for reversible rollback, but these listeners must stay disabled.
+# Avahi is deliberately kept because mDNS may support LAN-only application access.
+host_disabled_services:
+  - nfs-server.service
+  - rpcbind.service
+  - rpcbind.socket
+  - pmcd.service
+  - pmlogger.service
+  - pmproxy.service
+  - cockpit.service
+  - cockpit.socket

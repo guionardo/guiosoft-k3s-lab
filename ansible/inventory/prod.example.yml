@@ -1,11 +1,14 @@
 all:
   children:
     k3s_servers:
-      hosts:
-        prod-k3s:
-          ansible_host: 192.0.2.10
-          ansible_user: debian
-          ansible_python_interpreter: /usr/bin/python3
+      children:
+        prod:
+          hosts:
+            prod-k3s:
+              ansible_host: 192.0.2.10
+              ansible_user: debian
+              ansible_python_interpreter: /usr/bin/python3
 
 # Example only. Copy to the ignored prod.yml and replace host/user.
+# Keep the `prod` group: it is the explicit gate for production-only variables.
 # Never commit the real production inventory.

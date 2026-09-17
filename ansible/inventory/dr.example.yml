@@ -1,17 +1,17 @@
 all:
   children:
     k3s_servers:
-      hosts:
-        dr-k3s:
-          ansible_host: 192.0.2.10
-          ansible_user: debian
-          ansible_python_interpreter: /usr/bin/python3
-          k3s_node_name: dr-k3s
-          k3s_admin_user: debian
-          k3s_data_dir: /var/lib/rancher/k3s
-          storage_local_path_dir: /var/lib/rancher/k3s/storage
-          preserve_docker: true
-          preserve_cloudflared: false
+      children:
+        dr:
+          hosts:
+            dr-k3s:
+              ansible_host: 192.0.2.10
+              ansible_user: debian
+              ansible_python_interpreter: /usr/bin/python3
+              k3s_node_name: dr-k3s
+              k3s_admin_user: debian
 
-# Example only. Copy to an ignored local inventory and replace the address/user.
+# Example only. Copy to the ignored dr.yml and replace address/user.
+# Keep the `dr` group: it loads fail-closed DR defaults and prevents inheritance
+# of production storage, backup/R2 and cloudflared policy.
 # Never point a DR rehearsal inventory at the production host or production IP.

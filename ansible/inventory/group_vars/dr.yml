@@ -1,0 +1,17 @@
+---
+# Fail-closed defaults for DR rehearsal hosts. Loaded only for the `dr` group.
+# Host-specific address/user values stay in the ignored dr.yml inventory.
+k3s_node_name: dr-k3s
+k3s_admin_user: debian
+
+# DR uses the root filesystem and must never inherit production storage mounts.
+storage_local_path_dir: /var/lib/rancher/k3s/storage
+
+# Never install production backup/R2 automation on a rehearsal target.
+k3s_consistent_backup_enabled: false
+restic_r2_enabled: false
+
+# Existing Docker may be useful on the DR host. Production cloudflared must never
+# be preserved/activated as part of a rehearsal.
+preserve_docker: true
+preserve_cloudflared: false
