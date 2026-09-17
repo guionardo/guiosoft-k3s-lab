@@ -18,28 +18,31 @@ O primeiro nível é o control plane: restaurar o datastore SQLite do K3s e o se
 
 O segundo é o que passei a chamar de Full DR:
 
-```text
-control plane
-+ persistent volumes
-+ imagens OCI disponíveis offline
-+ workloads executáveis
+```mermaid
+flowchart LR
+    CP[Control plane] --> Full[Full DR]
+    PV[Persistent Volumes] --> Full
+    OCI[Imagens OCI offline] --> Full
+    WL[Workloads executáveis] --> Full
 ```
 
-Essa distinção parece óbvia depois de escrita. Antes do teste, é fácil pensar no backup do cluster como uma coisa única.
-
-Não é.
+Essa distinção parece óbvia depois de escrita. Antes do teste, é fácil pensar no backup do cluster como uma coisa única. Não é.
 
 ## O alvo de DR precisa ser perigoso por design — e seguro por controle
 
-Usei uma segunda máquina Debian 13, `guionote-hp`, como alvo de recuperação.
-
-A produção continuou funcionando no servidor `guiosoft-info`.
+Usei uma segunda máquina Debian 13, `guionote-hp`, como alvo de recuperação. A produção continuou funcionando no servidor `guiosoft-info`.
 
 Restaurar o datastore de produção em outra máquina traz um risco importante: os workloads restaurados podem acreditar que estão em produção e tentar acessar serviços externos.
 
-Por isso o alvo recebe uma barreira independente de nftables antes do restore.
+Por isso o alvo recebe uma barreira independente de nftables antes do restore. Ela permite loopback, LAN e redes internas do Kubernetes, mas rejeita o restante do tráfego IPv4/IPv6 de saída e forwarding.
 
-Ela permite loopback, LAN e redes internas do Kubernetes, mas rejeita o restante do tráfego IPv4/IPv6 de saída e forwarding.
+```mermaid
+flowchart LR
+    DR[Cluster DR restaurado] --> LAN[LAN]
+    DR --> Pods[10.42.0.0/16]
+    DR --> Services[10.43.0.0/16]
+    DR -. bloqueado .-> Internet((Internet))
+```
 
 Em outras palavras: eu quero que o cluster restaurado funcione o suficiente para ser examinado, mas não quero que ele converse com a Internet.
 
@@ -53,9 +56,7 @@ Uma das primeiras descobertas foi que restaurar apenas banco e token enquanto se
 
 A estratégia foi alterada: durante o restore, os materiais do target são preservados em uma área de segurança, o datastore é restaurado e o K3s reconstrói o bootstrap a partir do estado recuperado.
 
-Esse é exatamente o tipo de detalhe que um arquivo de backup existente não revela.
-
-Só aparece quando alguém tenta inicializar o sistema restaurado.
+Esse é exatamente o tipo de detalhe que um arquivo de backup existente não revela. Só aparece quando alguém tenta inicializar o sistema restaurado.
 
 ## O segundo problema: PersistentVolumes locais lembram do servidor antigo
 
@@ -67,22 +68,22 @@ Esses campos não podem simplesmente ser corrigidos com um patch comum.
 
 A transação que funcionou foi mais cuidadosa:
 
-1. manter writers recuperados em zero réplicas;
-2. mudar reclaim policy para `Retain`;
-3. preservar manifests;
-4. remover PVC/PV antigos na ordem correta;
-5. recriar os PVs com path do DR e affinity para o futuro hostname DR;
-6. recriar PVCs pre-bound por `volumeName`;
-7. confirmar novos UIDs/claimRefs e estado `Bound`;
-8. somente depois ativar o node e os workloads.
+```mermaid
+flowchart TD
+    A[Writers em zero réplicas] --> B[ReclaimPolicy = Retain]
+    B --> C[Preservar manifests]
+    C --> D[Remover PVC/PV antigos]
+    D --> E[Recriar PV com path e affinity do DR]
+    E --> F[Recriar PVC pre-bound por volumeName]
+    F --> G[Validar UID, claimRef e Bound]
+    G --> H[Ativar node e workloads]
+```
 
 Também apareceu outro detalhe: Pods restaurados em `Terminating` ainda podiam referenciar PVCs protegidos. A solução segura não era arrancar finalizers indiscriminadamente, mas identificar e remover somente os Pods que bloqueavam a transação.
 
 ## O terceiro problema: o cluster restaurado começa sem o node DR
 
-Durante o restore isolado, o K3s precisa iniciar em modo agentless (`disable-agent:true`).
-
-Nesse momento, a API pode conter apenas o Node restaurado da produção. O novo node ainda não existe.
+Durante o restore isolado, o K3s precisa iniciar em modo agentless (`disable-agent:true`). Nesse momento, a API pode conter apenas o Node restaurado da produção. O novo node ainda não existe.
 
 Isso significa que o remapeamento de PV precisa aceitar node affinity para um **hostname futuro**. O objeto Node será registrado apenas quando o agent for ativado depois.
 
@@ -136,17 +137,13 @@ Antes do teste, eu tinha backups.
 
 Depois do teste, eu tinha uma lista de suposições que estavam erradas:
 
-```text
-backup do datastore != cluster executável
-
-dados do PV != PV utilizável em outro node
-
-imagem no containerd != backup OCI confiável
-
-Git disponível hoje != Git disponível durante DR
-
-script terminou 0 != pós-condição realmente satisfeita
-```
+| Suposição | Realidade encontrada |
+| --- | --- |
+| Backup do datastore | não garante cluster executável |
+| Dados do PV | não garantem PV utilizável em outro node |
+| Imagem no containerd | não garante backup OCI confiável |
+| Git disponível hoje | não garante Git disponível durante DR |
+| Script terminou com 0 | não garante pós-condição satisfeita |
 
 Essa é a diferença que passei a enxergar entre backup e Disaster Recovery.
 
