@@ -32,18 +32,15 @@ Já havia serviços executando diretamente no host. Eu não queria que a adoçã
 
 A arquitetura inicial, portanto, precisou aceitar dois mundos durante algum tempo:
 
-```text
-Internet
-   |
-Cloudflare
-   |
-Debian 13
-   |-- serviços ainda no host
-   |
-   `-- K3s
-       |-- Traefik
-       |-- Services
-       `-- workloads migrados
+```mermaid
+flowchart TB
+    Internet((Internet)) --> CF[Cloudflare]
+    CF --> Host[Debian 13]
+    Host --> Legacy[Serviços ainda no host]
+    Host --> K3s[K3s]
+    K3s --> Traefik[Traefik]
+    Traefik --> Services[Services]
+    Services --> Workloads[Workloads migrados]
 ```
 
 Cada aplicação poderia ser movida individualmente. A rota pública só seria alterada depois que o workload correspondente estivesse validado no K3s.
@@ -54,10 +51,10 @@ Essa estratégia trouxe uma propriedade que considero importante em qualquer mig
 
 O host também executava Docker. Portanto, antes de instalar o cluster, defini explicitamente as redes do K3s:
 
-```text
-Pod CIDR:     10.42.0.0/16
-Service CIDR: 10.43.0.0/16
-```
+| Rede | CIDR |
+| --- | --- |
+| Pods | `10.42.0.0/16` |
+| Services | `10.43.0.0/16` |
 
 A intenção era mantê-las longe das bridges Docker existentes na faixa `172.x`.
 
@@ -71,20 +68,15 @@ Para publicar serviços, eu já utilizava Cloudflare Tunnel. Como o túnel é es
 
 A arquitetura alvo ficou assim:
 
-```text
-Internet
-   |
-Cloudflare DNS / Tunnel
-   |
-cloudflared no K3s
-   |
-Traefik
-   |
-Ingress
-   |
-Service
-   |
-Pod
+```mermaid
+flowchart LR
+    Internet((Internet)) --> CF[Cloudflare DNS]
+    CF --> Tunnel[Cloudflare Tunnel]
+    Tunnel --> Cloudflared[cloudflared no K3s]
+    Cloudflared --> Traefik[Traefik]
+    Traefik --> Ingress[Ingress]
+    Ingress --> Service[Service]
+    Service --> Pod[Pod]
 ```
 
 Tecnicamente seria possível fazer o `cloudflared` apontar diretamente para alguns Services.
@@ -115,25 +107,16 @@ Eu não queria uma ferramenta tentando controlar tudo.
 
 Dividi as responsabilidades:
 
-```text
-Ansible
-  -> Debian
-  -> pacotes
-  -> K3s
-  -> diretórios
-  -> firewall
-  -> configuração do host
+```mermaid
+flowchart TB
+    Repo[(Repositório)]
+    Repo --> Ansible[Ansible]
+    Repo --> Terraform[Terraform]
+    Repo --> GitOps[Kubernetes / Helm / Flux]
 
-Terraform
-  -> recursos externos
-  -> Cloudflare
-  -> storage off-host de backup
-
-Kubernetes / Helm / Flux
-  -> recursos dentro do cluster
-  -> aplicações
-  -> observabilidade
-  -> configuração declarativa dos workloads
+    Ansible --> Host[Debian, pacotes, K3s, diretórios e firewall]
+    Terraform --> External[Cloudflare e storage off-host]
+    GitOps --> Cluster[Aplicações, observabilidade e estado declarativo]
 ```
 
 Essa separação acabou sendo bastante útil. O host físico possui um ciclo de vida diferente de um Deployment Kubernetes, e ambos possuem um ciclo diferente de um recurso externo.
