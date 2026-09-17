@@ -12,15 +12,14 @@ Foi por isso que a etapa seguinte do meu homelab não foi instalar mais uma apli
 
 O projeto acabou adotando uma separação simples:
 
-```text
-Ansible
-  -> estado do Debian e K3s
-
-Terraform
-  -> recursos externos
-
-Flux / Kubernetes / Helm
-  -> estado interno do cluster
+```mermaid
+flowchart LR
+    Repo[(Repositório)] --> Ansible
+    Repo --> Terraform
+    Repo --> Flux[Flux / Kubernetes / Helm]
+    Ansible --> Host[Debian e K3s]
+    Terraform --> External[Recursos externos]
+    Flux --> Cluster[Estado interno do cluster]
 ```
 
 Não quis usar Terraform para instalar K3s no servidor físico, nem Flux para configurar o Debian.
@@ -47,12 +46,10 @@ A escolha foi proposital: pequeno, stateless, declarativo e com rollback simples
 
 A dependência ficou explícita:
 
-```text
-namespace
-   |
-secret SOPS
-   |
-cloudflared
+```mermaid
+flowchart LR
+    NS[Namespace] --> Secret[Secret SOPS]
+    Secret --> Cloudflared[cloudflared]
 ```
 
 Depois de validar essa cadeia, fiz testes de drift manual, mudança versionada e rollback pelo Git.
@@ -67,21 +64,12 @@ Minha regra é simples: nenhum secret em texto puro deve ser versionado.
 
 Os manifests sensíveis são cifrados com SOPS + age. O recipient público pode permanecer no repositório. A identidade privada não.
 
-O fluxo é aproximadamente:
-
-```text
-Git
- |
- | Secret cifrado com SOPS
- v
-Flux
- |
- | usa identidade age runtime
- v
-Secret Kubernetes
- |
- v
-workload
+```mermaid
+flowchart LR
+    Git[(Git: Secret cifrado)] --> Flux
+    Age[Identidade age em runtime] --> Flux
+    Flux --> Secret[Kubernetes Secret]
+    Secret --> Workload
 ```
 
 Nos manifests SOPS, metadata permanece legível e apenas `data`/`stringData` são cifrados. Isso mantém o arquivo identificável sem revelar o conteúdo sensível.
@@ -102,18 +90,12 @@ Para testar reconciliação sem provocar indisponibilidade, escalei manualmente 
 
 Depois de uma reconciliação, o Deployment voltou para uma réplica, exatamente como declarado no Git, e o endpoint continuou respondendo.
 
-A ideia do teste não era provar que `kubectl scale` funciona. Era confirmar esta cadeia:
-
-```text
-estado declarado no Git
-        !=
-estado manual no cluster
-        |
-        v
-Flux detecta/reconcilia
-        |
-        v
-estado volta ao Git
+```mermaid
+stateDiagram-v2
+    [*] --> Declarado: estado no Git
+    Declarado --> Drift: alteração manual
+    Drift --> Reconciliado: Flux detecta e reconcilia
+    Reconciliado --> Declarado: estado volta ao Git
 ```
 
 ## Adotar recursos existentes sem recriá-los
@@ -128,12 +110,9 @@ Os HelmReleases foram declarados com `releaseName`, `targetNamespace` e `storage
 
 Depois foram ativados um a um, em uma ordem conservadora:
 
-```text
-Alloy
-  -> OpenTelemetry Collector
-  -> Tempo
-  -> Loki
-  -> kube-prometheus-stack
+```mermaid
+flowchart LR
+    Alloy --> OTel[OpenTelemetry Collector] --> Tempo --> Loki --> KPS[kube-prometheus-stack]
 ```
 
 A cada etapa eu validava HelmRelease Ready, release runtime deployed, Pods, PVCs e os fluxos funcionais de métricas, logs e traces.
@@ -176,11 +155,12 @@ Não é apenas organização de YAML. É redução de blast radius: um host de r
 
 Depois dessa etapa, o repositório passou a representar uma parte muito maior do sistema:
 
-```text
-Git -> Flux -> Kubernetes
-Git cifrado -> SOPS/age -> Secrets
-Ansible -> host/K3s
-Terraform -> recursos externos
+```mermaid
+flowchart LR
+    Git[(Git)] --> Flux --> Kubernetes
+    Encrypted[Git cifrado] --> SOPS[SOPS / age] --> Secrets
+    Ansible --> Host[Host / K3s]
+    Terraform --> External[Recursos externos]
 ```
 
 Mas a pergunta de reconstrução ainda não estava respondida.
