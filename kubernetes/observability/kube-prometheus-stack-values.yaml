@@ -63,6 +63,15 @@ prometheus:
 
 grafana:
   enabled: true
+  grafana.ini:
+    plugins:
+      # Grafana 13.2 packages Prometheus/Tempo and other data sources as
+      # standalone preinstalled plugins. The distroless image keeps the
+      # bundled plugin directory read-only, so an automatic startup update
+      # can stop a working bundled plugin and then fail replacing its files.
+      # Keep the image-bundled versions immutable and update them together
+      # with the Grafana image/Helm release.
+      preinstall_auto_update: false
   ingress:
     enabled: false
   persistence:
