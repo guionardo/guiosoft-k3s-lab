@@ -22,3 +22,15 @@ Os artigos estão disponíveis em **Português**, **English** e **Español**. Di
 Os textos foram escritos a partir do que foi efetivamente implementado e validado neste repositório. Números de versões, RTO, janelas de consistência e resultados de testes devem ser atualizados se novos rehearsals alterarem o estado do projeto antes da publicação.
 
 A intenção é publicar os artigos separadamente, mantendo cada texto autocontido e usando o final de um artigo como ponte natural para o próximo. As três versões linguísticas devem permanecer estruturalmente alinhadas, preservando os mesmos fatos, medições e diagramas.
+
+## Catálogo de publicação
+
+O arquivo `catalog.json` é a fonte canônica dos metadados necessários para
+publicar esta série no portal Astro `guionardo/guionardofurlan.com.br`. Ele
+relaciona, por artigo, os três fontes PT/EN/ES, `translationKey`, slugs,
+descrições, tags e nomes de arquivo de destino.
+
+Para adicionar uma nova parte à série, crie os três Markdown numerados e inclua
+uma única entrada no catálogo. O validador exige que o conjunto esteja completo
+nos três idiomas. O importador do portal descobre a nova parte pelo catálogo,
+sem exigir alteração em seu código.
