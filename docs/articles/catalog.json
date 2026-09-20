@@ -1,0 +1,254 @@
+{
+  "seriesKey": "homelab-k3s",
+  "articles": [
+    {
+      "order": 1,
+      "translationKey": "homelab-k3s",
+      "sources": {
+        "pt": "01-k3s-homelab.md",
+        "en": "en/01-k3s-homelab.md",
+        "es": "es/01-k3s-homelab.md"
+      },
+      "siteFiles": {
+        "pt": "k3s-homelab.pt.md",
+        "en": "k3s-homelab.en.md",
+        "es": "k3s-homelab.es.md"
+      },
+      "slugs": {
+        "pt": "k3s-homelab",
+        "en": "k3s-homelab-debian-server",
+        "es": "k3s-homelab-servidor-debian"
+      },
+      "descriptions": {
+        "pt": "Como um servidor Debian virou um cluster K3s single-node com Traefik, Cloudflare Tunnel, storage e firewall — sem migração big bang.",
+        "en": "How a Debian server became a single-node K3s cluster with Traefik, Cloudflare Tunnel, storage, and firewall — without a big-bang migration.",
+        "es": "Cómo un servidor Debian se convirtió en un clúster K3s de un solo nodo con Traefik, Cloudflare Tunnel, almacenamiento y firewall — sin una migración tipo big bang."
+      },
+      "tags": {
+        "pt": [
+          "kubernetes",
+          "homelab",
+          "infraestrutura"
+        ],
+        "en": [
+          "kubernetes",
+          "homelab",
+          "infrastructure"
+        ],
+        "es": [
+          "kubernetes",
+          "homelab",
+          "infraestructura"
+        ]
+      }
+    },
+    {
+      "order": 2,
+      "translationKey": "homelab-observability",
+      "sources": {
+        "pt": "02-observabilidade.md",
+        "en": "en/02-observability.md",
+        "es": "es/02-observabilidad.md"
+      },
+      "siteFiles": {
+        "pt": "observability.pt.md",
+        "en": "observability.en.md",
+        "es": "observability.es.md"
+      },
+      "slugs": {
+        "pt": "observabilidade",
+        "en": "observability",
+        "es": "observabilidad"
+      },
+      "descriptions": {
+        "pt": "Métricas, logs e traces em um cluster single-node: a stack Prometheus/Loki/Tempo, correlação por trace_id e o custo real da observabilidade.",
+        "en": "Metrics, logs, and traces on a single-node cluster: the Prometheus/Loki/Tempo stack, trace_id correlation, and the real cost of observability.",
+        "es": "Métricas, registros y trazas en un clúster de un solo nodo: la pila Prometheus/Loki/Tempo, la correlación por trace_id y el costo real de la observabilidad."
+      },
+      "tags": {
+        "pt": [
+          "kubernetes",
+          "homelab",
+          "observabilidade"
+        ],
+        "en": [
+          "kubernetes",
+          "homelab",
+          "observability"
+        ],
+        "es": [
+          "kubernetes",
+          "homelab",
+          "observabilidad"
+        ]
+      }
+    },
+    {
+      "order": 3,
+      "translationKey": "homelab-gitops",
+      "sources": {
+        "pt": "03-gitops-secrets-iac.md",
+        "en": "en/03-gitops-secrets-iac.md",
+        "es": "es/03-gitops-secrets-iac.md"
+      },
+      "siteFiles": {
+        "pt": "gitops-secrets-iac.pt.md",
+        "en": "gitops-secrets-iac.en.md",
+        "es": "gitops-secrets-iac.es.md"
+      },
+      "slugs": {
+        "pt": "gitops-secrets-iac",
+        "en": "gitops-secrets-infrastructure",
+        "es": "gitops-secrets-infraestructura"
+      },
+      "descriptions": {
+        "pt": "GitOps com Flux, secrets com SOPS + age e infraestrutura reproduzível: como o repositório passou a ser dono de cada estado do cluster.",
+        "en": "GitOps with Flux, secrets with SOPS + age, and reproducible infrastructure: how the repository became the owner of each piece of cluster state.",
+        "es": "GitOps con Flux, secrets con SOPS + age e infraestructura reproducible: cómo el repositorio pasó a ser dueño de cada estado del clúster."
+      },
+      "tags": {
+        "pt": [
+          "kubernetes",
+          "homelab",
+          "gitops"
+        ],
+        "en": [
+          "kubernetes",
+          "homelab",
+          "gitops"
+        ],
+        "es": [
+          "kubernetes",
+          "homelab",
+          "gitops"
+        ]
+      }
+    },
+    {
+      "order": 4,
+      "translationKey": "homelab-backup-dr",
+      "sources": {
+        "pt": "04-backup-nao-e-dr.md",
+        "en": "en/04-backup-is-not-dr.md",
+        "es": "es/04-backup-no-es-dr.md"
+      },
+      "siteFiles": {
+        "pt": "backup-nao-e-dr.pt.md",
+        "en": "backup-is-not-dr.en.md",
+        "es": "backup-no-es-dr.es.md"
+      },
+      "slugs": {
+        "pt": "backup-nao-e-dr",
+        "en": "backup-is-not-dr",
+        "es": "backup-no-es-dr"
+      },
+      "descriptions": {
+        "pt": "Backup existente não é Disaster Recovery: o que restores reais revelaram sobre control plane, PersistentVolumes, imagens OCI e recuperação offline.",
+        "en": "Having backups is not the same as having Disaster Recovery: what real restores revealed about the control plane, PersistentVolumes, OCI images, and offline recovery.",
+        "es": "Tener backups no equivale a tener Disaster Recovery: lo que restores reales revelaron sobre control plane, PersistentVolumes, imágenes OCI y recovery offline."
+      },
+      "tags": {
+        "pt": [
+          "kubernetes",
+          "homelab",
+          "disaster-recovery"
+        ],
+        "en": [
+          "kubernetes",
+          "homelab",
+          "disaster-recovery"
+        ],
+        "es": [
+          "kubernetes",
+          "homelab",
+          "disaster-recovery"
+        ]
+      }
+    },
+    {
+      "order": 5,
+      "translationKey": "homelab-measuring-dr",
+      "sources": {
+        "pt": "05-medindo-disaster-recovery.md",
+        "en": "en/05-measuring-disaster-recovery.md",
+        "es": "es/05-midiendo-disaster-recovery.md"
+      },
+      "siteFiles": {
+        "pt": "medindo-disaster-recovery.pt.md",
+        "en": "measuring-disaster-recovery.en.md",
+        "es": "midiendo-disaster-recovery.es.md"
+      },
+      "slugs": {
+        "pt": "medindo-disaster-recovery",
+        "en": "measuring-disaster-recovery",
+        "es": "midiendo-disaster-recovery"
+      },
+      "descriptions": {
+        "pt": "Como rehearsals mensuráveis e automação determinística reduziram o RTO observado do meu cluster K3s de 1h07m09s para 47m03s.",
+        "en": "How measurable rehearsals and deterministic automation reduced the observed RTO of my K3s cluster from 1h07m09s to 47m03s.",
+        "es": "Cómo rehearsals medibles y automatización determinista redujeron el RTO observado de mi clúster K3s de 1h07m09s a 47m03s."
+      },
+      "tags": {
+        "pt": [
+          "kubernetes",
+          "homelab",
+          "disaster-recovery"
+        ],
+        "en": [
+          "kubernetes",
+          "homelab",
+          "disaster-recovery"
+        ],
+        "es": [
+          "kubernetes",
+          "homelab",
+          "disaster-recovery"
+        ]
+      }
+    },
+    {
+      "order": 6,
+      "translationKey": "homelab-consistent-backups",
+      "sources": {
+        "pt": "06-backup-consistente.md",
+        "en": "en/06-consistent-backups.md",
+        "es": "es/06-backups-consistentes.md"
+      },
+      "siteFiles": {
+        "pt": "backups-consistentes.pt.md",
+        "en": "consistent-backups.en.md",
+        "es": "backups-consistentes.es.md"
+      },
+      "slugs": {
+        "pt": "backups-consistentes",
+        "en": "consistent-backups",
+        "es": "backups-consistentes"
+      },
+      "descriptions": {
+        "pt": "Como transformei backups independentes de control plane e PVs em recovery sets com identidade exata e uma janela de consistência medida em 64 segundos.",
+        "en": "How independent control-plane and PV backups became recovery sets with exact identity and a measured 64-second consistency window.",
+        "es": "Cómo backups independientes de control plane y PVs se convirtieron en recovery sets con identidad exacta y una ventana de consistencia medida en 64 segundos."
+      },
+      "tags": {
+        "pt": [
+          "kubernetes",
+          "homelab",
+          "backup",
+          "disaster-recovery"
+        ],
+        "en": [
+          "kubernetes",
+          "homelab",
+          "backup",
+          "disaster-recovery"
+        ],
+        "es": [
+          "kubernetes",
+          "homelab",
+          "backup",
+          "disaster-recovery"
+        ]
+      }
+    }
+  ]
+}
