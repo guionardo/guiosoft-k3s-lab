@@ -12,6 +12,7 @@ Mermaid syntax itself is rendered separately in CI with mermaid-cli.
 """
 from __future__ import annotations
 
+import json
 import re
 import sys
 from pathlib import Path
@@ -19,7 +20,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 ARTICLES = ROOT / "docs" / "articles"
 LANG_DIRS = {"pt": ARTICLES, "en": ARTICLES / "en", "es": ARTICLES / "es"}
-EXPECTED = set(range(1, 7))
+CATALOG = ARTICLES / "catalog.json"
 MERMAID_BLOCK = re.compile(r"```mermaid\s*\n(.*?)```", re.DOTALL)
 IMAGE = re.compile(r"!\[[^\]]*\]\(([^)\s]+)(?:\s+[^)]*)?\)")
 
@@ -55,15 +56,41 @@ def main() -> int:
     errors: list[str] = []
     all_articles: list[Path] = []
 
+    try:
+        catalog = json.loads(CATALOG.read_text(encoding="utf-8"))
+        entries = catalog["articles"]
+        expected = {int(entry["order"]) for entry in entries}
+        if len(expected) != len(entries):
+            errors.append("catalog.json: duplicate article order")
+        keys = [entry["translationKey"] for entry in entries]
+        if len(set(keys)) != len(keys):
+            errors.append("catalog.json: duplicate translationKey")
+        for entry in entries:
+            for field in ("sources", "siteFiles", "slugs", "descriptions", "tags"):
+                if set(entry[field]) != set(LANG_DIRS):
+                    errors.append(f"catalog.json: article {entry['order']} field {field} must contain pt/en/es")
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        print(f"Article validation FAILED\\n- invalid catalog.json: {exc}", file=sys.stderr)
+        return 1
+
     for lang, directory in LANG_DIRS.items():
         articles = numbered_articles(directory)
         found = set(articles)
-        if found != EXPECTED:
-            errors.append(f"{lang}: expected article numbers {sorted(EXPECTED)}, found {sorted(found)}")
+        if found != expected:
+            errors.append(f"{lang}: expected article numbers {sorted(expected)}, found {sorted(found)}")
         all_articles.extend(articles.values())
 
-    if len(all_articles) != 18:
-        errors.append(f"expected 18 articles, found {len(all_articles)}")
+    expected_total = len(expected) * len(LANG_DIRS)
+    if len(all_articles) != expected_total:
+        errors.append(f"expected {expected_total} articles, found {len(all_articles)}")
+
+    for entry in entries:
+        order = int(entry["order"])
+        for lang, relative in entry["sources"].items():
+            path = ARTICLES / relative
+            actual = numbered_articles(LANG_DIRS[lang]).get(order)
+            if actual is None or actual.resolve() != path.resolve():
+                errors.append(f"catalog.json: article {order}/{lang} source does not match numbered article: {relative}")
 
     header_presence: list[tuple[Path, bool]] = []
     for path in sorted(all_articles):
