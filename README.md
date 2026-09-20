@@ -1,6 +1,43 @@
 # guiosoft-k3s-lab
 
-Infrastructure-as-code and operational tooling for the `guiosoft.info` self-hosted K3s platform.
+A real self-hosted Kubernetes platform built on Debian 13 and K3s, with GitOps, encrypted secrets, full observability, off-host backups and disaster recovery that has been exercised on a separate physical host.
+
+This repository is both the infrastructure source and the engineering record behind the project: architecture decisions, automation, failures found during rehearsals, measured recovery results and the article series derived from that work.
+
+> **Want the visual tour first?** Open the [project showcase](docs/showcase/README.md) for architecture diagrams, validated outcomes and the evidence map.
+
+## Architecture at a glance
+
+```mermaid
+flowchart LR
+    Internet --> CF[Cloudflare]
+    CF --> Tunnel[Cloudflare Tunnel]
+    Tunnel --> Traefik
+    Traefik --> K3s[K3s workloads]
+
+    Git[Git repository] --> Flux
+    Flux --> K3s
+    SOPS[SOPS + age] --> Flux
+
+    K3s --> Obs[Prometheus · Grafana · Loki · Tempo · OTel]
+    K3s --> Backup[Restic / R2]
+    Backup --> DR[Offline DR bundle]
+```
+
+## Demonstrated outcomes
+
+| Capability | Validated result |
+|---|---|
+| GitOps | Flux reconciles cloudflared, Firecrawl and observability |
+| Encrypted secrets | SOPS + age runtime recovery tested from encrypted Git state |
+| Observability | Metrics, logs and distributed traces validated end to end |
+| Full DR | Recovered on a separate Debian 13 physical host |
+| Offline recovery | Recovery bundle includes control plane, PV data, OCI images and tooling |
+| RTO | **1h07m09s → 47m03s** between measured rehearsals |
+| RTO improvement | **29.9%** |
+| Consistent backup | **64-second** bounded-consistency recovery-set window |
+
+The numbers above are measured project results, not availability targets or theoretical estimates. Detailed evidence and context are linked from the [showcase](docs/showcase/README.md).
 
 ## Current platform
 
@@ -13,6 +50,17 @@ Infrastructure-as-code and operational tooling for the `guiosoft.info` self-host
 - Persistent local-path volume backup and disaster-recovery tooling.
 - Verified bounded-consistency recovery sets pairing control-plane and persistent-volume Restic snapshots while persistent writers are quiesced.
 - Verified portable offline DR bundle v2 bound to one exact bounded-consistency recovery set, including control-plane, PV, OCI and recovery tooling material.
+
+## Explore
+
+- [Visual project showcase](docs/showcase/README.md)
+- [Architecture](docs/architecture.md)
+- [Current state](docs/current-state.md)
+- [Observability](docs/observability.md)
+- [GitOps](docs/gitops.md)
+- [Backup](docs/backup.md)
+- [Disaster recovery](docs/disaster-recovery.md)
+- [Article series — PT / EN / ES](docs/articles/README.md)
 
 ## Disaster recovery
 
