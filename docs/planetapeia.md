@@ -38,7 +38,7 @@
 
 ### Drill de restore (antes do cutover)
 
-1. Dispara o job manual: `kubectl -n planetapeia create job --from=cronjob/planetapeia-db-backup planetapeia-db-backup-drill`
+1. Dispara o job manual (removendo uma execução anterior, se houver): `kubectl -n planetapeia delete job planetapeia-db-backup-drill --ignore-not-found && kubectl -n planetapeia create job --from=cronjob/planetapeia-db-backup planetapeia-db-backup-drill`
 2. Aguarda: `kubectl -n planetapeia wait --for=condition=complete job/planetapeia-db-backup-drill --timeout=180s`
 3. Extrai o dump mais recente com pod persistente (NUNCA use `kubectl run --rm -i ... > arquivo`: o attach corre com o fim do pod e corrompe o stream mesmo com exit 0):
 
