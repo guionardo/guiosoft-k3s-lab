@@ -44,6 +44,13 @@ spec:
                 secretKeyRef:
                   name: planetapeia-secrets
                   key: MARIADB_PASSWORD
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
       containers:
         - name: api
           image: ghcr.io/planetapeia/planetapeia-api:sha-32a21723e86f85d620362c48b73c4f2baad1edaf

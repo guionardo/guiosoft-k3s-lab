@@ -38,7 +38,8 @@ spec:
                     -h planetapeia-db -u root \
                     --single-transaction --routines --triggers \
                     --default-character-set=utf8mb4 planetapeia > "$tmp"
-                  gzip -c "$tmp" > "$out"
+                  gzip -c "$tmp" > "$out.tmp"
+                  mv "$out.tmp" "$out"
                   rm -f "$tmp"
                   find /backups -name 'planetapeia-*.sql.gz' -mtime +14 -delete
               env:

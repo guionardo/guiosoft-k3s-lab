@@ -24,13 +24,24 @@
 
 - `kubernetes/secrets/planetapeia/planetapeia-secrets.sops.yaml` e `ghcr-pull.sops.yaml`.
 - Editar no nó (SOPS+age): `make secret-edit FILE=kubernetes/secrets/planetapeia/planetapeia-secrets.sops.yaml`.
-- Validar: `make secret-validate FILE=...`; reconciliar: `make planetapeia-...` → `kubectl annotate gitrepository flux-system -n flux-system reconcile.fluxcd.io/requestedAt="$(date +%s)" --overwrite`.
+- Validar: `make secret-validate FILE=...`; reconciliar: `kubectl -n flux-system annotate gitrepository flux-system reconcile.fluxcd.io/requestedAt="$(date +%s)" --overwrite`.
 
 ## Backup e restore
 
 - Backup manual (imediato):
   `kubectl -n planetapeia create job --from=cronjob/planetapeia-db-backup planetapeia-db-backup-manual`
-- Listar: `kubectl -n planetapeia exec planetapeia-db-0 -- ls -lh /backups` (via pod de backup: `kubectl -n planetapeia run backups-view --rm -it --image=mariadb:11.8 --overrides='{"spec":{"containers":[{"name":"c","image":"mariadb:11.8","command":["ls","-lh","/backups"],"volumeMounts":[{"name":"b","mountPath":"/backups"}]}],"volumes":[{"name":"b","persistentVolumeClaim":{"claimName":"planetapeia-backups"}}]}}'`)
+- Listar dumps (o PVC `planetapeia-backups` não é montado em `planetapeia-db-0`; use o pod auxiliar):
+
+  ```bash
+  kubectl -n planetapeia delete pod backups-read --ignore-not-found
+  kubectl -n planetapeia run backups-read --restart=Never \
+    --image=mariadb:11.8@sha256:6422478cb8e159f080fb1d8ccf65101e26fe51385787fde7d16c3b165a331f15 \
+    --overrides='{"spec":{"containers":[{"name":"c","image":"mariadb:11.8@sha256:6422478cb8e159f080fb1d8ccf65101e26fe51385787fde7d16c3b165a331f15","command":["sleep","infinity"],"volumeMounts":[{"name":"b","mountPath":"/backups"}]}],"volumes":[{"name":"b","persistentVolumeClaim":{"claimName":"planetapeia-backups"}}]}}'
+  kubectl -n planetapeia wait --for=condition=Ready pod/backups-read --timeout=60s
+  kubectl -n planetapeia exec backups-read -- ls -lh /backups
+  kubectl -n planetapeia delete pod backups-read --ignore-not-found
+  ```
+- Semanal: conferir `kubectl -n planetapeia get cronjob planetapeia-db-backup -o jsonpath='{.status.lastSuccessfulTime}'` (não há alerta de falha de backup).
 - Restore (a partir de um dump):
   ```bash
   kubectl -n planetapeia exec -i planetapeia-db-0 -- sh -c 'MYSQL_PWD="$MARIADB_ROOT_PASSWORD" mariadb -uroot planetapeia' < dump.sql
@@ -64,6 +75,18 @@
    kubectl -n planetapeia exec planetapeia-db-0 -- sh -c 'MYSQL_PWD="$MARIADB_ROOT_PASSWORD" mariadb -uroot -e "DROP DATABASE planetapeia_drill"'
    rm -f /tmp/planetapeia-drill.sql.gz
    ```
+
+## Agente de impressão
+
+- Download: `planetapeia-print-agent.exe` da release `agent-v0.1.1` (GitHub releases do repo `Planetapeia/planetapeia`).
+- Executar na máquina do check-in (Windows). O SmartScreen pode alertar (binário sem assinatura): "Mais informações" → "Executar assim mesmo"; considere adicionar ao autostart.
+- Verificar: `curl http://127.0.0.1:17890/health` → `{"status":"ok"}`.
+- **UAT antes do cutover:** executar com `PLANETAPEIA_PRINT_ORIGIN=https://planetapeia-preview.guiosoft.info` (o default permite só o host de produção):
+
+  ```powershell
+  $env:PLANETAPEIA_PRINT_ORIGIN="https://planetapeia-preview.guiosoft.info"; .\planetapeia-print-agent.exe
+  ```
+- Check-in: navegador em `https://planetapeia-preview.guiosoft.info/admin/checkin` (liberar uma data no preview antes, pois o dump restaurado não tem data liberada).
 
 ## Cutover e rollback
 
