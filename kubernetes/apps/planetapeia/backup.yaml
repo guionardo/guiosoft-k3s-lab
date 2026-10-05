@@ -33,10 +33,13 @@ spec:
                 - |
                   set -e
                   out="/backups/planetapeia-$(date +%Y%m%d-%H%M%S).sql.gz"
+                  tmp="/tmp/planetapeia-dump.sql"
                   MYSQL_PWD="$MARIADB_ROOT_PASSWORD" mariadb-dump \
                     -h planetapeia-db -u root \
                     --single-transaction --routines --triggers \
-                    --default-character-set=utf8mb4 planetapeia | gzip > "$out"
+                    --default-character-set=utf8mb4 planetapeia > "$tmp"
+                  gzip -c "$tmp" > "$out"
+                  rm -f "$tmp"
                   find /backups -name 'planetapeia-*.sql.gz' -mtime +14 -delete
               env:
                 - name: MARIADB_ROOT_PASSWORD
