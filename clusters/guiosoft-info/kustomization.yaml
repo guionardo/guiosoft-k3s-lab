@@ -10,3 +10,6 @@ resources:
   - firecrawl.yaml
   - monitoring-namespace.yaml
   - observability-helm.yaml
+  - planetapeia-namespace.yaml
+  - planetapeia-secrets.yaml
+  - planetapeia.yaml
