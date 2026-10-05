@@ -36,7 +36,7 @@ validate() {
 
   echo
   echo "Images referenced:"
-  awk '/^[[:space:]]+image:/ {print "- " $2}' "$rendered" | sort -u
+  awk '/^[[:space:]]*(- )?image:/ {print "- " $NF}' "$rendered" | sort -u
 
   floating=0
   while read -r image; do
@@ -46,7 +46,7 @@ validate() {
       *@sha256:*) ;;
       *) echo "floating image: $image"; floating=1 ;;
     esac
-  done < <(awk '/^[[:space:]]+image:/ {print $2}' "$rendered" | sort -u)
+  done < <(awk '/^[[:space:]]*(- )?image:/ {print $NF}' "$rendered" | sort -u)
   if (( floating == 0 )); then
     echo "Image pinning: OK (own images by sha tag, third-party by digest)"
   else
