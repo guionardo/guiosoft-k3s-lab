@@ -46,3 +46,4 @@
 - `kubectl -n planetapeia get pods,svc,ingress`; logs: `kubectl -n planetapeia logs deploy/planetapeia-api`.
 - Teste local do Ingress: `curl -H 'Host: planetapeia-preview.guiosoft.info' http://192.168.88.9/api/healthz`.
 - ImagePullBackOff: verificar `ghcr-pull` e o PAT.
+- PVC `planetapeia-backups` fica `Pending` (WaitForFirstConsumer) até o primeiro job às 03:15; a Kustomization `planetapeia` usa `healthCheckExprs` para aguardar apenas falha real (`Lost`), sem bloquear o health check.
