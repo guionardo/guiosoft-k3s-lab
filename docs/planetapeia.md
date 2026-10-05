@@ -36,6 +36,35 @@
   kubectl -n planetapeia exec -i planetapeia-db-0 -- sh -c 'MYSQL_PWD="$MARIADB_ROOT_PASSWORD" mariadb -uroot planetapeia' < dump.sql
   ```
 
+### Drill de restore (antes do cutover)
+
+1. Dispara o job manual (removendo uma execução anterior, se houver): `kubectl -n planetapeia delete job planetapeia-db-backup-drill --ignore-not-found && kubectl -n planetapeia create job --from=cronjob/planetapeia-db-backup planetapeia-db-backup-drill`
+2. Aguarda: `kubectl -n planetapeia wait --for=condition=complete job/planetapeia-db-backup-drill --timeout=180s`
+3. Extrai o dump mais recente com pod persistente (NUNCA use `kubectl run --rm -i ... > arquivo`: o attach corre com o fim do pod e corrompe o stream mesmo com exit 0):
+
+   ```bash
+   kubectl -n planetapeia delete pod backups-read --ignore-not-found
+   kubectl -n planetapeia run backups-read --restart=Never \
+     --image=mariadb:11.8@sha256:6422478cb8e159f080fb1d8ccf65101e26fe51385787fde7d16c3b165a331f15 \
+     --overrides='{"spec":{"containers":[{"name":"c","image":"mariadb:11.8@sha256:6422478cb8e159f080fb1d8ccf65101e26fe51385787fde7d16c3b165a331f15","command":["sleep","infinity"],"volumeMounts":[{"name":"b","mountPath":"/backups"}]}],"volumes":[{"name":"b","persistentVolumeClaim":{"claimName":"planetapeia-backups"}}]}}'
+   kubectl -n planetapeia wait --for=condition=Ready pod/backups-read --timeout=60s
+   DUMP=$(kubectl -n planetapeia exec backups-read -- sh -c 'ls -t /backups/planetapeia-*.sql.gz | head -1')
+   kubectl -n planetapeia exec backups-read -- cat "$DUMP" > /tmp/planetapeia-drill.sql.gz
+   kubectl -n planetapeia delete pod backups-read --ignore-not-found
+   gzip -t /tmp/planetapeia-drill.sql.gz && echo GZIP_OK
+   ```
+4. Restaura no banco de rascunho e confere a contagem:
+
+   ```bash
+   kubectl -n planetapeia exec planetapeia-db-0 -- sh -c 'MYSQL_PWD="$MARIADB_ROOT_PASSWORD" mariadb -uroot -e "DROP DATABASE IF EXISTS planetapeia_drill; CREATE DATABASE planetapeia_drill CHARACTER SET utf8mb4"'
+   gzip -dc /tmp/planetapeia-drill.sql.gz | kubectl -n planetapeia exec -i planetapeia-db-0 -- sh -c 'MYSQL_PWD="$MARIADB_ROOT_PASSWORD" mariadb -uroot planetapeia_drill'
+   LIVE=$(kubectl -n planetapeia exec planetapeia-db-0 -- sh -c 'MYSQL_PWD="$MARIADB_ROOT_PASSWORD" mariadb -uroot -N -e "SELECT COUNT(*) FROM planetapeia.participants"')
+   DRILL=$(kubectl -n planetapeia exec planetapeia-db-0 -- sh -c 'MYSQL_PWD="$MARIADB_ROOT_PASSWORD" mariadb -uroot -N -e "SELECT COUNT(*) FROM planetapeia_drill.participants"')
+   [ "$LIVE" = "$DRILL" ] && echo "DRILL_OK ($DRILL)" || echo "DIVERGENCIA: live=$LIVE drill=$DRILL"
+   kubectl -n planetapeia exec planetapeia-db-0 -- sh -c 'MYSQL_PWD="$MARIADB_ROOT_PASSWORD" mariadb -uroot -e "DROP DATABASE planetapeia_drill"'
+   rm -f /tmp/planetapeia-drill.sql.gz
+   ```
+
 ## Cutover e rollback
 
 - Cutover: trocar o host do Ingress para `planetapeia.guiosoft.info`, aplicar `redirect 301` no cPanel e validar smoke.

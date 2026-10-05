@@ -31,7 +31,7 @@ spec:
         - name: ghcr-pull
       containers:
         - name: web
-          image: ghcr.io/planetapeia/planetapeia-web:sha-09ee78ad7ca0c69e1da7cfc4425d30544c88eee5
+          image: ghcr.io/planetapeia/planetapeia-web:sha-32a21723e86f85d620362c48b73c4f2baad1edaf
           ports:
             - name: http
               containerPort: 80
