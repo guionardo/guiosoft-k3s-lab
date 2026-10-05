@@ -50,10 +50,20 @@
    kubectl -n planetapeia wait --for=condition=Ready pod/backups-read --timeout=60s
    DUMP=$(kubectl -n planetapeia exec backups-read -- sh -c 'ls -t /backups/planetapeia-*.sql.gz | head -1')
    kubectl -n planetapeia exec backups-read -- cat "$DUMP" > /tmp/planetapeia-drill.sql.gz
-   kubectl -n planetapeia delete pod backups-read
+   kubectl -n planetapeia delete pod backups-read --ignore-not-found
    gzip -t /tmp/planetapeia-drill.sql.gz && echo GZIP_OK
    ```
-4. Restaura no banco de rascunho e confere a contagem (ver plano / Task 9).
+4. Restaura no banco de rascunho e confere a contagem:
+
+   ```bash
+   kubectl -n planetapeia exec planetapeia-db-0 -- sh -c 'MYSQL_PWD="$MARIADB_ROOT_PASSWORD" mariadb -uroot -e "DROP DATABASE IF EXISTS planetapeia_drill; CREATE DATABASE planetapeia_drill CHARACTER SET utf8mb4"'
+   gzip -dc /tmp/planetapeia-drill.sql.gz | kubectl -n planetapeia exec -i planetapeia-db-0 -- sh -c 'MYSQL_PWD="$MARIADB_ROOT_PASSWORD" mariadb -uroot planetapeia_drill'
+   LIVE=$(kubectl -n planetapeia exec planetapeia-db-0 -- sh -c 'MYSQL_PWD="$MARIADB_ROOT_PASSWORD" mariadb -uroot -N -e "SELECT COUNT(*) FROM planetapeia.participants"')
+   DRILL=$(kubectl -n planetapeia exec planetapeia-db-0 -- sh -c 'MYSQL_PWD="$MARIADB_ROOT_PASSWORD" mariadb -uroot -N -e "SELECT COUNT(*) FROM planetapeia_drill.participants"')
+   [ "$LIVE" = "$DRILL" ] && echo "DRILL_OK ($DRILL)" || echo "DIVERGENCIA: live=$LIVE drill=$DRILL"
+   kubectl -n planetapeia exec planetapeia-db-0 -- sh -c 'MYSQL_PWD="$MARIADB_ROOT_PASSWORD" mariadb -uroot -e "DROP DATABASE planetapeia_drill"'
+   rm -f /tmp/planetapeia-drill.sql.gz
+   ```
 
 ## Cutover e rollback
 
