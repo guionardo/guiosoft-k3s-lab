@@ -8,6 +8,11 @@ spec:
   retryInterval: 1m
   timeout: 5m
   wait: true
+  healthCheckExprs:
+    - apiVersion: v1
+      kind: PersistentVolumeClaim
+      failed: has(status.phase) && status.phase == 'Lost'
+      current: "true"
   prune: true
   dependsOn:
     - name: planetapeia-secrets
