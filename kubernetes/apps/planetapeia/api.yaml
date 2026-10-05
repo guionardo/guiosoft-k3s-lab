@@ -29,6 +29,21 @@ spec:
     spec:
       imagePullSecrets:
         - name: ghcr-pull
+      initContainers:
+        - name: wait-db
+          image: mariadb:11.8@sha256:6422478cb8e159f080fb1d8ccf65101e26fe51385787fde7d16c3b165a331f15
+          command: ["sh", "-c"]
+          args:
+            - |
+              until MYSQL_PWD="$MARIADB_PASSWORD" mariadb-admin ping -h planetapeia-db -u planetapeia --silent 2>/dev/null; do
+                echo "aguardando o banco..."; sleep 2
+              done
+          env:
+            - name: MARIADB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: planetapeia-secrets
+                  key: MARIADB_PASSWORD
       containers:
         - name: api
           image: ghcr.io/planetapeia/planetapeia-api:sha-09ee78ad7ca0c69e1da7cfc4425d30544c88eee5
