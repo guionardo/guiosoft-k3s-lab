@@ -1,0 +1,38 @@
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: strip-api
+  namespace: planetapeia
+spec:
+  stripPrefix:
+    prefixes:
+      - /api
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: planetapeia
+  namespace: planetapeia
+  annotations:
+    traefik.ingress.kubernetes.io/router.middlewares: planetapeia-strip-api@kubernetescrd
+spec:
+  ingressClassName: traefik
+  rules:
+    # Preview até o cutover; trocar para planetapeia.guiosoft.info na Task 10.
+    - host: planetapeia-preview.guiosoft.info
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: planetapeia-api
+                port:
+                  name: http
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: planetapeia-web
+                port:
+                  name: http
