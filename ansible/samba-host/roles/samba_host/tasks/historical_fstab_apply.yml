@@ -1,118 +1,34 @@
 ---
-# Estágio separado: apenas fstab; não cria diretórios, não monta e não instala Samba.
-# A chamada é bloqueada no main.yml até autorização específica.
-- name: Exigir autorização específica para editar fstab
+# Disabled in production: this file is NOT imported by roles/samba_host/tasks/main.yml.
+# Do not integrate before reviewing the local tests and approving a host change.
+- name: Explicitly authorize historical fstab stage
   ansible.builtin.assert:
     that:
-      - samba_apply | bool
+      - samba_apply | default(false) | bool
       - samba_fstab_apply | default(false) | bool
       - samba_fstab_confirm | default('') == 'APLICAR_FSTAB_HISTORICO'
-    fail_msg: "fstab bloqueado: exige samba_apply, samba_fstab_apply e confirmação explícita"
+    fail_msg: "fstab stage blocked until separately authorized"
 
-- name: Confirmar utilitários para validar fstab
-  ansible.builtin.command:
-    argv: [findmnt, --help]
-  register: samba_findmnt_help
-  changed_when: false
-
-- name: Exigir suporte a verificação de fstab
-  ansible.builtin.assert:
-    that:
-      - "'--verify' in samba_findmnt_help.stdout"
-    fail_msg: "findmnt sem --verify: operação cancelada"
-
-- name: Confirmar ntfs-3g disponível
-  ansible.builtin.command:
-    argv: [which, mount.ntfs-3g]
-  changed_when: false
-
-- name: Verificar conflitos de destinos no fstab
-  ansible.builtin.assert:
-    that:
-      - >-
-        ((samba_fstab_raw.content | b64decode).splitlines()
-        | reject('match', '^\\s*(#|$)')
-        | select('search', '\\s' ~ (item.path | regex_escape) ~ '\\s')
-        | list | length) == 0
-      - >-
-        ((samba_fstab_raw.content | b64decode).splitlines()
-        | reject('match', '^\\s*(#|$)')
-        | select('match', '^\\s*UUID=' ~ item.uuid ~ '\\s')
-        | list | length) == 0
-    fail_msg: "Conflito no fstab para {{ item.name }}: revisão manual necessária"
-  loop: "{{ samba_shares | selectattr('readonly', 'equalto', true) | list }}"
-  loop_control:
-    label: "{{ item.name }}"
-
-- name: Preparar backup e escrita transacional de fstab
+- name: Stage isolated transaction helper outside fstab
+  ansible.builtin.copy:
+    src: "{{ role_path }}/../../scripts/historical_fstab_transaction.py"
+    dest: /tmp/samba-historical-fstab-transaction.py
+    mode: '0700'
   become: true
-  block:
-    - name: Criar backup de fstab antes de qualquer edição
-      ansible.builtin.copy:
-        src: /etc/fstab
-        dest: "/etc/fstab.samba-pre-{{ ansible_date_time.iso8601_basic_short }}"
-        remote_src: true
-        mode: preserve
-        force: false
-      register: samba_fstab_backup
 
-    - name: Confirmar que backup existe e contém o fstab original
-      ansible.builtin.command:
-        argv: [cmp, -s, /etc/fstab, "/etc/fstab.samba-pre-{{ ansible_date_time.iso8601_basic_short }}"]
-      changed_when: false
+- name: Preview historical fstab changes
+  ansible.builtin.command:
+    argv: [python3, /tmp/samba-historical-fstab-transaction.py, --fstab, /etc/fstab]
+  register: samba_fstab_preview
+  changed_when: false
+  become: true
 
-    - name: Inserir somente as três entradas históricas
-      ansible.builtin.blockinfile:
-        path: /etc/fstab
-        marker: "# {mark} ANSIBLE SAMBA HISTORICAL NTFS"
-        block: |-
-          {% for share in samba_shares | selectattr('readonly', 'equalto', true) | list %}
-          UUID={{ share.uuid }} {{ share.path }} ntfs-3g ro,uid=1000,gid=1000,umask=027,nofail,noauto 0 0
-          {% endfor %}
-        backup: false
-      register: samba_fstab_written
-
-    - name: Validar sintaxe e referências do fstab
-      ansible.builtin.command:
-        argv: [findmnt, --verify, --tab-file, /etc/fstab]
-      changed_when: false
-
-    - name: Conferir presença das três entradas novas
-      ansible.builtin.command:
-        argv: [findmnt, --fstab, --tab-file, /etc/fstab, --mountpoint, "{{ item.path }}", --noheadings, --output, SOURCE,OPTIONS]
-      loop: "{{ samba_shares | selectattr('readonly', 'equalto', true) | list }}"
-      loop_control:
-        label: "{{ item.name }}"
-      register: samba_fstab_postcheck
-      changed_when: false
-
-    - name: Confirmar UUID e opções somente leitura
-      ansible.builtin.assert:
-        that:
-          - "'UUID=' ~ item.item.uuid in item.stdout"
-          - "'ro' in item.stdout.split()[-1].split(',')"
-          - "'noauto' in item.stdout.split()[-1].split(',')"
-      loop: "{{ samba_fstab_postcheck.results }}"
-      loop_control:
-        label: "{{ item.item.name }}"
-
-  rescue:
-    - name: Restaurar fstab original após erro
-      ansible.builtin.copy:
-        src: "/etc/fstab.samba-pre-{{ ansible_date_time.iso8601_basic_short }}"
-        dest: /etc/fstab
-        remote_src: true
-        mode: preserve
-      when:
-        - samba_fstab_backup is defined
-        - not (samba_fstab_backup.failed | default(false))
-        - samba_fstab_written is defined
-        - samba_fstab_written.changed | default(false)
-
-    - name: Interromper após rollback ou falha na preparação
-      ansible.builtin.fail:
-        msg: "Falha ao preparar fstab; verificar backup e estado do arquivo antes de prosseguir"
-
-- name: Informar que montagem permanece desativada
+- name: Show dry-run decision
   ansible.builtin.debug:
-    msg: "fstab preparado com noauto. Nenhum volume foi montado; backup: /etc/fstab.samba-pre-{{ ansible_date_time.iso8601_basic_short }}"
+    var: samba_fstab_preview.stdout
+
+# This file deliberately stops before write: application requires a separate
+# explicit review after local fixture tests and findmnt verification on Debian 13.
+- name: Refuse unvalidated host write
+  ansible.builtin.fail:
+    msg: "No production fstab writing enabled. Review transaction helper and test evidence first."
