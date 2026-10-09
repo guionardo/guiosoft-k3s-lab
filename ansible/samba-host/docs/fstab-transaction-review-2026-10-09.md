@@ -78,3 +78,7 @@ Próxima prioridade: testar falhas injetadas nas fases de backup, detecção de 
 Foram adicionados quatro testes unitários com injeção de falhas: edição concorrente do conteúdo, substituição concorrente do inode, erro ao criar backup e erro no `os.replace`. Todos usam `TemporaryDirectory`, sem alterar o sistema real. **Estes quatro casos ainda não possuem evidência de execução.**
 
 A implementação atual ainda possui uma janela entre a última conferência e `os.replace`: o `flock` só coordena processos que utilizem o mesmo lock. Um editor externo não cooperativo pode escrever nesse intervalo. A falha de `fsync` do diretório após `os.replace` também pode deixar o novo arquivo aplicado apesar de retorno de erro. Portanto, **não existe garantia de rollback após commit**, e a etapa Ansible de escrita continua bloqueada.
+
+## Evidência do operador — macOS, suíte ampliada, 2026-10-09
+
+Após os commits de testes de concorrência e falhas, o operador forneceu a saída de `unittest discover`: **Ran 14 tests in 0.028s**. Doze casos reportaram `ok`, inclusive os quatro cenários novos de falha e concorrência. Dois casos dependentes de `findmnt` foram ignorados (`util-linux findmnt unavailable`). A saída compartilhada não inclui a linha final `OK`, mas não mostra falhas ou erros. A suíte ampliada ainda precisa ser repetida em Linux; não houve execução no servidor K3s.
