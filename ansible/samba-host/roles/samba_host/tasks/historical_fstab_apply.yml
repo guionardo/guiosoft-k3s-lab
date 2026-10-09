@@ -5,8 +5,8 @@
   ansible.builtin.assert:
     that:
       - samba_apply | bool
-      - samba_fstab_apply | bool
-      - samba_fstab_confirm == 'APLICAR_FSTAB_HISTORICO'
+      - samba_fstab_apply | default(false) | bool
+      - samba_fstab_confirm | default('') == 'APLICAR_FSTAB_HISTORICO'
     fail_msg: "fstab bloqueado: exige samba_apply, samba_fstab_apply e confirmação explícita"
 
 - name: Confirmar utilitários para validar fstab
@@ -56,6 +56,11 @@
         force: false
       register: samba_fstab_backup
 
+    - name: Confirmar que backup existe e contém o fstab original
+      ansible.builtin.command:
+        argv: [cmp, -s, /etc/fstab, "/etc/fstab.samba-pre-{{ ansible_date_time.iso8601_basic_short }}"]
+      changed_when: false
+
     - name: Inserir somente as três entradas históricas
       ansible.builtin.blockinfile:
         path: /etc/fstab
@@ -79,7 +84,11 @@
         dest: /etc/fstab
         remote_src: true
         mode: preserve
-      when: samba_fstab_backup is defined and not (samba_fstab_backup.failed | default(false))
+      when:
+        - samba_fstab_backup is defined
+        - not (samba_fstab_backup.failed | default(false))
+        - samba_fstab_written is defined
+        - samba_fstab_written.changed | default(false)
 
     - name: Interromper após rollback ou falha na preparação
       ansible.builtin.fail:
