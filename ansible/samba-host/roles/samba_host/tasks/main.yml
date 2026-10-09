@@ -29,11 +29,11 @@
 
 - name: Inspecionar montagens exatas
   ansible.builtin.command:
-    argv: [findmnt, --mountpoint, "{{ item.path }}", -n, -o, SOURCE,FSTYPE]
+    argv: [findmnt, --mountpoint, "{{ item.path }}", -n, -o, "SOURCE,FSTYPE"]
   loop: "{{ samba_shares }}"
   register: samba_mountpoints
   changed_when: false
-  failed_when: false
+  failed_when: samba_mountpoints.rc not in [0, 1]
 
 - name: Exibir resultado da inspeção
   ansible.builtin.debug:
