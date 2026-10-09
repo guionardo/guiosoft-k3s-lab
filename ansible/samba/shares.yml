@@ -1,0 +1,13 @@
+---
+# Inventory observed on guiosoft-info, 2026-10-09.
+# This is a proposal, NOT an active playbook or automatic deployment.
+# Never format, fsck -y, chmod -R, chown -R or mount NTFS read-write automatically.
+samba_lan_cidr: 192.168.88.0/24
+samba_shares:
+  - { name: Documentos, device: /dev/sdf2, uuid: "01D36FD6673F4300", fstype: ntfs, mount: /mnt/hd500/sdf2 }
+  - { name: Desenvolvimento, device: /dev/nvme0n1p1, uuid: "3ed56e92-ab85-4b9a-8993-d2f1cda6a62e", fstype: ext4, mount: /mnt/dev }
+  - { name: Fotos, device: /dev/sde6, uuid: "8CE4EC1DE4EC0AF2", fstype: ntfs, mount: /mnt/fotos }
+  - { name: BackupAntigo, device: /dev/sde1, uuid: "964C33BF4C3398C7", fstype: ntfs, mount: /mnt/backup-antigo }
+  - { name: ProjetosAntigos, device: /dev/sde3, uuid: "DA087AB8087A92ED", fstype: ntfs, mount: /mnt/projetos-antigos }
+  - { name: Temporarios, device: /dev/sdf3, uuid: "1068AFBC68AF9ECA", fstype: ntfs, mount: /mnt/hd500/sdf3 }
+  - { name: DevBin, device: /dev/sdf1, uuid: "01D36FD612953850", fstype: ntfs, mount: /mnt/hd500/sdf1 }
