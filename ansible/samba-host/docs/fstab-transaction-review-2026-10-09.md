@@ -62,3 +62,7 @@ Em ambiente de execução separado do host, `findmnt from util-linux 2.41.5` ace
 Ao verificar fixture malformada contendo apenas `invalid-entry`, esta instalação do util-linux reportou erro de parse e encerrou com **SIGSEGV (exit 139)**. O comportamento deve ser investigado separadamente; não ocorreu no servidor de produção.
 
 Commits posteriores adicionaram teste de integração isolado com `findmnt` real e exigência de `--fstab` explícito; `--apply --fstab /etc/fstab` agora é recusado pelo CLI. **Os novos testes automatizados ainda precisam ser executados em CI e no ambiente de desenvolvimento.** Nenhuma aplicação real foi autorizada.
+
+## Evidência do operador — macOS, 2026-10-09
+
+Após `git pull origin main` (fast-forward `aed5537..694d64e`), o operador executou `python3 -m unittest discover -s ansible/samba-host/tests -p 'test_*.py' -v`. Resultado informado: **Ran 10 tests in 0.004s; OK (skipped=2)**. Os oito testes de unidade passaram; dois testes de integração foram ignorados com motivo `util-linux findmnt unavailable`. Portanto, o teste com `findmnt` real **não foi executado no macOS**. Próxima evidência necessária: repetir a suíte em Linux descartável, sem alterar o servidor K3s.
