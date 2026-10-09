@@ -37,3 +37,11 @@ uid=1000(guionardo) gid=1000(guionardo)
 Opções **candidatas, não aplicadas**: `uid=1000,gid=1000,umask=027` para `ntfs-3g`. A máscara implica permissões apresentadas típicas 750 em diretórios e 640 em arquivos, sujeitas à semântica real do driver e a eventuais mapeamentos de usuários NTFS. Verificar acessos necessários antes de restringir. `user_id=0,group_id=0` no `findmnt` descreve a montagem FUSE e não é prova isolada de propriedade POSIX de cada arquivo.
 
 Nenhuma remontagem automática de volumes em uso. Testar mapeamentos, processos ativos e rollback antes da implantação.
+
+## Verificação adicional (2026-10-09)
+
+O operador verificou os caminhos `.NTFS-3G/UserMapping` em `/mnt/hd500/sdf1`, `sdf2` e `sdf3`: nenhum arquivo foi encontrado nesses locais. Isso não exclui outras particularidades de permissões NTFS.
+
+`sudo fuser -vm` mostrou somente a entrada `root kernel mount` para os três pontos, sem processos de espaço de usuário identificados no instante da consulta. Esta é uma fotografia pontual, **não** uma garantia de ausência de uso no momento da futura aplicação.
+
+**Próxima implementação:** preparar opções declarativas de montagem com `uid=1000,gid=1000` e máscara restritiva; fazer pré-verificação por UUID e filesystem, comparar `/etc/fstab`, prever backup/rollback e separar claramente preparação de ativação. Nenhum unmount/remount automático no modo diagnóstico.
