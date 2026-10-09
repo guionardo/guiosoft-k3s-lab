@@ -29,7 +29,7 @@ A partir da raiz do repositório:
 python3 -m unittest discover -s ansible/samba-host/tests -p 'test_*.py' -v
 ```
 
-Casos cobertos: preview sem escrita; primeira aplicação sobre arquivo temporário; repetição idempotente; conflitos por fonte e destino; marcadores danificados; adulteração de opções; validação com falha injetada antes da escrita; recusa de symlink. O teste faz mock do validador; **não atesta** o comportamento real do `findmnt` no Debian 13.
+Casos cobertos: preview sem escrita; primeira aplicação sobre arquivo temporário; repetição idempotente; conflitos por fonte e destino; marcadores danificados; adulteração de opções; validação com falha injetada antes da escrita; recusa de symlink. **Execução comprovada em ambiente isolado em 2026-10-09:** `python -m unittest discover -s tests -v` na cópia dos arquivos publicados; **8 testes, 8 aprovados**, duração **0,008 s**. O teste faz mock do validador; **não atesta** o comportamento real do `findmnt` no Debian 13, nem a execução Ansible ou a segurança em produção. Os testes foram executados fora do host `guiosoft-info`.
 
 ### Ensaio adicional sem escrever no host
 
