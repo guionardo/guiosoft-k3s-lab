@@ -2,6 +2,14 @@
 
 Esta área documenta a proposta de Samba no Debian 13 que hospeda o K3s. **Nenhum playbook deve aplicar alterações sem revisão.** O diagnóstico padrão é somente leitura.
 
+## Documentação do projeto
+
+- [Arquitetura, inventário e decisões (ADRs)](docs/architecture-and-decisions.md)
+- [Procedimentos operacionais e recuperação](docs/operations-and-recovery.md)
+- [Diário de engenharia e evidências](docs/engineering-log.md)
+
+O material para um artigo técnico será derivado dessas evidências **após** os testes de montagem, rollback, Samba e firewall. A documentação distingue o que já foi observado do que ainda é proposta.
+
 ## Decisão Immich
 
 Não compartilhar o diretório interno de uploads nem o PostgreSQL do Immich. Manter uma pasta SMB independente `FotosEntrada` para receber arquivos, com um importador futuro responsável por verificar conclusão de transferências, deduplicar, registrar falhas, importar e reter originais até backup confirmado. A pasta é opcional e está **desabilitada**. O acervo `Fotos` existente começa somente leitura.
@@ -30,7 +38,7 @@ O diagnóstico verifica UUIDs e montagens, mas não instala nem configura servi�
 
 ## Plano NTFS em modo somente leitura (2026-10-09)
 
-O playbook inclui `roles/samba_host/tasks/ntfs_fstab_plan.yml`, que lê `/etc/fstab` com `slurp`, mostra uma proposta por UUID e rejeita UUIDs duplicados. **Não escreve em fstab nem monta/desmonta volumes.** A configuração candidata usa `ntfs-3g uid=1000,gid=1000,umask=027,nofail`, sujeita a revisão de permissões e testes antes da implantação.
+O playbook inclui `roles/samba_host/tasks/ntfs_fstab_plan.yml`, que lê `/etc/fstab` com `slurp`, mostra uma proposta por UUID e rejeita UUIDs duplicados. **Não escreve em fstab nem monta/desmonta volumes.** A configuração candidata usa `ntfs-3g ro,uid=1000,gid=1000,umask=027,nofail` nos históricos somente leitura (e sem `ro` nos volumes de escrita), sujeita a revisão de permissões e testes antes da implantação.
 
 Após atualizar o repositório:
 
@@ -45,7 +53,7 @@ Resultado esperado: `changed=0`, sem falhas e com uma linha de proposta para cad
 
 Antes de qualquer alteração, o diagnóstico agora verifica `/mnt/fotos`, `/mnt/backup-antigo` e `/mnt/projetos-antigos` sem criar diretórios. Se algum caminho existir, ele deve ser diretório real (não symlink) e estar vazio, incluindo arquivos ocultos. Um caminho inexistente é permitido nesta fase, mas precisará ser criado em uma etapa de aplicação explicitamente autorizada.
 
-**Gate operacional:** ainda não existe tarefa que escreva no `/etc/fstab`, instale Samba ou monte volumes. `samba_apply=true` continua falhando intencionalmente. O próximo estágio será uma transação separada, com backup datado de `/etc/fstab`, verificação de configuração e rollback, somente depois de revisão e autorização. Os três volumes NTFS já montados não serão remontados automaticamente.
+**Gate operacional:** o playbook principal não contém tarefas que escrevam no `/etc/fstab`, instalem Samba ou montem volumes. `samba_apply=true` continua falhando intencionalmente. O próximo estágio será uma transação separada, com backup datado de `/etc/fstab`, verificação de configuração e rollback, somente depois de revisão e autorização. Os três volumes NTFS já montados não serão remontados automaticamente.
 
 ### Transação fstab preparada, ainda não habilitada
 
