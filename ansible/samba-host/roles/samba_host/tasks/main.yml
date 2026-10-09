@@ -1,0 +1,49 @@
+---
+- name: Confirmar host alvo
+  ansible.builtin.assert:
+    that:
+      - inventory_hostname == 'guiosoft-info'
+      - ansible_facts['hostname'] == 'guiosoft-info'
+      - samba_lan_cidr == '192.168.88.0/24'
+
+- name: Identificar dispositivos por UUID sem modificar discos
+  ansible.builtin.command:
+    argv: [blkid, -U, "{{ item.uuid }}"]
+  loop: "{{ samba_shares }}"
+  register: samba_devices
+  changed_when: false
+
+- name: Conferir identidade e tipo de cada dispositivo
+  ansible.builtin.command:
+    argv: [blkid, -o, export, "{{ item.stdout }}"]
+  loop: "{{ samba_devices.results }}"
+  register: samba_blkid
+  changed_when: false
+
+- name: Verificar UUID e tipo
+  ansible.builtin.assert:
+    that:
+      - "'UUID=' ~ item.item.item.uuid in item.stdout_lines"
+      - "'TYPE=' ~ item.item.item.fstype in item.stdout_lines"
+  loop: "{{ samba_blkid.results }}"
+
+- name: Inspecionar montagens exatas
+  ansible.builtin.command:
+    argv: [findmnt, --mountpoint, "{{ item.path }}", -n, -o, SOURCE,FSTYPE]
+  loop: "{{ samba_shares }}"
+  register: samba_mountpoints
+  changed_when: false
+  failed_when: false
+
+- name: Exibir resultado da inspeção
+  ansible.builtin.debug:
+    msg: "{{ item.item.name }}: {{ item.stdout if item.rc == 0 else 'NAO MONTADO' }}"
+  loop: "{{ samba_mountpoints.results }}"
+
+- name: Encerrar sem alterações por padrão
+  ansible.builtin.meta: end_host
+  when: not (samba_apply | bool)
+
+- name: Bloquear aplicação até completar a automação segura
+  ansible.builtin.fail:
+    msg: "Aplicacao Samba nao implementada: faltam montagem, credenciais, nftables persistente e rollback. Use somente diagnostico."
