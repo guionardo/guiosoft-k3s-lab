@@ -72,3 +72,9 @@ Após `git pull origin main` (fast-forward `aed5537..694d64e`), o operador execu
 Após a execução da suíte no contêiner Linux sugerido, o operador forneceu a saída com os **10 casos marcados `ok`**, incluindo `test_candidate_validation_with_real_findmnt` e `test_malformed_fixture_rejected_by_findmnt`. Rodapé fornecido: `Ran 10 tests in 0.023s`. A mensagem recebida não continha a linha final `OK`, mas nenhum teste apresentou `FAIL`, `ERROR` ou `skipped` na saída compartilhada. Esta é evidência de teste em contêiner, **não** de execução no host K3s. Os testes continuam sem verificar dispositivos reais, mountpoints do servidor ou recuperação de falhas após `os.replace`.
 
 Próxima prioridade: testar falhas injetadas nas fases de backup, detecção de alterações concorrentes e persistência; manter a aplicação no host desabilitada até revisão e aprovação explícitas.
+
+## Testes adicionais de falha e concorrência — pendentes de execução
+
+Foram adicionados quatro testes unitários com injeção de falhas: edição concorrente do conteúdo, substituição concorrente do inode, erro ao criar backup e erro no `os.replace`. Todos usam `TemporaryDirectory`, sem alterar o sistema real. **Estes quatro casos ainda não possuem evidência de execução.**
+
+A implementação atual ainda possui uma janela entre a última conferência e `os.replace`: o `flock` só coordena processos que utilizem o mesmo lock. Um editor externo não cooperativo pode escrever nesse intervalo. A falha de `fsync` do diretório após `os.replace` também pode deixar o novo arquivo aplicado apesar de retorno de erro. Portanto, **não existe garantia de rollback após commit**, e a etapa Ansible de escrita continua bloqueada.
