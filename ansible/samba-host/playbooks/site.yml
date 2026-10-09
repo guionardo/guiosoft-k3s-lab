@@ -1,0 +1,6 @@
+---
+- name: Diagnostico Samba host
+  hosts: samba_hosts
+  become: true
+  roles:
+    - samba_host
