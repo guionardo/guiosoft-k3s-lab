@@ -77,6 +77,25 @@
         argv: [findmnt, --verify, --tab-file, /etc/fstab]
       changed_when: false
 
+    - name: Conferir presença das três entradas novas
+      ansible.builtin.command:
+        argv: [findmnt, --fstab, --tab-file, /etc/fstab, --mountpoint, "{{ item.path }}", --noheadings, --output, SOURCE,OPTIONS]
+      loop: "{{ samba_shares | selectattr('readonly', 'equalto', true) | list }}"
+      loop_control:
+        label: "{{ item.name }}"
+      register: samba_fstab_postcheck
+      changed_when: false
+
+    - name: Confirmar UUID e opções somente leitura
+      ansible.builtin.assert:
+        that:
+          - "'UUID=' ~ item.item.uuid in item.stdout"
+          - "'ro' in item.stdout.split()[-1].split(',')"
+          - "'noauto' in item.stdout.split()[-1].split(',')"
+      loop: "{{ samba_fstab_postcheck.results }}"
+      loop_control:
+        label: "{{ item.item.name }}"
+
   rescue:
     - name: Restaurar fstab original após erro
       ansible.builtin.copy:
