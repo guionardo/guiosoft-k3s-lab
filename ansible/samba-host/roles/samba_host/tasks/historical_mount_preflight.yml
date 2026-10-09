@@ -1,0 +1,43 @@
+---
+# Verificações não destrutivas para os três volumes históricos.
+- name: Inspecionar pontos de montagem históricos
+  ansible.builtin.stat:
+    path: "{{ item.path }}"
+    follow: false
+  loop: "{{ samba_shares | selectattr('readonly', 'equalto', true) | list }}"
+  loop_control:
+    label: "{{ item.name }} ({{ item.path }})"
+  register: samba_historical_paths
+  changed_when: false
+
+- name: Impedir caminho existente que não seja diretório real
+  ansible.builtin.assert:
+    that:
+      - not item.stat.exists or (item.stat.isdir | default(false))
+      - not item.stat.islnk | default(false)
+    fail_msg: "Ponto de montagem inseguro: {{ item.item.path }}"
+  loop: "{{ samba_historical_paths.results }}"
+  loop_control:
+    label: "{{ item.item.path }}"
+
+- name: Examinar conteúdo de diretórios históricos existentes
+  ansible.builtin.find:
+    paths: "{{ item.item.path }}"
+    recurse: false
+    hidden: true
+    file_type: any
+  when: item.stat.exists
+  loop: "{{ samba_historical_paths.results }}"
+  loop_control:
+    label: "{{ item.item.path }}"
+  register: samba_historical_contents
+  changed_when: false
+
+- name: Rejeitar diretórios existentes não vazios
+  ansible.builtin.assert:
+    that:
+      - item.skipped | default(false) or (item.matched | default(0) | int == 0)
+    fail_msg: "Diretório não vazio: {{ item.item.item.path }}; não montar sobre dados existentes"
+  loop: "{{ samba_historical_contents.results }}"
+  loop_control:
+    label: "{{ item.item.item.path }}"
