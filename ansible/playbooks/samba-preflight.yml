@@ -1,0 +1,55 @@
+---
+- name: Audit Samba candidate volumes without modifying production
+  hosts: k3s_servers
+  become: true
+  gather_facts: true
+  vars_files:
+    - ../samba/shares.yml
+  tasks:
+    - name: Ensure expected production host
+      ansible.builtin.assert:
+        that:
+          - ansible_hostname == 'guiosoft-info'
+          - samba_shares | length == 7
+
+    - name: Inspect candidate filesystem UUIDs
+      ansible.builtin.command:
+        argv: [blkid, -s, UUID, -o, value, "{{ item.device }}"]
+      loop: "{{ samba_shares }}"
+      register: samba_uuid_checks
+      changed_when: false
+
+    - name: Require exact filesystem identities
+      ansible.builtin.assert:
+        that:
+          - item.stdout | trim == item.item.uuid
+        fail_msg: "UUID mismatch for {{ item.item.name }}: refuse to proceed"
+      loop: "{{ samba_uuid_checks.results }}"
+
+    - name: Inspect existing mount points
+      ansible.builtin.command:
+        argv: [findmnt, --noheadings, --output, SOURCE,FSTYPE,OPTIONS, --target, "{{ item.mount }}"]
+      loop: "{{ samba_shares }}"
+      register: samba_mount_checks
+      changed_when: false
+      failed_when: false
+
+    - name: Show mount observations (not proof of exact mount)
+      ansible.builtin.debug:
+        msg: "{{ item.item.name }}: {{ item.stdout | default('not mounted') }}"
+      loop: "{{ samba_mount_checks.results }}"
+
+    - name: Check existing Samba configuration
+      ansible.builtin.command: testparm -s
+      register: samba_testparm
+      changed_when: false
+      failed_when: false
+
+    - name: Inspect SMB listeners
+      ansible.builtin.command: ss -lnt
+      register: samba_listeners
+      changed_when: false
+
+    - name: Display preflight conclusion
+      ansible.builtin.debug:
+        msg: "Read-only audit finished. No mounts, Samba configuration, credentials, services or firewall rules were changed."
