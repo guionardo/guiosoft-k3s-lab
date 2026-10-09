@@ -18,6 +18,7 @@
       loop: "{{ samba_shares }}"
       register: samba_uuid_checks
       changed_when: false
+      check_mode: false
 
     - name: Require exact filesystem identities
       ansible.builtin.assert:
@@ -32,6 +33,7 @@
       loop: "{{ samba_shares }}"
       register: samba_mount_checks
       changed_when: false
+      check_mode: false
       failed_when: false
 
     - name: Show mount observations (not proof of exact mount)
@@ -43,12 +45,14 @@
       ansible.builtin.command: testparm -s
       register: samba_testparm
       changed_when: false
+      check_mode: false
       failed_when: false
 
     - name: Inspect SMB listeners
       ansible.builtin.command: ss -lnt
       register: samba_listeners
       changed_when: false
+      check_mode: false
 
     - name: Display preflight conclusion
       ansible.builtin.debug:
