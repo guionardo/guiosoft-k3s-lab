@@ -1,0 +1,90 @@
+---
+# Estágio separado: apenas fstab; não cria diretórios, não monta e não instala Samba.
+# A chamada é bloqueada no main.yml até autorização específica.
+- name: Exigir autorização específica para editar fstab
+  ansible.builtin.assert:
+    that:
+      - samba_apply | bool
+      - samba_fstab_apply | bool
+      - samba_fstab_confirm == 'APLICAR_FSTAB_HISTORICO'
+    fail_msg: "fstab bloqueado: exige samba_apply, samba_fstab_apply e confirmação explícita"
+
+- name: Confirmar utilitários para validar fstab
+  ansible.builtin.command:
+    argv: [findmnt, --help]
+  register: samba_findmnt_help
+  changed_when: false
+
+- name: Exigir suporte a verificação de fstab
+  ansible.builtin.assert:
+    that:
+      - "'--verify' in samba_findmnt_help.stdout"
+    fail_msg: "findmnt sem --verify: operação cancelada"
+
+- name: Confirmar ntfs-3g disponível
+  ansible.builtin.command:
+    argv: [which, mount.ntfs-3g]
+  changed_when: false
+
+- name: Verificar conflitos de destinos no fstab
+  ansible.builtin.assert:
+    that:
+      - >-
+        ((samba_fstab_raw.content | b64decode).splitlines()
+        | reject('match', '^\\s*(#|$)')
+        | select('search', '\\s' ~ (item.path | regex_escape) ~ '\\s')
+        | list | length) == 0
+      - >-
+        ((samba_fstab_raw.content | b64decode).splitlines()
+        | reject('match', '^\\s*(#|$)')
+        | select('match', '^\\s*UUID=' ~ item.uuid ~ '\\s')
+        | list | length) == 0
+    fail_msg: "Conflito no fstab para {{ item.name }}: revisão manual necessária"
+  loop: "{{ samba_shares | selectattr('readonly', 'equalto', true) | list }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Preparar backup e escrita transacional de fstab
+  become: true
+  block:
+    - name: Criar backup de fstab antes de qualquer edição
+      ansible.builtin.copy:
+        src: /etc/fstab
+        dest: "/etc/fstab.samba-pre-{{ ansible_date_time.iso8601_basic_short }}"
+        remote_src: true
+        mode: preserve
+        force: false
+      register: samba_fstab_backup
+
+    - name: Inserir somente as três entradas históricas
+      ansible.builtin.blockinfile:
+        path: /etc/fstab
+        marker: "# {mark} ANSIBLE SAMBA HISTORICAL NTFS"
+        block: |-
+          {% for share in samba_shares | selectattr('readonly', 'equalto', true) | list %}
+          UUID={{ share.uuid }} {{ share.path }} ntfs-3g ro,uid=1000,gid=1000,umask=027,nofail,noauto 0 0
+          {% endfor %}
+        backup: false
+      register: samba_fstab_written
+
+    - name: Validar sintaxe e referências do fstab
+      ansible.builtin.command:
+        argv: [findmnt, --verify, --tab-file, /etc/fstab]
+      changed_when: false
+
+  rescue:
+    - name: Restaurar fstab original após erro
+      ansible.builtin.copy:
+        src: "/etc/fstab.samba-pre-{{ ansible_date_time.iso8601_basic_short }}"
+        dest: /etc/fstab
+        remote_src: true
+        mode: preserve
+      when: samba_fstab_backup is defined and not (samba_fstab_backup.failed | default(false))
+
+    - name: Interromper após rollback ou falha na preparação
+      ansible.builtin.fail:
+        msg: "Falha ao preparar fstab; verificar backup e estado do arquivo antes de prosseguir"
+
+- name: Informar que montagem permanece desativada
+  ansible.builtin.debug:
+    msg: "fstab preparado com noauto. Nenhum volume foi montado; backup: /etc/fstab.samba-pre-{{ ansible_date_time.iso8601_basic_short }}"
