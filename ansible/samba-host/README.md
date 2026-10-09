@@ -27,3 +27,16 @@ ansible-playbook -i inventory/hosts.ini playbooks/site.yml --ask-become-pass
 ```
 
 O diagnóstico verifica UUIDs e montagens, mas não instala nem configura serviços. O modo de aplicação existente é deliberadamente incompleto e **não deve ser usado**.
+
+## Plano NTFS em modo somente leitura (2026-10-09)
+
+O playbook inclui `roles/samba_host/tasks/ntfs_fstab_plan.yml`, que lê `/etc/fstab` com `slurp`, mostra uma proposta por UUID e rejeita UUIDs duplicados. **Não escreve em fstab nem monta/desmonta volumes.** A configuração candidata usa `ntfs-3g uid=1000,gid=1000,umask=027,nofail`, sujeita a revisão de permissões e testes antes da implantação.
+
+Após atualizar o repositório:
+
+```bash
+cd ansible/samba-host
+ansible-playbook -i inventory/hosts.ini playbooks/site.yml --ask-become-pass
+```
+
+Resultado esperado: `changed=0`, sem falhas e com uma linha de proposta para cada volume NTFS. Envie a saída para revisão antes de implementar qualquer escrita no `/etc/fstab`.
