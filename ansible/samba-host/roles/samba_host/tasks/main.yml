@@ -40,6 +40,9 @@
     msg: "{{ item.item.name }}: {{ item.stdout if item.rc == 0 else 'NAO MONTADO' }}"
   loop: "{{ samba_mountpoints.results }}"
 
+- name: Planejar migração fstab NTFS sem alterar o host
+  ansible.builtin.import_tasks: ntfs_fstab_plan.yml
+
 - name: Encerrar sem alterações por padrão
   ansible.builtin.meta: end_host
   when: not (samba_apply | bool)
