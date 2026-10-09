@@ -54,3 +54,11 @@ Somente após revisão específica, ampliar o ensaio local para `--apply` e `fin
 5. Implementar Samba, usuários/Vault e firewall persistente somente depois.
 
 Este registro será fonte do artigo técnico, mas só poderá ser descrito como resultado comprovado aquilo que tiver saída real arquivada.
+
+## Complemento — ensaio real de findmnt em ambiente isolado
+
+Em ambiente de execução separado do host, `findmnt from util-linux 2.41.5` aceitou o candidato com as três entradas históricas e mountpoints ausentes: **exit 0, 0 erros, 6 warnings** (três destinos ausentes e três UUIDs inacessíveis). Portanto, `--verify` com retorno zero **não comprova** que os dispositivos existem nem que podem ser montados. O preflight de UUID e tipo continua obrigatório.
+
+Ao verificar fixture malformada contendo apenas `invalid-entry`, esta instalação do util-linux reportou erro de parse e encerrou com **SIGSEGV (exit 139)**. O comportamento deve ser investigado separadamente; não ocorreu no servidor de produção.
+
+Commits posteriores adicionaram teste de integração isolado com `findmnt` real e exigência de `--fstab` explícito; `--apply --fstab /etc/fstab` agora é recusado pelo CLI. **Os novos testes automatizados ainda precisam ser executados em CI e no ambiente de desenvolvimento.** Nenhuma aplicação real foi autorizada.
