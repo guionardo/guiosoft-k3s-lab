@@ -1,0 +1,31 @@
+---
+# Plano somente leitura. NÃO altera /etc/fstab e NÃO monta volumes.
+- name: Ler fstab atual sem alterações
+  ansible.builtin.slurp:
+    src: /etc/fstab
+  register: samba_fstab_raw
+  become: true
+
+- name: Inspecionar entradas NTFS existentes por UUID
+  ansible.builtin.set_fact:
+    samba_ntfs_fstab_plan: "{{ (samba_ntfs_fstab_plan | default([])) + [ {
+      'share': item.name,
+      'uuid': item.uuid,
+      'path': item.path,
+      'candidate': 'UUID=' ~ item.uuid ~ ' ' ~ item.path ~ ' ntfs-3g uid=1000,gid=1000,umask=027,nofail 0 0',
+      'existing_lines': ((samba_fstab_raw.content | b64decode).splitlines() | select('match', '^\\s*UUID=' ~ item.uuid ~ '\\s+') | list)
+    } ] }}"
+  loop: "{{ samba_shares | selectattr('fstype', 'equalto', 'ntfs') | list }}"
+  changed_when: false
+
+- name: Exibir plano sem escrever em fstab
+  ansible.builtin.debug:
+    msg: "{{ item.share }}: {{ item.candidate }} | entradas atuais: {{ item.existing_lines }}"
+  loop: "{{ samba_ntfs_fstab_plan }}"
+
+- name: Validar que UUID não está duplicado no fstab
+  ansible.builtin.assert:
+    that:
+      - item.existing_lines | length <= 1
+    fail_msg: "UUID duplicado no fstab: {{ item.uuid }}; intervenção manual necessária"
+  loop: "{{ samba_ntfs_fstab_plan }}"
