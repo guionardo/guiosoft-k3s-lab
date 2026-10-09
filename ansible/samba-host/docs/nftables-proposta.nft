@@ -1,0 +1,7 @@
+# REFERENCIA SOMENTE. NAO EXECUTAR DIRETAMENTE.
+# Integrar ao arquivo autoritativo da tabela inet guiosoft_host.
+# A cadeia input tem policy drop: uma cadeia paralela nao libera o trafego.
+# Inserir TCP 445 na regra LAN existente para enp2s0 e 192.168.88.0/24.
+# Exemplo de regra final desejada:
+# iifname "enp2s0" ip saddr 192.168.88.0/24 tcp dport { 22, 80, 443, 445, 6443 } accept
+# Nunca executar nft flush ruleset em host K3s.
