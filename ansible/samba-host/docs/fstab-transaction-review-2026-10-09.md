@@ -82,3 +82,7 @@ A implementação atual ainda possui uma janela entre a última conferência e `
 ## Evidência do operador — macOS, suíte ampliada, 2026-10-09
 
 Após os commits de testes de concorrência e falhas, o operador forneceu a saída de `unittest discover`: **Ran 14 tests in 0.028s**. Doze casos reportaram `ok`, inclusive os quatro cenários novos de falha e concorrência. Dois casos dependentes de `findmnt` foram ignorados (`util-linux findmnt unavailable`). A saída compartilhada não inclui a linha final `OK`, mas não mostra falhas ou erros. A suíte ampliada ainda precisa ser repetida em Linux; não houve execução no servidor K3s.
+
+## Evidência do operador — Debian 13 em Docker, suíte ampliada, 2026-10-09
+
+O operador forneceu a saída da execução Linux com **14 testes marcados `ok`**, incluindo os dois testes reais de `findmnt` e os quatro novos testes de concorrência/injeção de falhas. Rodapé compartilhado: `Ran 14 tests in 0.013s`. Nenhum `skipped`, `FAIL` ou `ERROR` aparece na saída recebida; a linha final `OK` não foi incluída no trecho enviado. Evidência restrita ao contêiner de teste, não ao host K3s. Permanecem pendentes cenários de falha após `os.replace`, preservação de metadados estendidos e análise da janela de concorrência com editores não cooperativos.
