@@ -63,7 +63,7 @@ O arquivo `roles/samba_host/tasks/historical_fstab_apply.yml` contém um estági
 
 ## Revisão da transação de fstab (2026-10-09)
 
-A transação preliminar foi substituída por um auxiliar isolado em `scripts/historical_fstab_transaction.py`, com preview padrão, candidato validado antes da substituição e testes de unidade usando arquivos temporários. O estágio Ansible continua **não importado** e foi alterado para **preview seguido de bloqueio explícito**: não faz escrita em `/etc/fstab`. Nenhum teste local nem execução no servidor foi comprovado nesta etapa até a coleta de evidências.
+A transação preliminar foi substituída por um auxiliar isolado em `scripts/historical_fstab_transaction.py`, com preview padrão, candidato validado antes da substituição e testes de unidade usando arquivos temporários. O estágio Ansible continua **não importado** e foi alterado para **preview seguido de bloqueio explícito**: não faz escrita em `/etc/fstab`. Oito testes de unidade passaram em ambiente isolado (`0,008 s`), com `findmnt` simulado; a execução no servidor e a validação real do `findmnt` ainda não foram realizadas.
 
 Veja [revisão, riscos e procedimentos de teste](docs/fstab-transaction-review-2026-10-09.md). Para executar os testes isolados:
 
