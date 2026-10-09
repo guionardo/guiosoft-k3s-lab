@@ -12,7 +12,7 @@
       'share': item.name,
       'uuid': item.uuid,
       'path': item.path,
-      'candidate': 'UUID=' ~ item.uuid ~ ' ' ~ item.path ~ ' ntfs-3g uid=1000,gid=1000,umask=027,nofail 0 0',
+      'candidate': 'UUID=' ~ item.uuid ~ ' ' ~ item.path ~ ' ntfs-3g ' ~ ('ro,' if item.readonly else '') ~ 'uid=1000,gid=1000,umask=027,nofail 0 0',
       'existing_lines': ((samba_fstab_raw.content | b64decode).splitlines() | select('match', '^\\s*UUID=' ~ item.uuid ~ '\\s+') | list)
     } ] }}"
   loop: "{{ samba_shares | selectattr('fstype', 'equalto', 'ntfs') | list }}"
