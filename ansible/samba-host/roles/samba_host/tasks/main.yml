@@ -10,6 +10,8 @@
   ansible.builtin.command:
     argv: [blkid, -U, "{{ item.uuid }}"]
   loop: "{{ samba_shares }}"
+  loop_control:
+    label: "{{ item.name }}"
   register: samba_devices
   changed_when: false
 
@@ -17,6 +19,8 @@
   ansible.builtin.command:
     argv: [blkid, -o, export, "{{ item.stdout }}"]
   loop: "{{ samba_devices.results }}"
+  loop_control:
+    label: "{{ item.item.name }}"
   register: samba_blkid
   changed_when: false
 
@@ -26,11 +30,15 @@
       - "'UUID=' ~ item.item.item.uuid in item.stdout_lines"
       - "'TYPE=' ~ item.item.item.fstype in item.stdout_lines"
   loop: "{{ samba_blkid.results }}"
+  loop_control:
+    label: "{{ item.item.item.name }}"
 
 - name: Inspecionar montagens exatas
   ansible.builtin.command:
     argv: [findmnt, --mountpoint, "{{ item.path }}", -n, -o, "SOURCE,FSTYPE"]
   loop: "{{ samba_shares }}"
+  loop_control:
+    label: "{{ item.name }}"
   register: samba_mountpoints
   changed_when: false
   failed_when: samba_mountpoints.rc not in [0, 1]
@@ -39,6 +47,11 @@
   ansible.builtin.debug:
     msg: "{{ item.item.name }}: {{ item.stdout if item.rc == 0 else 'NAO MONTADO' }}"
   loop: "{{ samba_mountpoints.results }}"
+  loop_control:
+    label: "{{ item.item.name }}"
+
+- name: Validar pontos de montagem históricos sem alterações
+  ansible.builtin.import_tasks: historical_mount_preflight.yml
 
 - name: Planejar migração fstab NTFS sem alterar o host
   ansible.builtin.import_tasks: ntfs_fstab_plan.yml
