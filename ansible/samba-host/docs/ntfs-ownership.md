@@ -24,3 +24,16 @@ id guionardo
 ```
 
 O Ansible continua em modo diagnóstico e aplicação bloqueada.
+
+## Inspeção de montagem confirmada (2026-10-09)
+
+```text
+/dev/sdf1 /mnt/hd500/sdf1 fuseblk rw,relatime,user_id=0,group_id=0,allow_other,blksize=4096
+/dev/sdf2 /mnt/hd500/sdf2 fuseblk rw,relatime,user_id=0,group_id=0,allow_other,blksize=4096
+/dev/sdf3 /mnt/hd500/sdf3 fuseblk rw,relatime,user_id=0,group_id=0,allow_other,blksize=4096
+uid=1000(guionardo) gid=1000(guionardo)
+```
+
+Opções **candidatas, não aplicadas**: `uid=1000,gid=1000,umask=027` para `ntfs-3g`. A máscara implica permissões apresentadas típicas 750 em diretórios e 640 em arquivos, sujeitas à semântica real do driver e a eventuais mapeamentos de usuários NTFS. Verificar acessos necessários antes de restringir. `user_id=0,group_id=0` no `findmnt` descreve a montagem FUSE e não é prova isolada de propriedade POSIX de cada arquivo.
+
+Nenhuma remontagem automática de volumes em uso. Testar mapeamentos, processos ativos e rollback antes da implantação.
