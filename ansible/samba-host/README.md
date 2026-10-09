@@ -46,3 +46,9 @@ Resultado esperado: `changed=0`, sem falhas e com uma linha de proposta para cad
 Antes de qualquer alteração, o diagnóstico agora verifica `/mnt/fotos`, `/mnt/backup-antigo` e `/mnt/projetos-antigos` sem criar diretórios. Se algum caminho existir, ele deve ser diretório real (não symlink) e estar vazio, incluindo arquivos ocultos. Um caminho inexistente é permitido nesta fase, mas precisará ser criado em uma etapa de aplicação explicitamente autorizada.
 
 **Gate operacional:** ainda não existe tarefa que escreva no `/etc/fstab`, instale Samba ou monte volumes. `samba_apply=true` continua falhando intencionalmente. O próximo estágio será uma transação separada, com backup datado de `/etc/fstab`, verificação de configuração e rollback, somente depois de revisão e autorização. Os três volumes NTFS já montados não serão remontados automaticamente.
+
+### Transação fstab preparada, ainda não habilitada
+
+O arquivo `roles/samba_host/tasks/historical_fstab_apply.yml` contém um estágio **não importado pelo playbook principal**. Ele exige três confirmações, verifica conflitos de UUID e destino, cria backup de `/etc/fstab`, insere somente os três volumes históricos e tenta validar com `findmnt --verify`; em falha, restaura o backup. As entradas usam `ro,nofail,noauto` para não montar automaticamente nem no momento da edição nem no boot.
+
+**Não executar esse arquivo isoladamente.** Antes de integrá-lo, precisamos validar em ambiente de teste o comportamento de `findmnt --verify` com diretórios ainda inexistentes, conferir os requisitos do driver NTFS e revisar a restauração em falhas intermediárias. A criação dos diretórios e as montagens serão etapas separadas. O playbook principal continua sem tarefas de escrita e `samba_apply=true` continua bloqueado.
