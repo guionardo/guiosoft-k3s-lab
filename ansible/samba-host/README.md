@@ -40,3 +40,9 @@ ansible-playbook -i inventory/hosts.ini playbooks/site.yml --ask-become-pass
 ```
 
 Resultado esperado: `changed=0`, sem falhas e com uma linha de proposta para cada volume NTFS. Envie a saída para revisão antes de implementar qualquer escrita no `/etc/fstab`.
+
+### Preflight de diretórios históricos (2026-10-09)
+
+Antes de qualquer alteração, o diagnóstico agora verifica `/mnt/fotos`, `/mnt/backup-antigo` e `/mnt/projetos-antigos` sem criar diretórios. Se algum caminho existir, ele deve ser diretório real (não symlink) e estar vazio, incluindo arquivos ocultos. Um caminho inexistente é permitido nesta fase, mas precisará ser criado em uma etapa de aplicação explicitamente autorizada.
+
+**Gate operacional:** ainda não existe tarefa que escreva no `/etc/fstab`, instale Samba ou monte volumes. `samba_apply=true` continua falhando intencionalmente. O próximo estágio será uma transação separada, com backup datado de `/etc/fstab`, verificação de configuração e rollback, somente depois de revisão e autorização. Os três volumes NTFS já montados não serão remontados automaticamente.
