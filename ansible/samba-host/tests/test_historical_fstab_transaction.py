@@ -70,6 +70,48 @@ class TransactionTest(unittest.TestCase):
         self.assertEqual(self.fstab.read_bytes(), self.original)
         self.assertEqual(list(Path(self.tmp.name).glob("fstab.samba-backup-*")), [])
 
+    def test_concurrent_content_change_refused_before_replace(self):
+        modified = self.original + b"# concurrent editor\\n"
+        def concurrent_edit(_candidate, _command):
+            self.fstab.write_bytes(modified)
+        with patch.object(txn, "verify", side_effect=concurrent_edit):
+            with self.assertRaisesRegex(txn.UnsafeFstab, "changed concurrently"):
+                txn.execute(self.fstab, "findmnt", False)
+        self.assertEqual(self.fstab.read_bytes(), modified)
+        self.assertEqual(list(Path(self.tmp.name).glob("fstab.samba-backup-*")), [])
+
+    def test_concurrent_inode_change_refused_before_replace(self):
+        def concurrent_replace(_candidate, _command):
+            replacement = Path(self.tmp.name) / "replacement"
+            replacement.write_bytes(self.original)
+            os.replace(replacement, self.fstab)
+        with patch.object(txn, "verify", side_effect=concurrent_replace):
+            with self.assertRaisesRegex(txn.UnsafeFstab, "changed concurrently"):
+                txn.execute(self.fstab, "findmnt", False)
+        self.assertEqual(self.fstab.read_bytes(), self.original)
+        self.assertEqual(list(Path(self.tmp.name).glob("fstab.samba-backup-*")), [])
+
+    def test_backup_failure_preserves_original(self):
+        original_mkstemp = txn.tempfile.mkstemp
+        def fail_backup(*args, **kwargs):
+            if str(kwargs.get("prefix", "")).startswith("fstab.samba-backup-"):
+                raise OSError("injected backup creation failure")
+            return original_mkstemp(*args, **kwargs)
+        with patch.object(txn, "verify"), patch.object(txn.tempfile, "mkstemp", side_effect=fail_backup):
+            with self.assertRaisesRegex(OSError, "injected backup"):
+                txn.execute(self.fstab, "findmnt", False)
+        self.assertEqual(self.fstab.read_bytes(), self.original)
+        self.assertEqual(list(Path(self.tmp.name).glob("fstab.samba-backup-*")), [])
+        self.assertEqual(list(Path(self.tmp.name).glob(".fstab.candidate-*")), [])
+
+    def test_replace_failure_preserves_original_and_removes_backup(self):
+        with patch.object(txn, "verify"), patch.object(txn.os, "replace", side_effect=OSError("injected replace failure")):
+            with self.assertRaisesRegex(OSError, "injected replace"):
+                txn.execute(self.fstab, "findmnt", False)
+        self.assertEqual(self.fstab.read_bytes(), self.original)
+        self.assertEqual(list(Path(self.tmp.name).glob("fstab.samba-backup-*")), [])
+        self.assertEqual(list(Path(self.tmp.name).glob(".fstab.candidate-*")), [])
+
     def test_symlink_refused(self):
         link = Path(self.tmp.name) / "fstab-link"
         link.symlink_to(self.fstab)
