@@ -10,7 +10,6 @@ import fcntl
 import hashlib
 import os
 from pathlib import Path
-import re
 import stat
 import subprocess
 import sys
@@ -140,10 +139,13 @@ def execute(target, findmnt, dry_run):
 
 def main():
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--fstab", default="/etc/fstab")
+    p.add_argument("--fstab", required=True, help="explicit target path (never inferred)")
     p.add_argument("--findmnt", default="findmnt")
     p.add_argument("--apply", action="store_true", help="write only to explicitly chosen file")
     args = p.parse_args()
+    if args.apply and os.path.abspath(args.fstab) == "/etc/fstab":
+        print("REFUSED production /etc/fstab writes are not enabled", file=sys.stderr)
+        return 2
     try:
         execute(args.fstab, args.findmnt, not args.apply)
     except (OSError, UnicodeError, UnsafeFstab) as exc:
