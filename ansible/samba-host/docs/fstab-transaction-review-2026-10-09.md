@@ -66,3 +66,9 @@ Commits posteriores adicionaram teste de integração isolado com `findmnt` real
 ## Evidência do operador — macOS, 2026-10-09
 
 Após `git pull origin main` (fast-forward `aed5537..694d64e`), o operador executou `python3 -m unittest discover -s ansible/samba-host/tests -p 'test_*.py' -v`. Resultado informado: **Ran 10 tests in 0.004s; OK (skipped=2)**. Os oito testes de unidade passaram; dois testes de integração foram ignorados com motivo `util-linux findmnt unavailable`. Portanto, o teste com `findmnt` real **não foi executado no macOS**. Próxima evidência necessária: repetir a suíte em Linux descartável, sem alterar o servidor K3s.
+
+## Evidência do operador — Debian 13 em Docker, 2026-10-09
+
+Após a execução da suíte no contêiner Linux sugerido, o operador forneceu a saída com os **10 casos marcados `ok`**, incluindo `test_candidate_validation_with_real_findmnt` e `test_malformed_fixture_rejected_by_findmnt`. Rodapé fornecido: `Ran 10 tests in 0.023s`. A mensagem recebida não continha a linha final `OK`, mas nenhum teste apresentou `FAIL`, `ERROR` ou `skipped` na saída compartilhada. Esta é evidência de teste em contêiner, **não** de execução no host K3s. Os testes continuam sem verificar dispositivos reais, mountpoints do servidor ou recuperação de falhas após `os.replace`.
+
+Próxima prioridade: testar falhas injetadas nas fases de backup, detecção de alterações concorrentes e persistência; manter a aplicação no host desabilitada até revisão e aprovação explícitas.
