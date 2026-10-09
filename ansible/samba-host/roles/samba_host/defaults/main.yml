@@ -1,0 +1,14 @@
+---
+samba_apply: false
+samba_lan_cidr: 192.168.88.0/24
+samba_auth_users: [guionardo]
+samba_enable_immich_input: false
+samba_immich_input_path: /mnt/dev/immich-input
+samba_shares:
+  - {name: Documentos, path: /mnt/hd500/sdf2, uuid: '01D36FD6673F4300', fstype: ntfs, readonly: false}
+  - {name: Desenvolvimento, path: /mnt/dev, uuid: '3ed56e92-ab85-4b9a-8993-d2f1cda6a62e', fstype: ext4, readonly: false}
+  - {name: Fotos, path: /mnt/fotos, uuid: '8CE4EC1DE4EC0AF2', fstype: ntfs, readonly: true}
+  - {name: BackupAntigo, path: /mnt/backup-antigo, uuid: '964C33BF4C3398C7', fstype: ntfs, readonly: true}
+  - {name: ProjetosAntigos, path: /mnt/projetos-antigos, uuid: 'DA087AB8087A92ED', fstype: ntfs, readonly: true}
+  - {name: Temporarios, path: /mnt/hd500/sdf3, uuid: '1068AFBC68AF9ECA', fstype: ntfs, readonly: false}
+  - {name: DevBin, path: /mnt/hd500/sdf1, uuid: '01D36FD612953850', fstype: ntfs, readonly: false}
