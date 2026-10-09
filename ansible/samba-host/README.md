@@ -60,3 +60,15 @@ Antes de qualquer alteração, o diagnóstico agora verifica `/mnt/fotos`, `/mnt
 O arquivo `roles/samba_host/tasks/historical_fstab_apply.yml` contém um estágio **não importado pelo playbook principal**. Ele exige três confirmações, verifica conflitos de UUID e destino, cria backup de `/etc/fstab`, insere somente os três volumes históricos e tenta validar com `findmnt --verify`; em falha, restaura o backup. As entradas usam `ro,nofail,noauto` para não montar automaticamente nem no momento da edição nem no boot.
 
 **Não executar esse arquivo isoladamente.** Antes de integrá-lo, precisamos validar em ambiente de teste o comportamento de `findmnt --verify` com diretórios ainda inexistentes, conferir os requisitos do driver NTFS e revisar a restauração em falhas intermediárias. A criação dos diretórios e as montagens serão etapas separadas. O playbook principal continua sem tarefas de escrita e `samba_apply=true` continua bloqueado.
+
+## Revisão da transação de fstab (2026-10-09)
+
+A transação preliminar foi substituída por um auxiliar isolado em `scripts/historical_fstab_transaction.py`, com preview padrão, candidato validado antes da substituição e testes de unidade usando arquivos temporários. O estágio Ansible continua **não importado** e foi alterado para **preview seguido de bloqueio explícito**: não faz escrita em `/etc/fstab`. Nenhum teste local nem execução no servidor foi comprovado nesta etapa até a coleta de evidências.
+
+Veja [revisão, riscos e procedimentos de teste](docs/fstab-transaction-review-2026-10-09.md). Para executar os testes isolados:
+
+```bash
+python3 -m unittest discover -s ansible/samba-host/tests -p 'test_*.py' -v
+```
+
+**Não executar `--apply` contra `/etc/fstab` nem habilitar o estágio no playbook.** Criação de diretórios e montagem individual continuam dependentes de autorização separada.
