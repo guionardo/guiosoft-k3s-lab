@@ -73,3 +73,14 @@ python3 -m unittest discover -s ansible/samba-host/tests -p 'test_*.py' -v
 ```
 
 **Não executar `--apply` contra `/etc/fstab` nem habilitar o estágio no playbook.** Criação de diretórios e montagem individual continuam dependentes de autorização separada.
+
+## Diagnóstico atualizado dos NTFS históricos (2026-10-10)
+
+O playbook padrão agora inclui `historical_device_diagnostics.yml` (somente leitura). Após a verificação geral dos sete UUIDs, a tarefa exibe `blkid -o export` para Fotos, BackupAntigo e ProjetosAntigos e consulta `findmnt --mountpoint ... -o SOURCE,FSTYPE,OPTIONS`. As verificações existentes de diretórios históricos e plano de fstab permanecem em vigor. **Não há montagem nem escrita**. O novo diagnóstico ainda precisa ser executado pelo operador para coletar evidências reais.
+
+```bash
+cd ansible/samba-host
+ansible-playbook -i inventory/hosts.ini playbooks/site.yml --ask-become-pass
+```
+
+Esperado: `changed=0`. Qualquer falha deve ser investigada antes de considerar uma mudança; não executar `samba_apply=true`.
