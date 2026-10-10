@@ -88,6 +88,11 @@ def inspect_metadata(target):
         raise UnsafeFstab("target must be a regular file with one hard link")
     if stat.S_IMODE(st.st_mode) & 0o7000:
         raise UnsafeFstab("special permission bits require manual review")
+    if os.name == "posix" and sys.platform.startswith("linux"):
+        # Linux security labels and POSIX ACLs are commonly stored as xattrs.
+        # Refuse when inspection is unavailable rather than silently dropping them.
+        if not hasattr(os, "listxattr"):
+            raise UnsafeFstab("extended attribute inspection unavailable on Linux")
     if hasattr(os, "listxattr"):
         try:
             attrs = os.listxattr(target, follow_symlinks=False)
@@ -171,7 +176,7 @@ def main():
     p.add_argument("--findmnt", default="findmnt")
     p.add_argument("--apply", action="store_true", help="write only to explicitly chosen file")
     args = p.parse_args()
-    if args.apply and os.path.abspath(args.fstab) == "/etc/fstab":
+    if args.apply and os.path.realpath(args.fstab) == "/etc/fstab":
         print("REFUSED production /etc/fstab writes are not enabled", file=sys.stderr)
         return 2
     try:
