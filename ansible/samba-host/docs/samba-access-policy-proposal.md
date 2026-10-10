@@ -10,12 +10,12 @@ Em 2026-10-10, o operador montou Fotos (UUID `8CE4EC1DE4EC0AF2`) temporariamente
 
 | Compartilhamento | Origem | Escrita SMB | Montagem / condição |
 | --- | --- | --- | --- |
-| Documentos | /mnt/hd500/sdf2 | A avaliar | NTFS ativo; preservar fstab e montagem |
-| Desenvolvimento | /mnt/dev | A avaliar, alto risco | ext4 ativo; evitar exposição indiscriminada de repositórios, segredos e dados de aplicações |
+| Documentos | /mnt/hd500/sdf2 | **Sim, provisoriamente** | NTFS ativo; preservar fstab e montagem |
+| Desenvolvimento | /mnt/dev | **Sim, provisoriamente; alto risco** | ext4 ativo; revisão futura de subdiretórios e segredos |
 | Fotos | /mnt/fotos | **Não** | NTFS histórico; ainda desmontado |
 | BackupAntigo | /mnt/backup-antigo | **Não** | NTFS histórico; ainda desmontado |
 | ProjetosAntigos | /mnt/projetos-antigos | **Não** | NTFS histórico; ainda desmontado |
-| Temporarios | /mnt/hd500/sdf3 | A avaliar | NTFS ativo; preservar montagem |
+| Temporarios | /mnt/hd500/sdf3 | **Sim, provisoriamente** | NTFS ativo; preservar montagem |
 | DevBin | /mnt/hd500/sdf1 | A avaliar | NTFS ativo; preservar montagem |
 
 Nenhum compartilhamento deve ser publicado quando seu caminho não for um mountpoint esperado: impedir exposição acidental de um diretório vazio do filesystem raiz.
@@ -55,7 +55,11 @@ Nenhum compartilhamento deve ser publicado quando seu caminho não for um mountp
 ## Gates pendentes
 
 1. Levantar, somente leitura, `id guionardo`, permissões dos mountpoints e estado atual de `smbd`, `testparm` e firewall. Não exibir hashes ou senhas.
-2. Confirmar quais volumes ativos poderão receber escrita SMB e se Desenvolvimento deve ser substituído por subdiretórios específicos.
+2. **Decisão do operador em 2026-10-10:** permitir escrita SMB, provisoriamente, em Documentos, Desenvolvimento (todo `/mnt/dev`), Temporarios e DevBin; revisar posteriormente a granularidade de Desenvolvimento. Antes da implantação, verificar riscos de segredos, acesso Unix efetivo e autenticação; esta decisão não autoriza aplicar configuração.
 3. Testar acesso autenticado, negação de convidado, negação de escrita nos históricos, resolução de nomes e ausência de exposição quando um disco estiver desmontado.
 4. Planejar rollback da configuração Samba e das regras de firewall sem interromper SSH/K3s/Immich.
 5. Só depois propor automação de aplicação com aprovação separada.
+
+## Decisão de escopo provisório — 2026-10-10
+
+O operador confirmou permissão de escrita, por enquanto, para os compartilhamentos ativos, incluindo `/mnt/dev` completo, com revisão posterior. A decisão não altera a política somente leitura de Fotos, BackupAntigo e ProjetosAntigos, nem constitui aprovação para implantar Samba, criar contas, modificar permissões ou abrir portas. Deve-se registrar o risco de exposição de arquivos sensíveis em `/mnt/dev` e revisar esse escopo antes de disponibilizar o serviço a outros usuários.
