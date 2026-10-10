@@ -50,6 +50,9 @@
   loop_control:
     label: "{{ item.item.name }}"
 
+- name: Diagnosticar dispositivos NTFS históricos sem alterações
+  ansible.builtin.import_tasks: historical_device_diagnostics.yml
+
 - name: Validar pontos de montagem históricos sem alterações
   ansible.builtin.import_tasks: historical_mount_preflight.yml
 
