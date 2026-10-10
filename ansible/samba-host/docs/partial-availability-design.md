@@ -57,3 +57,17 @@ e controles de acesso por share. **Não ativar** apenas com preflight de startup
 ## Evidência de testes — 2026-10-10
 
 Execução pelo operador no host Debian: `python3 -m unittest discover -s ansible/samba-host/tests -p 'test_*.py' -v` retornou **28 testes, OK** (incluindo 7 testes novos do preflight, 2 de integração com `findmnt` e testes da transação histórica de fstab). O comando `python3 ansible/samba-host/scripts/check_share_mounts.py --eligible-json` retornou `eligible = [Documentos, Desenvolvimento, Temporarios, DevBin]` e `blocked = [Fotos, BackupAntigo, ProjetosAntigos]`, cada um por `mountpoint ausente`; exit code **1**, esperado para diagnóstico global com bloqueios. Não foram realizados testes SMB reais nem testes de unmount durante sessão. A seleção `eligible` é apenas relatório, **não** uma autorização de publicação ou configuração ativa.
+
+## Protótipo de renderização seletiva — 2026-10-10
+
+Criado `scripts/render_eligible_smb.py`: recebe o relatório JSON de `check_share_mounts.py --eligible-json` e gera **somente** um candidato offline; rejeita shares desconhecidos, repetidos, ausentes e bloqueios sem justificativa. Se todos estiverem bloqueados, gera apenas a seção global. Testes simulados em `tests/test_render_eligible_smb.py` (6 cenários). **Ainda não executados no host.**
+
+Exemplo seguro, a partir da raiz do repositório (o primeiro comando retorna `1` quando há bloqueios; por isso não encadear com `&&`):
+
+```bash
+python3 ansible/samba-host/scripts/check_share_mounts.py --eligible-json > /tmp/samba-eligibility.json
+python3 ansible/samba-host/scripts/render_eligible_smb.py /tmp/samba-eligibility.json --output /tmp/smb-eligible-candidate.conf
+testparm -s /tmp/smb-eligible-candidate.conf
+```
+
+O arquivo de saída **não é sobrescrito** se já existir. Remover arquivos temporários após validação. **Limitações bloqueantes:** o protótipo replica metadados e política Samba do Ansible (risco de divergência), não prova frescor/autenticidade do relatório e não garante proteção contra unmount em runtime. Não copiar para `/etc/samba`, não iniciar serviço e não integrar a pipeline de aplicação até resolver essas limitações.
