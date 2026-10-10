@@ -122,3 +122,7 @@ A aplicação no host permanece bloqueada, inclusive no CLI para `/etc/fstab`.
 ## Regressão detectada pelo operador — 2026-10-10
 
 Na execução Linux de 21 testes, `test_linux_missing_xattr_api_refused` falhou porque o mock definiu `os.listxattr=None`: `hasattr` retornava verdadeiro e a chamada gerava `TypeError`, convertido em mensagem diferente da esperada. O resultado foi `FAILED (failures=1)`. Correção publicada: exigir `callable(getattr(os, "listxattr", None))`. **Reexecução da suíte ainda pendente.** Nenhuma alteração de sistema foi realizada pela correção.
+
+## Evidência do operador — correção xattr e risco concorrente, 2026-10-10
+
+Após a correção da detecção de API xattr, o operador forneceu a saída completa: **Ran 21 tests in 0.016s; OK**. Todos os 21 casos passaram, sem skips. Incluem `test_linux_missing_xattr_api_refused` e `test_noncooperating_editor_during_replace_remains_known_risk`. Este último **reproduz perda de escrita externa**, não demonstra que a transação seja segura contra esse cenário. A rodada não foi explicitamente identificada com hostname na mensagem. A aplicação real continua bloqueada até resolução ou aceitação formal do risco e autorização separada.
