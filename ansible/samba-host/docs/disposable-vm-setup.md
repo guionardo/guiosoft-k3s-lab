@@ -116,3 +116,19 @@ instalada. Verificar os modos de rede oferecidos pelo UTM antes de declarar
 a rede isolada; não usar bridge com LAN de produção. Manter compartilhamento
 de pastas e passthrough de discos físicos desativados. Nenhuma VM foi
 criada ou validada por esta atualização documental.
+
+## Primeira inspeção da VM UTM — 2026-10-10
+
+O operador informou layout do guest: `vda1` 16 MiB, `vda2` 863 MiB
+vfat em `/boot/efi`, `vda3` 13,4 GiB ext3 em `/`, `vda4` 805 MiB
+swap; `vdb` e `vdc` com 1 GiB cada, sem partições ou filesystem
+apresentados na saída. Interface `enp0s1` em `192.168.64.3/24`,
+rota default via `192.168.64.1`. LAN física `192.168.88.0/24`.
+
+**Não declarar isolamento validado:** a faixa `192.168.64.0/24` com
+gateway sugere rede UTM compartilhada/NAT; NAT pode permitir tráfego
+iniciado pela VM em direção à LAN real. Próxima etapa: identificar modo
+de rede no UTM e migrar para rede privada sem bridge/rota à LAN antes
+de qualquer experimento. Também confirmar arquitetura com `uname -m`,
+ainda não fornecido, e identidade dos discos virtuais no hypervisor e
+guest antes de `mkfs`.
