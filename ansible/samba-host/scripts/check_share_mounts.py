@@ -11,16 +11,12 @@ import shutil
 import subprocess
 import sys
 
-EXPECTED = (
-    ("Documentos", "/mnt/hd500/sdf2", "01D36FD6673F4300", "ntfs", False),
-    ("Desenvolvimento", "/mnt/dev", "3ed56e92-ab85-4b9a-8993-d2f1cda6a62e", "ext4", False),
-    ("Fotos", "/mnt/fotos", "8CE4EC1DE4EC0AF2", "ntfs", True),
-    ("BackupAntigo", "/mnt/backup-antigo", "964C33BF4C3398C7", "ntfs", True),
-    ("ProjetosAntigos", "/mnt/projetos-antigos", "DA087AB8087A92ED", "ntfs", True),
-    ("Temporarios", "/mnt/hd500/sdf3", "1068AFBC68AF9ECA", "ntfs", False),
-    ("DevBin", "/mnt/hd500/sdf1", "01D36FD612953850", "ntfs", False),
-)
+from share_manifest import load_manifest
 
+EXPECTED = tuple(
+    (s["name"], s["path"], s["uuid"], s["fstype"], s["readonly"])
+    for s in load_manifest()
+)
 
 def run(*args):
     executable = args[0]
