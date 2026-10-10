@@ -8,6 +8,7 @@ authorize deployment or guarantee protection against runtime unmounts.
 import argparse
 import json
 import pathlib
+import re
 import sys
 
 from share_manifest import DEFAULTS, load_manifest
@@ -29,7 +30,7 @@ def render_template(shares):
     users = config.get("samba_auth_users")
     if (not isinstance(users, list) or not users or
             any(not isinstance(u, str) or not u or
-                any(ch in u for ch in "\\r\\n[] ,;") for u in users)):
+                re.fullmatch(r"[A-Za-z_][A-Za-z0-9_.-]*", u) is None for u in users)):
         raise ValueError("samba_auth_users invalido")
     template_path = pathlib.Path(__file__).resolve().parents[1] / "templates" / "smb.conf.candidate.j2"
     template = Environment(undefined=StrictUndefined, autoescape=False).from_string(
