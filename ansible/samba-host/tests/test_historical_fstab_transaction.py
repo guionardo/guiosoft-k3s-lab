@@ -132,6 +132,31 @@ class TransactionTest(unittest.TestCase):
         self.assertEqual(backups[0].read_bytes(), self.original)
         self.assertEqual(list(Path(self.tmp.name).glob(".fstab.candidate-*")), [])
 
+    def test_regular_mode_preserved(self):
+        os.chmod(self.fstab, 0o640)
+        self.apply()
+        self.assertEqual(self.fstab.stat().st_mode & 0o7777, 0o640)
+
+    def test_special_permission_bits_refused(self):
+        os.chmod(self.fstab, 0o2640)
+        with self.assertRaisesRegex(txn.UnsafeFstab, "special permission"):
+            txn.execute(self.fstab, "findmnt", True)
+
+    def test_extended_attributes_refused(self):
+        with patch.object(txn.os, "listxattr", return_value=["user.samba-test"], create=True):
+            with self.assertRaisesRegex(txn.UnsafeFstab, "extended attributes"):
+                txn.execute(self.fstab, "findmnt", True)
+
+    def test_metadata_change_during_validation_refused(self):
+        def change_mode(_candidate, _command):
+            os.chmod(self.fstab, 0o600)
+        os.chmod(self.fstab, 0o640)
+        with patch.object(txn, "verify", side_effect=change_mode):
+            with self.assertRaisesRegex(txn.UnsafeFstab, "changed concurrently"):
+                txn.execute(self.fstab, "findmnt", False)
+        self.assertEqual(self.fstab.read_bytes(), self.original)
+        self.assertEqual(self.fstab.stat().st_mode & 0o777, 0o600)
+
     def test_symlink_refused(self):
         link = Path(self.tmp.name) / "fstab-link"
         link.symlink_to(self.fstab)
