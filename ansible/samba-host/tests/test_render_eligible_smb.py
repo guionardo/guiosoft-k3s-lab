@@ -27,6 +27,13 @@ class RenderTests(unittest.TestCase):
         self.assertNotIn("[BackupAntigo]", config)
         self.assertNotIn("[ProjetosAntigos]", config)
 
+    def test_canonical_template_policy_and_authentication(self):
+        config = module.render(self.report(["Documentos"]))
+        self.assertIn("valid users = guionardo", config)
+        self.assertIn("hosts deny = ALL", config)
+        self.assertIn("server min protocol = SMB2_02", config)
+        self.assertIn("read only = no", config)
+
     def test_all_blocked_global_only(self):
         config = module.render(self.report([]))
         self.assertIn("[global]", config)
