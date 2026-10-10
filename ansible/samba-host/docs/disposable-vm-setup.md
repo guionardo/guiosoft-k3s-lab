@@ -106,3 +106,13 @@ Não anexar discos físicos, pastas do host, virtiofs ou passthrough. Não criar
 discos virtuais nem executar comandos de formatação/desmontagem até confirmar
 o hypervisor, a arquitetura e o isolamento. O nó K3s permanece fora do
 laboratório.
+
+## Arquitetura do Mac confirmada — 2026-10-10
+
+O operador confirmou Mac com chip **M4**, arquitetura Apple Silicon
+(`arm64`). Para evitar emulação x86, selecionar imagem **Debian 13 arm64**
+e modo **Virtualize → Linux** no UTM, com backend disponível na versão
+instalada. Verificar os modos de rede oferecidos pelo UTM antes de declarar
+a rede isolada; não usar bridge com LAN de produção. Manter compartilhamento
+de pastas e passthrough de discos físicos desativados. Nenhuma VM foi
+criada ou validada por esta atualização documental.
