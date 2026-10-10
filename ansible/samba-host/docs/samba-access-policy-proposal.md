@@ -16,7 +16,7 @@ Em 2026-10-10, o operador montou Fotos (UUID `8CE4EC1DE4EC0AF2`) temporariamente
 | BackupAntigo | /mnt/backup-antigo | **Não** | NTFS histórico; ainda desmontado |
 | ProjetosAntigos | /mnt/projetos-antigos | **Não** | NTFS histórico; ainda desmontado |
 | Temporarios | /mnt/hd500/sdf3 | **Sim, provisoriamente** | NTFS ativo; preservar montagem |
-| DevBin | /mnt/hd500/sdf1 | A avaliar | NTFS ativo; preservar montagem |
+| DevBin | /mnt/hd500/sdf1 | **Sim, provisoriamente** | NTFS ativo; preservar montagem |
 
 Nenhum compartilhamento deve ser publicado quando seu caminho não for um mountpoint esperado: impedir exposição acidental de um diretório vazio do filesystem raiz.
 
