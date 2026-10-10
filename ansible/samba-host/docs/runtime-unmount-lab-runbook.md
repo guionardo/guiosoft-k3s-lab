@@ -64,3 +64,15 @@ protege necessariamente sessões abertas.
 Construir automação do laboratório **dentro da VM**, com modo `--dry-run`,
 verificações explícitas de ambiente descartável e coleta de evidências.
 Não incorporar o experimento ao playbook Ansible de produção.
+
+## Planejador somente leitura — 2026-10-10
+
+Adicionado `scripts/runtime_unmount_lab_plan.py --json`, sem modo de execução. Confere Linux, marcador `/etc/samba-lab-disposable-vm` (a criar **somente dentro da VM**, após inspeção manual), e presença de `smbd`, `smbclient`, `testparm`, `findmnt`, `mount`, `umount`. Mesmo com resultado `ready_for_manual_review: true`, não há autorização para executar o experimento automaticamente. O marcador é uma declaração humana, **não** prova técnica de isolamento. Quatro testes unitários simulam ferramentas e marcador; execução da suíte ainda pendente.
+
+No host K3s, é seguro executar somente a inspeção, que deverá recusar prontidão por ausência de marcador e ferramentas:
+
+```bash
+python3 ansible/samba-host/scripts/runtime_unmount_lab_plan.py --json
+```
+
+Não criar o marcador no host K3s para contornar a checagem.
