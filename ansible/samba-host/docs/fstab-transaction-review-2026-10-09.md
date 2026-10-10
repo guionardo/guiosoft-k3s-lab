@@ -118,3 +118,7 @@ O operador compartilhou a saída completa de `unittest discover` com **19 testes
 Dois testes novos, **ainda não executados**, documentam: (1) recusa se a inspeção xattr estiver indisponível no Linux; (2) **limitação intencional** com escritor não cooperativo alterando o destino entre a última conferência e `os.replace`. O segundo teste comprova que essa alteração pode ser perdida; ele não é um teste de proteção bem-sucedida. Esta condição é um bloqueador para qualquer liberação de escrita em produção até decisão arquitetural explícita sobre coordenação de editores/gestão de configuração.
 
 A aplicação no host permanece bloqueada, inclusive no CLI para `/etc/fstab`.
+
+## Regressão detectada pelo operador — 2026-10-10
+
+Na execução Linux de 21 testes, `test_linux_missing_xattr_api_refused` falhou porque o mock definiu `os.listxattr=None`: `hasattr` retornava verdadeiro e a chamada gerava `TypeError`, convertido em mensagem diferente da esperada. O resultado foi `FAILED (failures=1)`. Correção publicada: exigir `callable(getattr(os, "listxattr", None))`. **Reexecução da suíte ainda pendente.** Nenhuma alteração de sistema foi realizada pela correção.
