@@ -157,6 +157,27 @@ class TransactionTest(unittest.TestCase):
         self.assertEqual(self.fstab.read_bytes(), self.original)
         self.assertEqual(self.fstab.stat().st_mode & 0o777, 0o600)
 
+    def test_linux_missing_xattr_api_refused(self):
+        with patch.object(txn.sys, "platform", "linux"), patch.object(txn.os, "listxattr", None, create=True):
+            with self.assertRaisesRegex(txn.UnsafeFstab, "extended attribute inspection unavailable"):
+                txn.execute(self.fstab, "findmnt", True)
+
+    def test_noncooperating_editor_during_replace_remains_known_risk(self):
+        # A foreign writer can still race after our last check. Simulate one
+        # immediately before replacement to document the current limitation.
+        actual_replace = os.replace
+        foreign = self.original + b"# external write\\n"
+
+        def race_replace(source, destination):
+            self.fstab.write_bytes(foreign)
+            actual_replace(source, destination)
+
+        with patch.object(txn, "verify"), patch.object(txn.os, "replace", side_effect=race_replace):
+            with contextlib.redirect_stdout(io.StringIO()):
+                txn.execute(self.fstab, "findmnt", False)
+        self.assertNotIn(b"# external write", self.fstab.read_bytes())
+        self.assertIn(txn.MARK_START.encode(), self.fstab.read_bytes())
+
     def test_symlink_refused(self):
         link = Path(self.tmp.name) / "fstab-link"
         link.symlink_to(self.fstab)
