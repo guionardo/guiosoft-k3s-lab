@@ -49,3 +49,35 @@ done
 O operador executou o diagnóstico somente leitura no host: `id guionardo` retornou UID/GID 1000; `testparm` disponível em `/usr/bin/testparm`; `command -v smbd` não retornou caminho; `systemctl is-active smbd` retornou `inactive` e `systemctl is-enabled smbd` retornou `not-found`. Os quatro volumes ativos estavam montados com `rw` (`/mnt/hd500/sdf2`, `/mnt/dev`, `/mnt/hd500/sdf3`, `/mnt/hd500/sdf1`); os três históricos permaneciam desmontados. NTFS ativos expuseram `fuseblk` com `user_id=0,group_id=0`; isso não determina, isoladamente, se o usuário não privilegiado consegue escrever. Não houve instalação, escrita ou ativação de serviço.
 
 Próximo gate: validar o template em arquivo temporário usando `testparm`, com ferramenta de renderização disponível, e inspecionar permissões Unix dos pontos de montagem sem executar testes de escrita. **Não iniciar Samba nem editar `/etc/samba/smb.conf`.**
+
+## Evidência de permissões — 2026-10-10
+
+O operador reportou: Documentos `/mnt/hd500/sdf2` `0777 root:root`, Desenvolvimento `/mnt/dev` `0755 guionardo:guionardo`, Temporarios `/mnt/hd500/sdf3` `0777 root:root` e DevBin `/mnt/hd500/sdf1` `0777 root:root`. Para UID 1000, `test -r` e `test -w` foram positivos em todos os quatro mountpoints. Isso comprova o resultado da checagem de permissões Unix, não um teste de escrita SMB. `testparm --version`: `4.22.11-Debian-4.22.11+dfsg-0+deb13u1`; Ansible Core `2.19.11`. Permissões locais `0777` em NTFS devem ser reavaliadas posteriormente; não alterar agora.
+
+### Validação offline proposta (sem aplicação)
+
+No checkout atualizado, a partir da raiz do repositório, renderizar o template Jinja com `ansible localhost` usando variáveis da role em um diretório temporário privado. Não usar `become` e não modificar `/etc/samba`:
+
+```bash
+cd ansible/samba-host
+TMPDIR_SMB=$(mktemp -d)
+chmod 700 "$TMPDIR_SMB"
+cat > "$TMPDIR_SMB/render.yml" <<'YAML'
+---
+- hosts: localhost
+  connection: local
+  gather_facts: false
+  vars_files:
+    - PLACEHOLDER_DEFAULTS
+  tasks:
+    - name: Render candidate offline
+      ansible.builtin.template:
+        src: PLACEHOLDER_TEMPLATE
+        dest: PLACEHOLDER_OUTPUT
+        mode: '0600'
+YAML
+# Substituir os placeholders por caminhos absolutos locais antes de executar.
+# Depois: testparm -s "$TMPDIR_SMB/smb.conf"; remover somente o diretório temporário criado.
+```
+
+O exemplo é um esboço de procedimento, não um script executável pronto; usar caminhos absolutos e revisar o playbook antes da execução.
