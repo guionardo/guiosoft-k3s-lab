@@ -1,11 +1,13 @@
 """Pure mocked tests: no mounts, blkid calls or Samba changes."""
 import importlib.util
 import pathlib
+import sys
 import subprocess
 import unittest
 from unittest.mock import patch
 
 SCRIPT = pathlib.Path(__file__).resolve().parents[1] / "scripts" / "check_share_mounts.py"
+sys.path.insert(0, str(SCRIPT.parent))
 spec = importlib.util.spec_from_file_location("check_share_mounts", SCRIPT)
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
