@@ -37,18 +37,12 @@ SHARE = """
     wide links = no
 """
 
-# Keep explicit metadata until the manifest is sourced from a single validated
-# configuration file. Any change to Ansible defaults requires synchronizing it.
-SHARES = (
-    ("Documentos", "/mnt/hd500/sdf2", False),
-    ("Desenvolvimento", "/mnt/dev", False),
-    ("Fotos", "/mnt/fotos", True),
-    ("BackupAntigo", "/mnt/backup-antigo", True),
-    ("ProjetosAntigos", "/mnt/projetos-antigos", True),
-    ("Temporarios", "/mnt/hd500/sdf3", False),
-    ("DevBin", "/mnt/hd500/sdf1", False),
-)
+from share_manifest import load_manifest
 
+SHARES = tuple(
+    (s["name"], s["path"], s["readonly"])
+    for s in load_manifest()
+)
 
 def render(report):
     if not isinstance(report, dict) or set(report) != {"eligible", "blocked"}:
