@@ -97,3 +97,7 @@ python3 ansible/samba-host/scripts/check_share_mounts.py
 ```
 
 Revisão futura: teste unitário com comandos simulados, tratamento de falhas de executáveis, validação de caminhos com bind mounts e integração ao ciclo de vida de `smbd` somente após autorização. Para validar a origem, o script depende do acesso do operador ao `blkid` dos dispositivos; ausência de permissão bloqueia por segurança.
+
+## Execução real do preflight — 2026-10-10
+
+Após a correção de resolução de `blkid` fora do PATH (`2fec1ab`), o operador executou `python3 ansible/samba-host/scripts/check_share_mounts.py` no Debian. Resultado: `OK` para Documentos, Desenvolvimento, Temporarios e DevBin; `BLOQUEADO: mountpoint ausente` para Fotos, BackupAntigo e ProjetosAntigos. O resultado demonstra a rejeição esperada dos três históricos desmontados e a validação dos quatro volumes ativos. O código de saída não foi exibido pelo operador; pela implementação, a presença de bloqueios deve resultar em `1`. Ainda não foram exercitados os casos de UUID incorreto, filesystem divergente e histórico montado com `rw`. Não conectar o script a `smbd` até completar esses testes e revisar a estratégia de indisponibilidade parcial.
