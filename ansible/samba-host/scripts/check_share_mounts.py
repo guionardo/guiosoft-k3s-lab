@@ -7,6 +7,7 @@ Not wired to smbd startup: this is a standalone diagnostic.
 import argparse
 import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -23,7 +24,20 @@ EXPECTED = (
 
 
 def run(*args):
-    return subprocess.run(args, capture_output=True, text=True, check=False)
+    executable = args[0]
+    resolved = shutil.which(executable)
+    if resolved is None:
+        for directory in ("/usr/sbin", "/sbin", "/usr/bin", "/bin"):
+            candidate = os.path.join(directory, executable)
+            if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+                resolved = candidate
+                break
+    if resolved is None:
+        return subprocess.CompletedProcess(args, 127, "", f"executavel ausente: {executable}")
+    try:
+        return subprocess.run((resolved, *args[1:]), capture_output=True, text=True, check=False)
+    except OSError as exc:
+        return subprocess.CompletedProcess(args, 127, "", str(exc))
 
 
 def inspect_one(name, path, uuid, fstype, readonly):
