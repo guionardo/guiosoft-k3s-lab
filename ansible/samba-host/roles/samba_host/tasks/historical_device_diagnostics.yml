@@ -1,0 +1,48 @@
+---
+# Somente leitura. Nenhuma tarefa de montagem ou escrita.
+- name: Consultar metadados dos três dispositivos históricos
+  ansible.builtin.command:
+    argv:
+      - blkid
+      - -o
+      - export
+      - "{{ item.stdout }}"
+  loop: "{{ samba_devices.results | selectattr('item.readonly', 'equalto', true) | list }}"
+  loop_control:
+    label: "{{ item.item.name }}"
+  register: samba_historical_device_details
+  changed_when: false
+
+- name: Exibir identificação histórica verificada
+  ansible.builtin.debug:
+    msg: >-
+      {{ item.item.item.name }}:
+      device={{ item.item.stdout }}
+      uuid={{ item.item.item.uuid }}
+      metadata={{ item.stdout_lines | join('; ') }}
+  loop: "{{ samba_historical_device_details.results }}"
+  loop_control:
+    label: "{{ item.item.item.name }}"
+
+- name: Consultar estado exato das montagens históricas
+  ansible.builtin.command:
+    argv:
+      - findmnt
+      - --mountpoint
+      - "{{ item.path }}"
+      - --noheadings
+      - --output
+      - SOURCE,FSTYPE,OPTIONS
+  loop: "{{ samba_shares | selectattr('readonly', 'equalto', true) | list }}"
+  loop_control:
+    label: "{{ item.name }}"
+  register: samba_historical_mount_state
+  changed_when: false
+  failed_when: samba_historical_mount_state.rc not in [0, 1]
+
+- name: Exibir estado histórico sem modificar montagens
+  ansible.builtin.debug:
+    msg: "{{ item.item.name }}: {{ item.stdout if item.rc == 0 else 'NAO MONTADO' }}"
+  loop: "{{ samba_historical_mount_state.results }}"
+  loop_control:
+    label: "{{ item.item.name }}"
