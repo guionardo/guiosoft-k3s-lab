@@ -71,3 +71,7 @@ testparm -s /tmp/smb-eligible-candidate.conf
 ```
 
 O arquivo de saída **não é sobrescrito** se já existir. Remover arquivos temporários após validação. **Limitações bloqueantes:** o protótipo replica metadados e política Samba do Ansible (risco de divergência), não prova frescor/autenticidade do relatório e não garante proteção contra unmount em runtime. Não copiar para `/etc/samba`, não iniciar serviço e não integrar a pipeline de aplicação até resolver essas limitações.
+
+## Validação do protótipo no Debian — 2026-10-10
+
+O operador executou a suíte completa: **37 testes passaram** (`Ran 37 tests in 0.020s`, `OK`). O candidato parcial gerado em `/tmp/smb-eligible-candidate.conf` foi validado por `testparm -s`: `Loaded services file OK`, `Server role: ROLE_STANDALONE`. Seções presentes: Documentos, Desenvolvimento, Temporarios e DevBin, todas `read only = No`; ausentes: Fotos, BackupAntigo, ProjetosAntigos. Avisos: `Weak crypto is allowed by GnuTLS`, `/run/samba` sem diretórios de lock/PID. Não houve teste de sessão SMB, autenticação nem unmount em runtime. **Não aplicar este candidato.**
