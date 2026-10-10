@@ -29,6 +29,10 @@ class UnsafeFstab(RuntimeError):
     pass
 
 
+class CommitDurabilityUncertain(UnsafeFstab):
+    """Replacement happened, but directory persistence could not be confirmed."""
+
+
 def digest(data):
     return hashlib.sha256(data).hexdigest()
 
@@ -122,11 +126,19 @@ def execute(target, findmnt, dry_run):
             os.chown(candidate, st.st_uid, st.st_gid)
             os.replace(candidate, target)
             committed = True
-            dirfd = os.open(parent, os.O_RDONLY | os.O_DIRECTORY)
             try:
-                os.fsync(dirfd)
-            finally:
-                os.close(dirfd)
+                dirfd = os.open(parent, os.O_RDONLY | os.O_DIRECTORY)
+                try:
+                    os.fsync(dirfd)
+                finally:
+                    os.close(dirfd)
+            except OSError as exc:
+                raise CommitDurabilityUncertain(
+                    "APPLIED_DURABILITY_UNCERTAIN backup=" + str(backup)
+                    + " sha256=" + digest(proposed)
+                    + " reason=" + str(exc)
+                    + "; inspect target and backup manually; no automatic rollback"
+                ) from exc
             print("UPDATED backup=" + backup + " sha256=" + digest(proposed))
         finally:
             if not committed and backup:
