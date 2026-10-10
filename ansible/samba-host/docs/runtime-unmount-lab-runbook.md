@@ -76,3 +76,7 @@ python3 ansible/samba-host/scripts/runtime_unmount_lab_plan.py --json
 ```
 
 Não criar o marcador no host K3s para contornar a checagem.
+
+## Resultado do planejador no host K3s — 2026-10-10
+
+O operador confirmou `Ran 47 tests in 0.065s` e `OK`. Execução de `runtime_unmount_lab_plan.py --json`: Linux, UID efetivo 1000, marcador `/etc/samba-lab-disposable-vm` ausente, `smbd` e `smbclient` ausentes; `testparm`, `findmnt`, `mount`, `umount` presentes. `ready_for_manual_review: false`, exit code `1` (esperado). A ferramenta não executou nenhuma ação de montagem ou serviço. O laboratório SMB com sessão ativa **continua não executado**; a proteção em runtime permanece sem validação.
