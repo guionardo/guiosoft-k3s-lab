@@ -86,3 +86,9 @@ Após os commits de testes de concorrência e falhas, o operador forneceu a saí
 ## Evidência do operador — Debian 13 em Docker, suíte ampliada, 2026-10-09
 
 O operador forneceu a saída da execução Linux com **14 testes marcados `ok`**, incluindo os dois testes reais de `findmnt` e os quatro novos testes de concorrência/injeção de falhas. Rodapé compartilhado: `Ran 14 tests in 0.013s`. Nenhum `skipped`, `FAIL` ou `ERROR` aparece na saída recebida; a linha final `OK` não foi incluída no trecho enviado. Evidência restrita ao contêiner de teste, não ao host K3s. Permanecem pendentes cenários de falha após `os.replace`, preservação de metadados estendidos e análise da janela de concorrência com editores não cooperativos.
+
+## Estado pós-commit — implementação pendente de testes (2026-10-10)
+
+Foi introduzida a exceção `CommitDurabilityUncertain`: se `os.replace` já concluiu e a abertura ou `fsync` do diretório falhar, a operação informa `APPLIED_DURABILITY_UNCERTAIN` com caminho do backup e hash do candidato. O backup é preservado; não há rollback automático. Um teste novo injeta erro no terceiro `os.fsync` (após sincronização de candidato e backup), verificando que o destino já contém o bloco gerenciado e que o backup mantém o original. **Ainda não executado pelo operador.**
+
+A mensagem de erro representa persistência não confirmada, não corrupção comprovada. A ferramenta continua incapaz de impedir escritores externos não cooperativos, e o fluxo Ansible de aplicação permanece desabilitado. O bloqueio de escrita em `/etc/fstab` está no CLI; a função interna `execute` ainda deve ser considerada interface de teste, não interface pública de operação.
