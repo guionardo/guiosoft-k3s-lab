@@ -112,6 +112,26 @@ class TransactionTest(unittest.TestCase):
         self.assertEqual(list(Path(self.tmp.name).glob("fstab.samba-backup-*")), [])
         self.assertEqual(list(Path(self.tmp.name).glob(".fstab.candidate-*")), [])
 
+    def test_directory_fsync_failure_reports_applied_uncertain_and_retains_backup(self):
+        original_fsync = txn.os.fsync
+        calls = 0
+
+        def fail_directory_sync(fd):
+            nonlocal calls
+            calls += 1
+            if calls == 3:
+                raise OSError("injected directory fsync failure")
+            return original_fsync(fd)
+
+        with patch.object(txn, "verify"), patch.object(txn.os, "fsync", side_effect=fail_directory_sync):
+            with self.assertRaisesRegex(txn.CommitDurabilityUncertain, "APPLIED_DURABILITY_UNCERTAIN"):
+                txn.execute(self.fstab, "findmnt", False)
+        self.assertIn(txn.MARK_START.encode(), self.fstab.read_bytes())
+        backups = list(Path(self.tmp.name).glob("fstab.samba-backup-*"))
+        self.assertEqual(len(backups), 1)
+        self.assertEqual(backups[0].read_bytes(), self.original)
+        self.assertEqual(list(Path(self.tmp.name).glob(".fstab.candidate-*")), [])
+
     def test_symlink_refused(self):
         link = Path(self.tmp.name) / "fstab-link"
         link.symlink_to(self.fstab)
