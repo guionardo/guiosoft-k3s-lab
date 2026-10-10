@@ -65,3 +65,7 @@ no diretório subjacente durante ou após o evento.
 Nenhuma publicação em produção enquanto não houver uma barreira
 verificada contra acesso ao diretório subjacente em runtime, mecanismo de
 disponibilidade parcial, credenciais e firewall aprovados, e rollback testado.
+
+## Preparação segura do laboratório — 2026-10-10
+
+Adicionado `scripts/runtime_lab_preflight.py` (commit `9259e2d`): verifica **somente** a presença de `unshare`, `mount`, `umount`, `losetup`, `mkfs.ext4`, `smbd`, `testparm`, `smbclient` e `findmnt`. Não cria namespaces nem altera estado. Exemplo, a partir da raiz do repositório: `python3 ansible/samba-host/scripts/runtime_lab_preflight.py --json`. Exit code `1` significa pré-requisitos incompletos (ou plataforma não Linux), não que seja necessário instalar pacotes imediatamente. Mesmo exit code `0` não confirma privilégios, isolamento ou segurança de testes. **Nenhum script de unmount foi habilitado.** Antes de um teste real, aprovar ambiente separado (preferencialmente VM descartável) e demonstrar que nenhum mount do host é alcançável ou afetado.
