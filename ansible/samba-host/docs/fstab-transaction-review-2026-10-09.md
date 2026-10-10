@@ -110,3 +110,11 @@ Limitações: `listxattr` não equivale a uma auditoria completa de ACLs e label
 ## Evidência do operador — suíte de metadados, 2026-10-10
 
 O operador compartilhou a saída completa de `unittest discover` com **19 testes marcados `ok`**, sem skips, e rodapé `Ran 19 tests in 0.016s\n\nOK`. Os quatro novos casos de preservação/rejeição de metadados passaram. A mensagem não especificou novamente o hostname da execução; não atribuir esta rodada a um host específico sem confirmação. Os testes usam arquivos temporários e mocks e não constituem autorização para aplicar o `fstab` real. Continuam pendentes ACLs/labels, concorrência não cooperativa e revisão da estratégia de inode.
+
+## Revisão de atomicidade e escritores externos — 2026-10-10
+
+**Decisão provisória:** manter `os.replace` por preservar a atomicidade da troca de conteúdo; escrita in-place manteria inode, mas introduziria risco de arquivo truncado/parcial em falhas. A operação Linux passa a recusar execução quando a API de inspeção de atributos estendidos não estiver disponível. O bloqueio do CLI para o destino real usa `realpath`, não apenas `abspath`.
+
+Dois testes novos, **ainda não executados**, documentam: (1) recusa se a inspeção xattr estiver indisponível no Linux; (2) **limitação intencional** com escritor não cooperativo alterando o destino entre a última conferência e `os.replace`. O segundo teste comprova que essa alteração pode ser perdida; ele não é um teste de proteção bem-sucedida. Esta condição é um bloqueador para qualquer liberação de escrita em produção até decisão arquitetural explícita sobre coordenação de editores/gestão de configuração.
+
+A aplicação no host permanece bloqueada, inclusive no CLI para `/etc/fstab`.
