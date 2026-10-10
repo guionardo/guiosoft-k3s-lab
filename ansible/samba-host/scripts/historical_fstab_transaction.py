@@ -81,21 +81,34 @@ def verify(path, command):
         raise UnsafeFstab("findmnt validation failed: " + result.stderr.strip())
 
 
+def inspect_metadata(target):
+    """Refuse metadata that atomic replacement cannot safely preserve."""
+    st = target.lstat()
+    if not stat.S_ISREG(st.st_mode) or st.st_nlink != 1:
+        raise UnsafeFstab("target must be a regular file with one hard link")
+    if stat.S_IMODE(st.st_mode) & 0o7000:
+        raise UnsafeFstab("special permission bits require manual review")
+    if hasattr(os, "listxattr"):
+        try:
+            attrs = os.listxattr(target, follow_symlinks=False)
+        except (OSError, TypeError) as exc:
+            raise UnsafeFstab("cannot inspect extended attributes: " + str(exc)) from exc
+        if attrs:
+            raise UnsafeFstab("extended attributes require manual review: " + ", ".join(sorted(attrs)))
+    return st
+
+
 def execute(target, findmnt, dry_run):
     target = Path(target)
     parent = target.parent
     lockpath = parent / ("." + target.name + ".samba.lock")
     if target.is_symlink():
         raise UnsafeFstab("refusing symlink target")
-    st = target.stat()
-    if not stat.S_ISREG(st.st_mode) or st.st_nlink != 1:
-        raise UnsafeFstab("target must be a regular file with one hard link")
+    st = inspect_metadata(target)
     lockfd = os.open(lockpath, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
     try:
         fcntl.flock(lockfd, fcntl.LOCK_EX)
-        st = target.lstat()
-        if not stat.S_ISREG(st.st_mode) or st.st_nlink != 1:
-            raise UnsafeFstab("target changed type")
+        st = inspect_metadata(target)
         original = target.read_bytes()
         proposed = validate_entries(original)
         if proposed == original:
@@ -120,7 +133,10 @@ def execute(target, findmnt, dry_run):
                 os.fsync(handle.fileno())
             os.chmod(backup, stat.S_IMODE(st.st_mode))
             os.chown(backup, st.st_uid, st.st_gid)
-            if target.read_bytes() != original or target.lstat().st_ino != st.st_ino:
+            current = inspect_metadata(target)
+            if (target.read_bytes() != original or current.st_ino != st.st_ino
+                    or current.st_uid != st.st_uid or current.st_gid != st.st_gid
+                    or stat.S_IMODE(current.st_mode) != stat.S_IMODE(st.st_mode)):
                 raise UnsafeFstab("fstab changed concurrently; aborting")
             os.chmod(candidate, stat.S_IMODE(st.st_mode))
             os.chown(candidate, st.st_uid, st.st_gid)
