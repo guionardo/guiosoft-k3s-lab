@@ -83,3 +83,7 @@ Após introdução de `scripts/share_manifest.py` e refatoração do preflight/r
 ## Consolidação da política Samba — 2026-10-10
 
 O gerador seletivo passou a renderizar diretamente `templates/smb.conf.candidate.j2` usando Jinja2, `samba_shares` filtrados pelo preflight e `samba_auth_users` dos defaults do Ansible. Foram removidas as constantes Python duplicadas de configuração global e shares. Requer PyYAML e Jinja2 no interpretador de execução. Teste adicional verifica regras de autenticação, restrição de rede e protocolo mínimo. **Mudança ainda pendente de testes no Debian e `testparm`.** A proteção em runtime continua não validada e nenhuma aplicação automática foi habilitada.
+
+## Validação pós-correção de usuários — 2026-10-10
+
+Operador confirmou `Ran 43 tests in 0.067s` / `OK`. `testparm -s /tmp/smb-eligible-candidate.conf` retornou `Loaded services file OK` e `ROLE_STANDALONE`. Compartilhamentos renderizados: Documentos, Desenvolvimento, Temporarios e DevBin, todos com `read only = No` e `valid users = guionardo`. Os históricos Fotos, BackupAntigo e ProjetosAntigos não foram publicados. Avisos não bloqueantes para validação sintática: GnuTLS weak crypto fallback e ausência de `/run/samba` para lock/PID. Não houve teste de serviço ativo, autenticação real ou unmount em runtime; implantação continua proibida até revisão específica.
