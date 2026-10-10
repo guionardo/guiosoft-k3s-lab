@@ -92,3 +92,7 @@ O operador forneceu a saída da execução Linux com **14 testes marcados `ok`**
 Foi introduzida a exceção `CommitDurabilityUncertain`: se `os.replace` já concluiu e a abertura ou `fsync` do diretório falhar, a operação informa `APPLIED_DURABILITY_UNCERTAIN` com caminho do backup e hash do candidato. O backup é preservado; não há rollback automático. Um teste novo injeta erro no terceiro `os.fsync` (após sincronização de candidato e backup), verificando que o destino já contém o bloco gerenciado e que o backup mantém o original. **Ainda não executado pelo operador.**
 
 A mensagem de erro representa persistência não confirmada, não corrupção comprovada. A ferramenta continua incapaz de impedir escritores externos não cooperativos, e o fluxo Ansible de aplicação permanece desabilitado. O bloqueio de escrita em `/etc/fstab` está no CLI; a função interna `execute` ainda deve ser considerada interface de teste, não interface pública de operação.
+
+## Evidência do operador — macOS, falha pós-commit, 2026-10-10
+
+A execução da suíte ampliada foi compartilhada com **15 casos**: 13 marcados `ok` e dois ignorados por ausência do `util-linux findmnt`. Dentre os aprovados está `test_directory_fsync_failure_reports_applied_uncertain_and_retains_backup`. Rodapé compartilhado: `Ran 15 tests in 0.010s`. Não houve falhas ou erros na saída apresentada. A linha final `OK` não constava do trecho recebido. A evidência é de simulação local e **não comprova durabilidade em falhas reais de energia/disco**. Pendente: executar os 15 testes em Debian 13 isolado.
