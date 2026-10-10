@@ -53,6 +53,9 @@
 - name: Diagnosticar dispositivos NTFS históricos sem alterações
   ansible.builtin.import_tasks: historical_device_diagnostics.yml
 
+- name: Verificar ferramentas NTFS sem alterações
+  ansible.builtin.import_tasks: historical_ntfs_tool_preflight.yml
+
 - name: Validar pontos de montagem históricos sem alterações
   ansible.builtin.import_tasks: historical_mount_preflight.yml
 
