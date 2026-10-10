@@ -106,3 +106,7 @@ O operador executou diretamente no host `guiosoft-info` o comando `python3 -m un
 O editor agora consulta `lstat` e, quando disponível, `listxattr` para recusar arquivos com atributos estendidos, bits especiais de modo ou hard links. Antes da substituição, verifica novamente inode, conteúdo, proprietário, grupo e modo, recusando alterações detectadas. Mantém `chmod`/`chown` nos arquivos candidato e backup. Quatro novos testes cobrem modo normal, modo especial, atributos estendidos simulados e corrida de mudança de modo. **Testes ainda pendentes de execução.**
 
 Limitações: `listxattr` não equivale a uma auditoria completa de ACLs e labels de segurança em todas as plataformas; substituição atômica altera inode; uma alteração por escritor não cooperativo após a última conferência continua possível. O procedimento de produção permanece bloqueado.
+
+## Evidência do operador — suíte de metadados, 2026-10-10
+
+O operador compartilhou a saída completa de `unittest discover` com **19 testes marcados `ok`**, sem skips, e rodapé `Ran 19 tests in 0.016s\n\nOK`. Os quatro novos casos de preservação/rejeição de metadados passaram. A mensagem não especificou novamente o hostname da execução; não atribuir esta rodada a um host específico sem confirmação. Os testes usam arquivos temporários e mocks e não constituem autorização para aplicar o `fstab` real. Continuam pendentes ACLs/labels, concorrência não cooperativa e revisão da estratégia de inode.
