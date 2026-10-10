@@ -79,3 +79,7 @@ O operador executou a suíte completa: **37 testes passaram** (`Ran 37 tests in 
 ## Validação da fonte única — 2026-10-10
 
 Após introdução de `scripts/share_manifest.py` e refatoração do preflight/renderer para ler `roles/samba_host/defaults/main.yml`, o operador informou `Ran 41 tests in 0.025s` e `OK`. Isso comprova aprovação da suíte executada, não validação de sessão SMB ou proteção em runtime. Próxima tarefa: eliminar duplicidade da política Samba global/autenticação entre template Jinja e renderizador Python, preservando candidato offline e sem aplicação.
+
+## Consolidação da política Samba — 2026-10-10
+
+O gerador seletivo passou a renderizar diretamente `templates/smb.conf.candidate.j2` usando Jinja2, `samba_shares` filtrados pelo preflight e `samba_auth_users` dos defaults do Ansible. Foram removidas as constantes Python duplicadas de configuração global e shares. Requer PyYAML e Jinja2 no interpretador de execução. Teste adicional verifica regras de autenticação, restrição de rede e protocolo mínimo. **Mudança ainda pendente de testes no Debian e `testparm`.** A proteção em runtime continua não validada e nenhuma aplicação automática foi habilitada.
