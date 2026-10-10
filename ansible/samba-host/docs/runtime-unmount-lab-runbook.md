@@ -117,3 +117,7 @@ Status `FAIL` (exit 1) se exposição ou comportamento incorreto observado;
 **PASS_OBSERVED não prova ausência de corridas nem autoriza implantação.**
 O JSON é autodeclarado: guardar logs, hashes e comandos de coleta como
 evidência independente. Os seis testes unitários ainda aguardam execução.
+
+## Validação dos testes do avaliador — 2026-10-10
+
+O operador confirmou execução da suíte completa: `Ran 53 tests in 0.066s` e `OK`. Os seis novos testes do avaliador offline estão incluídos nesse total. O resultado valida o comportamento simulado da classificação de evidências, **não** a segurança de desmontagem em runtime; nenhuma sessão SMB ou desmontagem real foi executada nesta etapa.
