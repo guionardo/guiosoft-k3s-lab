@@ -84,3 +84,7 @@ ansible-playbook -i inventory/hosts.ini playbooks/site.yml --ask-become-pass
 ```
 
 Esperado: `changed=0`. Qualquer falha deve ser investigada antes de considerar uma mudança; não executar `samba_apply=true`.
+
+## Preflight das ferramentas NTFS (2026-10-10)
+
+O diagnóstico inclui agora `historical_ntfs_tool_preflight.yml`: consulta a disponibilidade de `ntfs-3g`, `mount.ntfs-3g`, `findmnt` e `blkid` sem instalar pacotes nem montar discos. Os resultados ainda precisam ser coletados no host. Um executável ausente será mostrado como `AUSENTE` para análise. Não usar `samba_apply=true`.
