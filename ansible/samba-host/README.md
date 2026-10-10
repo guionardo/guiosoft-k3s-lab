@@ -92,3 +92,7 @@ O diagnóstico inclui agora `historical_ntfs_tool_preflight.yml`: consulta a dis
 ## Ensaio proposto para Fotos
 
 Consulte [proposta de montagem temporária somente leitura](docs/fotos-readonly-mount-trial.md). Documento para revisão e aprovação futura; **não** autoriza execução nem habilita tarefas de montagem.
+
+## Política Samba proposta (sem aplicação)
+
+A [matriz de compartilhamentos e controles de autenticação](docs/samba-access-policy-proposal.md) registra os volumes históricos somente leitura, os riscos de escrita nos volumes ativos e os gates de validação antes de configurar o serviço. O ensaio temporário de Fotos foi executado, desmontado e seu diretório removido em 2026-10-10; consulte o diário de engenharia. O documento de ensaio acima permanece como registro do procedimento, não como tarefa pendente.
