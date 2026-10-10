@@ -69,3 +69,7 @@ disponibilidade parcial, credenciais e firewall aprovados, e rollback testado.
 ## Preparação segura do laboratório — 2026-10-10
 
 Adicionado `scripts/runtime_lab_preflight.py` (commit `9259e2d`): verifica **somente** a presença de `unshare`, `mount`, `umount`, `losetup`, `mkfs.ext4`, `smbd`, `testparm`, `smbclient` e `findmnt`. Não cria namespaces nem altera estado. Exemplo, a partir da raiz do repositório: `python3 ansible/samba-host/scripts/runtime_lab_preflight.py --json`. Exit code `1` significa pré-requisitos incompletos (ou plataforma não Linux), não que seja necessário instalar pacotes imediatamente. Mesmo exit code `0` não confirma privilégios, isolamento ou segurança de testes. **Nenhum script de unmount foi habilitado.** Antes de um teste real, aprovar ambiente separado (preferencialmente VM descartável) e demonstrar que nenhum mount do host é alcançável ou afetado.
+
+## Resultado do preflight do host — 2026-10-10
+
+O operador executou `runtime_lab_preflight.py --json` como UID efetivo 1000 em Linux. Presentes: `unshare`, `mount`, `umount`, `losetup`, `mkfs.ext4`, `testparm`, `findmnt`. Ausentes: `smbd` e `smbclient`. Exit code `1` esperado. O teste **não** confirmou suporte efetivo a namespaces não privilegiados nem isolamento de mounts. Decisão: não instalar Samba no host K3s para este experimento; manter o teste SMB/unmount em VM descartável. Continuar desenvolvimento da seleção de shares por testes simulados sem tocar no host.
