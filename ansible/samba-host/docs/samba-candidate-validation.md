@@ -43,3 +43,9 @@ done
 - Não há ainda pré-validação de mountpoint integrada ao ciclo de vida do `smbd`, nem regras nftables, nem provisionamento de senha.
 - `/mnt/dev` inteiro está provisoriamente em escopo, com risco de exposição de segredos.
 - O template não está referenciado por tarefa de implantação; `samba_apply=true` continua bloqueado.
+
+## Evidência de preflight — 2026-10-10
+
+O operador executou o diagnóstico somente leitura no host: `id guionardo` retornou UID/GID 1000; `testparm` disponível em `/usr/bin/testparm`; `command -v smbd` não retornou caminho; `systemctl is-active smbd` retornou `inactive` e `systemctl is-enabled smbd` retornou `not-found`. Os quatro volumes ativos estavam montados com `rw` (`/mnt/hd500/sdf2`, `/mnt/dev`, `/mnt/hd500/sdf3`, `/mnt/hd500/sdf1`); os três históricos permaneciam desmontados. NTFS ativos expuseram `fuseblk` com `user_id=0,group_id=0`; isso não determina, isoladamente, se o usuário não privilegiado consegue escrever. Não houve instalação, escrita ou ativação de serviço.
+
+Próximo gate: validar o template em arquivo temporário usando `testparm`, com ferramenta de renderização disponível, e inspecionar permissões Unix dos pontos de montagem sem executar testes de escrita. **Não iniciar Samba nem editar `/etc/samba/smb.conf`.**
