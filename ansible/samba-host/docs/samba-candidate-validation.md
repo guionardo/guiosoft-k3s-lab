@@ -81,3 +81,7 @@ YAML
 ```
 
 O exemplo é um esboço de procedimento, não um script executável pronto; usar caminhos absolutos e revisar o playbook antes da execução.
+
+## Resultado de `testparm` remoto — 2026-10-10
+
+O operador renderizou o candidato Jinja no macOS com Ansible local (`ok=1 changed=1`, apenas arquivo temporário). O `testparm` não estava disponível no Mac; o candidato foi enviado ao host Debian como `/tmp/smb-candidate-validation.conf` e validado por `testparm -s`. Resultado: `Loaded services file OK`, `Server role: ROLE_STANDALONE`, sete seções de compartilhamento reconhecidas. Documentos, Desenvolvimento, Temporarios e DevBin apareceram com `read only = No`; os históricos não exibiram a opção, pois `read only = Yes` é o padrão Samba. O utilitário avisou `Weak crypto is allowed by GnuTLS (e.g. NTLM as a compatibility fallback)` e ausência dos diretórios `/run/samba` de lock/PID. Esses avisos não invalidaram a leitura da configuração, mas devem ser revisados antes da implantação. A ausência dos diretórios é compatível com o serviço ainda não preparado/ativo; não criar diretórios nesta etapa. **Arquivo temporário remoto ainda aguarda remoção confirmada.** A validação não prova que os caminhos estejam montados, nem autenticação, isolamento de rede ou permissões efetivas SMB.
