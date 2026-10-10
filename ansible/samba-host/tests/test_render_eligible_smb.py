@@ -27,6 +27,10 @@ class RenderTests(unittest.TestCase):
         self.assertNotIn("[BackupAntigo]", config)
         self.assertNotIn("[ProjetosAntigos]", config)
 
+    def test_username_with_r_and_n_is_accepted(self):
+        config = module.render(self.report(["Documentos"]))
+        self.assertIn("valid users = guionardo", config)
+
     def test_canonical_template_policy_and_authentication(self):
         config = module.render(self.report(["Documentos"]))
         self.assertIn("valid users = guionardo", config)
