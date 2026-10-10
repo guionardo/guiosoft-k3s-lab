@@ -7,6 +7,7 @@ Esta área documenta a proposta de Samba no Debian 13 que hospeda o K3s. **Nenhu
 - [Arquitetura, inventário e decisões (ADRs)](docs/architecture-and-decisions.md)
 - [Procedimentos operacionais e recuperação](docs/operations-and-recovery.md)
 - [Diário de engenharia e evidências](docs/engineering-log.md)
+- [Proposta de mudança controlada do fstab (não autorizada)](docs/fstab-controlled-change-proposal.md)
 
 O material para um artigo técnico será derivado dessas evidências **após** os testes de montagem, rollback, Samba e firewall. A documentação distingue o que já foi observado do que ainda é proposta.
 
@@ -57,13 +58,13 @@ Antes de qualquer alteração, o diagnóstico agora verifica `/mnt/fotos`, `/mnt
 
 ### Transação fstab preparada, ainda não habilitada
 
-O arquivo `roles/samba_host/tasks/historical_fstab_apply.yml` contém um estágio **não importado pelo playbook principal**. Ele exige três confirmações, verifica conflitos de UUID e destino, cria backup de `/etc/fstab`, insere somente os três volumes históricos e tenta validar com `findmnt --verify`; em falha, restaura o backup. As entradas usam `ro,nofail,noauto` para não montar automaticamente nem no momento da edição nem no boot.
+O arquivo `roles/samba_host/tasks/historical_fstab_apply.yml` contém um estágio **não importado pelo playbook principal**. Ele verifica confirmações, mas permanece limitado a **preview e bloqueio explícito**; não aplica alterações no `/etc/fstab`. A transação Python separada faz backups apenas em arquivos de teste, e não está habilitada para escrita no fstab real. As entradas usam `ro,nofail,noauto` para não montar automaticamente nem no momento da edição nem no boot.
 
 **Não executar esse arquivo isoladamente.** Antes de integrá-lo, precisamos validar em ambiente de teste o comportamento de `findmnt --verify` com diretórios ainda inexistentes, conferir os requisitos do driver NTFS e revisar a restauração em falhas intermediárias. A criação dos diretórios e as montagens serão etapas separadas. O playbook principal continua sem tarefas de escrita e `samba_apply=true` continua bloqueado.
 
 ## Revisão da transação de fstab (2026-10-09)
 
-A transação preliminar foi substituída por um auxiliar isolado em `scripts/historical_fstab_transaction.py`, com preview padrão, candidato validado antes da substituição e testes de unidade usando arquivos temporários. O estágio Ansible continua **não importado** e foi alterado para **preview seguido de bloqueio explícito**: não faz escrita em `/etc/fstab`. Oito testes de unidade passaram em ambiente isolado (`0,008 s`), com `findmnt` simulado; a execução no servidor e a validação real do `findmnt` ainda não foram realizadas.
+A transação preliminar foi substituída por um auxiliar isolado em `scripts/historical_fstab_transaction.py`, com preview padrão, candidato validado antes da substituição e testes de unidade usando arquivos temporários. O estágio Ansible continua **não importado** e foi alterado para **preview seguido de bloqueio explícito**: não faz escrita em `/etc/fstab`. A suíte evoluiu para 21 testes; o operador reportou `Ran 21 tests in 0.016s; OK`, incluindo integração com `findmnt` real e um teste que reproduz a perda de alteração concorrente externa. Houve também uma execução anterior de 15 testes diretamente no host `guiosoft-info`. Esses resultados **não autorizam** aplicação em produção.
 
 Veja [revisão, riscos e procedimentos de teste](docs/fstab-transaction-review-2026-10-09.md). Para executar os testes isolados:
 
