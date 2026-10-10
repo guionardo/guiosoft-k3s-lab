@@ -53,3 +53,7 @@ e controles de acesso por share. **Não ativar** apenas com preflight de startup
 - Revisão de permissões, autenticação e firewall antes de habilitar `smbd`.
 - Mudanças em `/etc/samba`, fstab, mountpoints, serviços e firewall exigem
   autorização específica e plano de rollback.
+
+## Evidência de testes — 2026-10-10
+
+Execução pelo operador no host Debian: `python3 -m unittest discover -s ansible/samba-host/tests -p 'test_*.py' -v` retornou **28 testes, OK** (incluindo 7 testes novos do preflight, 2 de integração com `findmnt` e testes da transação histórica de fstab). O comando `python3 ansible/samba-host/scripts/check_share_mounts.py --eligible-json` retornou `eligible = [Documentos, Desenvolvimento, Temporarios, DevBin]` e `blocked = [Fotos, BackupAntigo, ProjetosAntigos]`, cada um por `mountpoint ausente`; exit code **1**, esperado para diagnóstico global com bloqueios. Não foram realizados testes SMB reais nem testes de unmount durante sessão. A seleção `eligible` é apenas relatório, **não** uma autorização de publicação ou configuração ativa.
