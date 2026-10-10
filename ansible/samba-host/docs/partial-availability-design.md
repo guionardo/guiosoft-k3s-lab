@@ -75,3 +75,7 @@ O arquivo de saída **não é sobrescrito** se já existir. Remover arquivos tem
 ## Validação do protótipo no Debian — 2026-10-10
 
 O operador executou a suíte completa: **37 testes passaram** (`Ran 37 tests in 0.020s`, `OK`). O candidato parcial gerado em `/tmp/smb-eligible-candidate.conf` foi validado por `testparm -s`: `Loaded services file OK`, `Server role: ROLE_STANDALONE`. Seções presentes: Documentos, Desenvolvimento, Temporarios e DevBin, todas `read only = No`; ausentes: Fotos, BackupAntigo, ProjetosAntigos. Avisos: `Weak crypto is allowed by GnuTLS`, `/run/samba` sem diretórios de lock/PID. Não houve teste de sessão SMB, autenticação nem unmount em runtime. **Não aplicar este candidato.**
+
+## Validação da fonte única — 2026-10-10
+
+Após introdução de `scripts/share_manifest.py` e refatoração do preflight/renderer para ler `roles/samba_host/defaults/main.yml`, o operador informou `Ran 41 tests in 0.025s` e `OK`. Isso comprova aprovação da suíte executada, não validação de sessão SMB ou proteção em runtime. Próxima tarefa: eliminar duplicidade da política Samba global/autenticação entre template Jinja e renderizador Python, preservando candidato offline e sem aplicação.
