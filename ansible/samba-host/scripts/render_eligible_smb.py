@@ -10,39 +10,33 @@ import json
 import pathlib
 import sys
 
-# Deliberately separate from the global diagnostic: render only explicitly
-# validated shares and reject stale/ambiguous/unknown input.
-GLOBAL = """# CANDIDATO OFFLINE; NAO IMPLANTAR. Revalidar mounts e runtime antes de uso.
-[global]
-    workgroup = WORKGROUP
-    server role = standalone server
-    security = user
-    server min protocol = SMB2_02
-    map to guest = Never
-    usershare allow guests = no
-    restrict anonymous = 2
-    hosts allow = 127. 192.168.88.
-    hosts deny = ALL
-    follow symlinks = no
-    wide links = no
-"""
-SHARE = """
-[{name}]
-    path = {path}
-    browseable = yes
-    guest ok = no
-    valid users = guionardo
-    read only = {readonly}
-    follow symlinks = no
-    wide links = no
-"""
-
-from share_manifest import load_manifest
+from share_manifest import DEFAULTS, load_manifest
 
 SHARES = tuple(
     (s["name"], s["path"], s["readonly"])
     for s in load_manifest()
 )
+
+
+def render_template(shares):
+    """Use the exact same Jinja2 policy template as the Ansible candidate."""
+    try:
+        import yaml
+        from jinja2 import Environment, StrictUndefined
+    except ImportError as exc:
+        raise ValueError("PyYAML e Jinja2 sao necessarios para renderizar") from exc
+    config = yaml.safe_load(DEFAULTS.read_text(encoding="utf-8"))
+    users = config.get("samba_auth_users")
+    if (not isinstance(users, list) or not users or
+            any(not isinstance(u, str) or not u or
+                any(ch in u for ch in "\\r\\n[] ,;") for u in users)):
+        raise ValueError("samba_auth_users invalido")
+    template_path = pathlib.Path(__file__).resolve().parents[1] / "templates" / "smb.conf.candidate.j2"
+    template = Environment(undefined=StrictUndefined, autoescape=False).from_string(
+        template_path.read_text(encoding="utf-8")
+    )
+    return template.render(samba_shares=shares, samba_auth_users=users)
+
 
 def render(report):
     if not isinstance(report, dict) or set(report) != {"eligible", "blocked"}:
@@ -66,10 +60,8 @@ def render(report):
         raise ValueError("relatorio incompleto, duplicado ou desconhecido")
     if len(set(combined)) != len(combined):
         raise ValueError("share duplicado")
-    return GLOBAL + "".join(
-        SHARE.format(name=name, path=path, readonly="yes" if readonly else "no")
-        for name, path, readonly in SHARES if name in eligible
-    )
+    selected = [share for share in load_manifest() if share["name"] in eligible]
+    return render_template(selected)
 
 
 def main():
