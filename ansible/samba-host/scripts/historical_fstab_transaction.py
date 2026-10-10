@@ -91,9 +91,9 @@ def inspect_metadata(target):
     if os.name == "posix" and sys.platform.startswith("linux"):
         # Linux security labels and POSIX ACLs are commonly stored as xattrs.
         # Refuse when inspection is unavailable rather than silently dropping them.
-        if not hasattr(os, "listxattr"):
+        if not callable(getattr(os, "listxattr", None)):
             raise UnsafeFstab("extended attribute inspection unavailable on Linux")
-    if hasattr(os, "listxattr"):
+    if callable(getattr(os, "listxattr", None)):
         try:
             attrs = os.listxattr(target, follow_symlinks=False)
         except (OSError, TypeError) as exc:
