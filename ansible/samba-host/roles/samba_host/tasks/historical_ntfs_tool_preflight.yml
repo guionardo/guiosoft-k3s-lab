@@ -1,0 +1,34 @@
+---
+# Diagnóstico somente leitura. command -v via shell não altera o host.
+- name: Verificar disponibilidade de executáveis NTFS e validação
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/env
+      - sh
+      - -c
+      - 'command -v "$1"'
+      - sh
+      - "{{ item }}"
+  loop:
+    - ntfs-3g
+    - mount.ntfs-3g
+    - findmnt
+    - blkid
+  register: samba_ntfs_tools
+  changed_when: false
+  failed_when: samba_ntfs_tools.rc not in [0, 1]
+
+- name: Apresentar disponibilidade das ferramentas
+  ansible.builtin.debug:
+    msg: "{{ item.item }}: {{ item.stdout if item.rc == 0 else 'AUSENTE' }}"
+  loop: "{{ samba_ntfs_tools.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: Informar se o driver NTFS está disponível
+  ansible.builtin.debug:
+    msg: >-
+      Driver ntfs-3g {{ 'disponivel' if
+      (samba_ntfs_tools.results | selectattr('item', 'equalto', 'ntfs-3g')
+      | first).rc == 0 else 'ausente' }}.
+      Diagnostico somente leitura; nenhuma instalacao ou montagem executada.
