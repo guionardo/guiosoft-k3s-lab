@@ -100,3 +100,9 @@ A execução da suíte ampliada foi compartilhada com **15 casos**: 13 marcados 
 ## Evidência do operador — host guiosoft-info, 2026-10-10
 
 O operador executou diretamente no host `guiosoft-info` o comando `python3 -m unittest discover -s ansible/samba-host/tests -p 'test_*.py' -v`. Resultado integral informado: **Ran 15 tests in 0.035s; OK**. Todos os 15 testes, incluindo os dois com `findmnt` real e o cenário de `fsync` pós-substituição, passaram, sem skips. Os testes usam `TemporaryDirectory` e injeção de falhas: a execução não montou volumes, não editou `/etc/fstab` e não aplicou o papel Ansible. O comando foi executado pelo operador, não pelo assistente. Ainda pendem a revisão de metadados e os controles de concorrência antes de qualquer autorização de aplicação.
+
+## Preservação de metadados — endurecimento de 2026-10-10
+
+O editor agora consulta `lstat` e, quando disponível, `listxattr` para recusar arquivos com atributos estendidos, bits especiais de modo ou hard links. Antes da substituição, verifica novamente inode, conteúdo, proprietário, grupo e modo, recusando alterações detectadas. Mantém `chmod`/`chown` nos arquivos candidato e backup. Quatro novos testes cobrem modo normal, modo especial, atributos estendidos simulados e corrida de mudança de modo. **Testes ainda pendentes de execução.**
+
+Limitações: `listxattr` não equivale a uma auditoria completa de ACLs e labels de segurança em todas as plataformas; substituição atômica altera inode; uma alteração por escritor não cooperativo após a última conferência continua possível. O procedimento de produção permanece bloqueado.
