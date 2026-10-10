@@ -80,3 +80,40 @@ Não criar o marcador no host K3s para contornar a checagem.
 ## Resultado do planejador no host K3s — 2026-10-10
 
 O operador confirmou `Ran 47 tests in 0.065s` e `OK`. Execução de `runtime_unmount_lab_plan.py --json`: Linux, UID efetivo 1000, marcador `/etc/samba-lab-disposable-vm` ausente, `smbd` e `smbclient` ausentes; `testparm`, `findmnt`, `mount`, `umount` presentes. `ready_for_manual_review: false`, exit code `1` (esperado). A ferramenta não executou nenhuma ação de montagem ou serviço. O laboratório SMB com sessão ativa **continua não executado**; a proteção em runtime permanece sem validação.
+
+## Avaliação offline de evidências — 2026-10-10
+
+O script `scripts/evaluate_unmount_lab.py` lê **somente** um JSON registrado
+pelo operador na VM descartável; não cria sessões SMB nem desmonta volumes.
+Exige os cinco cenários `baseline`, `existing_session`, `new_session`,
+`other_share`, `recovery`, com `performed`, `underlying_exposed` e
+`expected_behavior`. Exige confirmação explícita de VM descartável,
+rede isolada e volume de teste verificado.
+
+Exemplo de **esquema**, não evidência real (todos os campos `performed: false`
+devem permanecer inconclusivos):
+
+```json
+{
+  "environment": {
+    "vm_disposable": true,
+    "network_isolated": true,
+    "test_volume_verified": true
+  },
+  "observations": {
+    "baseline": {"performed": false, "underlying_exposed": null, "expected_behavior": null},
+    "existing_session": {"performed": false, "underlying_exposed": null, "expected_behavior": null},
+    "new_session": {"performed": false, "underlying_exposed": null, "expected_behavior": null},
+    "other_share": {"performed": false, "underlying_exposed": null, "expected_behavior": null},
+    "recovery": {"performed": false, "underlying_exposed": null, "expected_behavior": null}
+  }
+}
+```
+
+Execução: `python3 ansible/samba-host/scripts/evaluate_unmount_lab.py evidence.json`.
+Status `FAIL` (exit 1) se exposição ou comportamento incorreto observado;
+`INCONCLUSIVE` (exit 2) quando não realizado ou não comprovado;
+`PASS_OBSERVED` (exit 0) somente para observações completas e positivas.
+**PASS_OBSERVED não prova ausência de corridas nem autoriza implantação.**
+O JSON é autodeclarado: guardar logs, hashes e comandos de coleta como
+evidência independente. Os seis testes unitários ainda aguardam execução.
