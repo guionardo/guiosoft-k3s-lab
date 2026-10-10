@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Read-only, fail-closed preflight of Samba share mountpoints.
 
-Reads Linux /proc/self/mountinfo and blkid; never mounts, writes or changes services.
+Uses findmnt and blkid; never mounts, writes or changes services.
 Not wired to smbd startup: this is a standalone diagnostic.
 """
 import argparse
@@ -10,7 +10,6 @@ import os
 import shutil
 import subprocess
 import sys
-from pathlib import Path
 
 EXPECTED = (
     ("Documentos", "/mnt/hd500/sdf2", "01D36FD6673F4300", "ntfs", False),
@@ -80,13 +79,19 @@ def inspect_one(name, path, uuid, fstype, readonly):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--json", action="store_true", help="emitir JSON")
+    output = parser.add_mutually_exclusive_group()
+    output.add_argument("--json", action="store_true", help="emitir diagnostico JSON")
+    output.add_argument("--eligible-json", action="store_true", help="emitir nomes dos shares validos em JSON (nao implanta)")
     args = parser.parse_args()
     if sys.platform != "linux":
         print("Este diagnostico exige Linux", file=sys.stderr)
         return 2
     results = [inspect_one(*item) for item in EXPECTED]
-    if args.json:
+    if args.eligible_json:
+        print(json.dumps({"eligible": [item["share"] for item in results if item["ok"]],
+                          "blocked": [{"share": item["share"], "issues": item["issues"]}
+                                      for item in results if not item["ok"]]}, ensure_ascii=False, indent=2))
+    elif args.json:
         print(json.dumps(results, ensure_ascii=False, indent=2))
     else:
         for item in results:
