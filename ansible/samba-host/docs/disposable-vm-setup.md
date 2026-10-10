@@ -88,3 +88,21 @@ automática. O laboratório ainda não foi executado. Um resultado
 `PASS_OBSERVED` indica apenas que as observações registradas satisfazem
 os critérios; não comprova ausência de corridas. A escolha da arquitetura
 de proteção permanece aberta.
+
+## Ambiente escolhido: Mac com UTM — 2026-10-10
+
+O operador informou que não possui Proxmox e escolheu executar o
+laboratório no Mac. Topologia alvo: duas VMs Debian 13 descartáveis no UTM,
+uma para Samba e dois discos virtuais de dados; outra para cliente SMB.
+Dimensionamento inicial sugerido: 2 GiB RAM e 15 GiB de disco de sistema por
+VM; dois discos adicionais de 1 GiB somente na VM Samba. Ajustar segundo
+os recursos disponíveis no Mac.
+
+**Antes de criar as VMs:** identificar se o Mac usa Apple Silicon ou Intel,
+pois a arquitetura da imagem Debian e as opções de virtualização do UTM
+dependem disso. A rede deve ser comprovadamente privada entre as VMs, sem
+bridge com a LAN; não assumir que os modos de rede do UTM são equivalentes.
+Não anexar discos físicos, pastas do host, virtiofs ou passthrough. Não criar
+discos virtuais nem executar comandos de formatação/desmontagem até confirmar
+o hypervisor, a arquitetura e o isolamento. O nó K3s permanece fora do
+laboratório.
