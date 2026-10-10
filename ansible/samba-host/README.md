@@ -88,3 +88,7 @@ Esperado: `changed=0`. Qualquer falha deve ser investigada antes de considerar u
 ## Preflight das ferramentas NTFS (2026-10-10)
 
 O diagnóstico inclui agora `historical_ntfs_tool_preflight.yml`: consulta a disponibilidade de `ntfs-3g`, `mount.ntfs-3g`, `findmnt` e `blkid` sem instalar pacotes nem montar discos. Os resultados ainda precisam ser coletados no host. Um executável ausente será mostrado como `AUSENTE` para análise. Não usar `samba_apply=true`.
+
+## Ensaio proposto para Fotos
+
+Consulte [proposta de montagem temporária somente leitura](docs/fotos-readonly-mount-trial.md). Documento para revisão e aprovação futura; **não** autoriza execução nem habilita tarefas de montagem.
