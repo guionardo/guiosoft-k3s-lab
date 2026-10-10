@@ -21,3 +21,7 @@
 ## Critério para publicação do artigo
 
 Distinguir rigorosamente resultados **observados em execução** de **comportamentos planejados**. Só declarar rollback e montagem como testados após evidências reais.
+
+## 2026-10-10 — diagnóstico dos volumes históricos
+
+O operador executou o diagnóstico em `guiosoft-info` e reportou `ok=18 changed=0 unreachable=0 failed=0 skipped=1`. Os três dispositivos foram identificados por UUID e tipo NTFS: Fotos `/dev/sde6` (`8CE4EC1DE4EC0AF2`), BackupAntigo `/dev/sde1` (`964C33BF4C3398C7`) e ProjetosAntigos `/dev/sde3` (`DA087AB8087A92ED`). Os três permaneciam desmontados, com mountpoints inexistentes e sem entradas correspondentes no fstab. Nenhuma alteração foi aplicada. Próxima verificação: disponibilidade de ntfs-3g e ferramentas, sem instalação nem montagem.
