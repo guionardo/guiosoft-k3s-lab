@@ -96,3 +96,7 @@ A mensagem de erro representa persistência não confirmada, não corrupção co
 ## Evidência do operador — macOS, falha pós-commit, 2026-10-10
 
 A execução da suíte ampliada foi compartilhada com **15 casos**: 13 marcados `ok` e dois ignorados por ausência do `util-linux findmnt`. Dentre os aprovados está `test_directory_fsync_failure_reports_applied_uncertain_and_retains_backup`. Rodapé compartilhado: `Ran 15 tests in 0.010s`. Não houve falhas ou erros na saída apresentada. A linha final `OK` não constava do trecho recebido. A evidência é de simulação local e **não comprova durabilidade em falhas reais de energia/disco**. Pendente: executar os 15 testes em Debian 13 isolado.
+
+## Evidência do operador — host guiosoft-info, 2026-10-10
+
+O operador executou diretamente no host `guiosoft-info` o comando `python3 -m unittest discover -s ansible/samba-host/tests -p 'test_*.py' -v`. Resultado integral informado: **Ran 15 tests in 0.035s; OK**. Todos os 15 testes, incluindo os dois com `findmnt` real e o cenário de `fsync` pós-substituição, passaram, sem skips. Os testes usam `TemporaryDirectory` e injeção de falhas: a execução não montou volumes, não editou `/etc/fstab` e não aplicou o papel Ansible. O comando foi executado pelo operador, não pelo assistente. Ainda pendem a revisão de metadados e os controles de concorrência antes de qualquer autorização de aplicação.
