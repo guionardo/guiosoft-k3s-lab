@@ -155,3 +155,7 @@ O operador confirmou rota default via `10.0.2.2` na interface `enp0s1` e `ip -4 
 ## Rota IPv6 descoberta — 2026-10-11
 
 Após remoção da rota IPv4 default, operador confirmou apenas `10.0.2.0/24` via `enp0s1`, porém `ip -6 route` ainda apresentou **default via `fe80::2`**, protocolo RA, além de rota local `feco::/64`; interface `enp0s1` UP com `10.0.2.15/24` e endereço `feco::.../64`. Portanto, bloquear IPv4 isoladamente **não** encerra a conectividade potencial para fora da VM. Próxima validação: desabilitar temporariamente IPv6 na interface da VM de teste, confirmar rotas e implementar isolamento persistente no virtualizador antes de qualquer experimento. Ainda não há comprovação de rede isolada.
+
+## Verificação de bloqueio temporário IPv4/IPv6 — 2026-10-11
+
+O operador executou `sudo sysctl -w net.ipv6.conf.enp0s1.disable_ipv6=1` na VM descartável; confirmou `ip -6 route` vazio, `ip -br addr` com `enp0s1` UP somente em `10.0.2.15/24` e `ip -4 route get 192.168.88.9` retornando `RTNETLINK answers: Network is unreachable`. **Evidência válida apenas para o estado atual da VM**, não para isolamento de rede no hipervisor nem persistência após reboot/DHCP. Antes de persistir endereços sem gateway, identificar o gerenciador de rede (`NetworkManager`, `systemd-networkd` ou `networking`) e validar comunicação privada entre VMs sem tráfego à LAN. Não iniciar Samba nem testes de desmontagem.
