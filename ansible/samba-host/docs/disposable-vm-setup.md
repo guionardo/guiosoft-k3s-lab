@@ -147,3 +147,7 @@ realmente isolada; confirmar por teste negativo de conectividade a partir
 do guest. Uma rede de duas VMs pode exigir configuração explícita no
 hypervisor e não deve ser considerada isolada somente por usar
 `Emulated VLAN`.
+
+## Teste de bloqueio da rota IPv4 — 2026-10-11
+
+O operador confirmou rota default via `10.0.2.2` na interface `enp0s1` e `ip -4 route get 192.168.88.9` usando esse gateway. Após orientação para remover **temporariamente** a rota default na VM descartável (`sudo ip -4 route del default via 10.0.2.2 dev enp0s1`), relatou `Network is unreachable`. Isso é evidência de ausência de rota IPv4 para aquele destino naquele instante, **não** prova de isolamento persistente ou completo. Ainda pendentes: rotas IPv4/IPv6 atuais, possibilidade de restauração por DHCP, configuração de rede sem gateway e isolamento no hipervisor, além de conectividade entre as duas VMs. Não iniciar experimento SMB até cumprir esses requisitos.
