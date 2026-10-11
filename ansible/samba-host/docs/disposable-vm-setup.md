@@ -151,3 +151,7 @@ hypervisor e não deve ser considerada isolada somente por usar
 ## Teste de bloqueio da rota IPv4 — 2026-10-11
 
 O operador confirmou rota default via `10.0.2.2` na interface `enp0s1` e `ip -4 route get 192.168.88.9` usando esse gateway. Após orientação para remover **temporariamente** a rota default na VM descartável (`sudo ip -4 route del default via 10.0.2.2 dev enp0s1`), relatou `Network is unreachable`. Isso é evidência de ausência de rota IPv4 para aquele destino naquele instante, **não** prova de isolamento persistente ou completo. Ainda pendentes: rotas IPv4/IPv6 atuais, possibilidade de restauração por DHCP, configuração de rede sem gateway e isolamento no hipervisor, além de conectividade entre as duas VMs. Não iniciar experimento SMB até cumprir esses requisitos.
+
+## Rota IPv6 descoberta — 2026-10-11
+
+Após remoção da rota IPv4 default, operador confirmou apenas `10.0.2.0/24` via `enp0s1`, porém `ip -6 route` ainda apresentou **default via `fe80::2`**, protocolo RA, além de rota local `feco::/64`; interface `enp0s1` UP com `10.0.2.15/24` e endereço `feco::.../64`. Portanto, bloquear IPv4 isoladamente **não** encerra a conectividade potencial para fora da VM. Próxima validação: desabilitar temporariamente IPv6 na interface da VM de teste, confirmar rotas e implementar isolamento persistente no virtualizador antes de qualquer experimento. Ainda não há comprovação de rede isolada.
