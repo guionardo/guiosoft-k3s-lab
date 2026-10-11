@@ -132,3 +132,18 @@ de rede no UTM e migrar para rede privada sem bridge/rota à LAN antes
 de qualquer experimento. Também confirmar arquitetura com `uname -m`,
 ainda não fornecido, e identidade dos discos virtuais no hypervisor e
 guest antes de `mkfs`.
+
+## Bloqueio de isolamento confirmado — 2026-10-11
+
+Após seleção de `Emulated VLAN`, o guest informou `enp0s1` UP com
+`10.0.2.15`. O operador confirmou que `ping 192.168.88.9` alcança o
+servidor K3s `guiosoft-info` na LAN `192.168.88.0/24`. Portanto, **o
+laboratório NÃO está isolado**, independentemente do rótulo do modo de rede
+no UTM. Suspender instalação/execução do Samba e qualquer experimento de
+mount/unmount até validar uma topologia sem caminho para a LAN. Não
+alterar firewall, serviços ou discos do K3s. Investigar se o guest possui
+uma rota padrão via `10.0.2.2` e se a configuração UTM oferece rede
+realmente isolada; confirmar por teste negativo de conectividade a partir
+do guest. Uma rede de duas VMs pode exigir configuração explícita no
+hypervisor e não deve ser considerada isolada somente por usar
+`Emulated VLAN`.
