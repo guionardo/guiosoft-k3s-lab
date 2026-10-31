@@ -15,3 +15,4 @@ resources:
   - planetapeia.yaml
   - registry-namespace.yaml
   - registry-secrets.yaml
+  - registry.yaml
