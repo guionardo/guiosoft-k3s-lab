@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: help discovery ansible-deps preflight bootstrap tools k3s kubeconfig-external storage storage-test storage-test-status storage-test-recreate storage-test-placement storage-test-reprovision storage-test-delete backup-create backup-list backup-verify backup-install backup-status backup-run backup-prune backup-inventory restic-test restic-r2-secret restic-r2-install restic-r2-test restic-r2-sync restic-r2-status restic-r2-check dr-readiness dr-r2-rehearsal dr-r2-export dr-target-init dr-restore observability-install observability-status observability-validate observability-cpu-throttling-audit observability-tracing-install observability-tracing-status observability-logging-install observability-logging-status observability-logging-test observability-grafana observability-grafana-reload observability-grafana-datasources observability-grafana-dashboard-audit otel-go-demo-build otel-go-demo-deploy otel-go-demo-install otel-go-demo-status otel-go-demo-test otel-go-demo-metrics-test otel-go-demo-incident-test otel-go-demo-delete firecrawl-migration-audit firecrawl-k8s-validate firecrawl-k8s-status firewall-audit cluster-status lab-deploy lab-status lab-test lab-delete planetapeia-validate planetapeia-status secrets-test secret-edit secret-view secret-validate secret-apply tf-cloudflare-discovery tf-cloudflare-init tf-cloudflare-fmt tf-cloudflare-validate tf-cloudflare-import tf-cloudflare-plan tf-r2-init tf-r2-fmt tf-r2-validate tf-r2-plan tf-r2-apply
+.PHONY: help discovery ansible-deps preflight bootstrap tools k3s kubeconfig-external storage storage-test storage-test-status storage-test-recreate storage-test-placement storage-test-reprovision storage-test-delete backup-create backup-list backup-verify backup-install backup-status backup-run backup-prune backup-inventory restic-test restic-r2-secret restic-r2-install restic-r2-test restic-r2-sync restic-r2-status restic-r2-check dr-readiness dr-r2-rehearsal dr-r2-export dr-target-init dr-restore observability-install observability-status observability-validate observability-cpu-throttling-audit observability-tracing-install observability-tracing-status observability-logging-install observability-logging-status observability-logging-test observability-grafana observability-grafana-reload observability-grafana-datasources observability-grafana-dashboard-audit otel-go-demo-build otel-go-demo-deploy otel-go-demo-install otel-go-demo-status otel-go-demo-test otel-go-demo-metrics-test otel-go-demo-incident-test otel-go-demo-delete firecrawl-migration-audit firecrawl-k8s-validate firecrawl-k8s-status firewall-audit cluster-status lab-deploy lab-status lab-test lab-delete planetapeia-validate planetapeia-status secrets-test secret-edit secret-view secret-validate secret-apply tf-cloudflare-discovery tf-cloudflare-init tf-cloudflare-fmt tf-cloudflare-validate tf-cloudflare-import tf-cloudflare-plan tf-r2-init tf-r2-fmt tf-r2-validate tf-r2-plan tf-r2-apply registry-status registry-validate registry-login
 
 help:
 	@echo "guiosoft-k3s-lab"
@@ -63,6 +63,9 @@ help:
 	@echo "  make firecrawl-migration-audit Audita o Docker Compose Firecrawl sem imprimir secrets"
 	@echo "  make firecrawl-k8s-validate Valida o scaffold Kubernetes Firecrawl sem aplicar recursos"
 	@echo "  make firecrawl-k8s-status  Mostra recursos Firecrawl caso o namespace já exista"
+	@echo "  make registry-status       Mostra Deployment, PVC, Ingress e Pods do registry"
+	@echo "  make registry-validate     Valida ponta a ponta o registry OCI na LAN"
+	@echo "  make registry-login        Exibe o comando docker login do registry"
 	@echo "  make firewall-audit        Audita firewall/listeners após K3s sem alterar regras"
 	@echo "  make cluster-status        Mostra nodes, pods e services do cluster"
 	@echo "  make lab-deploy            Cria namespace e workload de teste"
@@ -339,6 +342,15 @@ firecrawl-k8s-validate:
 
 firecrawl-k8s-status:
 	bash scripts/firecrawl-k8s.sh status
+
+registry-status:
+	bash scripts/registry.sh status
+
+registry-validate:
+	bash scripts/registry.sh validate
+
+registry-login:
+	bash scripts/registry-credentials.sh login
 
 firewall-audit:
 	cd ansible && ansible-playbook -K playbooks/firewall-audit.yml
