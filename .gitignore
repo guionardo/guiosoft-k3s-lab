@@ -64,3 +64,6 @@ backups/
 # Local Ansible inventories
 ansible/inventory/*.yml
 !ansible/inventory/*.example.yml
+
+# superpowers SDD scratch
+.superpowers/
