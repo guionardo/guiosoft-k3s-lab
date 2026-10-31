@@ -1,0 +1,8 @@
+---
+mirrors:
+  registry.guiosoft.info:
+    endpoint:
+      - "https://registry.guiosoft.info"
+    config:
+      tls:
+        insecure_skip_verify: true

@@ -23,6 +23,36 @@
       disable-agent: {{ k3s_disable_agent | default(false) | bool | lower }}
   notify: Restart k3s
 
+- name: Write K3s registries configuration
+  ansible.builtin.copy:
+    src: registries.yaml
+    dest: /etc/rancher/k3s/registries.yaml
+    owner: root
+    group: root
+    mode: "0600"
+  notify: Restart k3s
+
+- name: Write Traefik HelmChartConfig manifest
+  ansible.builtin.copy:
+    src: traefik-helmchartconfig.yaml
+    dest: /var/lib/rancher/k3s/server/manifests/traefik-config.yaml
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart k3s
+
+- name: Ensure registry hostname resolves to this node in /etc/hosts
+  ansible.builtin.lineinfile:
+    path: /etc/hosts
+    regexp: '^192\.168\.88\.9 registry\.guiosoft\.info$'
+    line: "192.168.88.9 registry.guiosoft.info"
+
+- name: Validate registries.yaml parses before restart
+  ansible.builtin.command: python3 -c "import yaml; yaml.safe_load(open('/etc/rancher/k3s/registries.yaml'))"
+  register: registries_yaml_check
+  changed_when: false
+  failed_when: registries_yaml_check.rc != 0
+
 - name: Check installed K3s version
   ansible.builtin.command: /usr/local/bin/k3s --version
   register: installed_k3s
