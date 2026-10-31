@@ -3,6 +3,8 @@ kind: Ingress
 metadata:
   name: registry
   namespace: registry
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
 spec:
   ingressClassName: traefik
   tls:
