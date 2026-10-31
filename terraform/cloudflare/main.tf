@@ -19,6 +19,15 @@ resource "cloudflare_zero_trust_tunnel_cloudflared_config" "homelab" {
 
   config = {
     ingress = [
+      # Registry is LAN-only. Like Firecrawl, this rule must precede the
+      # wildcard: the DNS record for *.guiosoft.info still points here, so
+      # without it the registry would be reachable from the internet as soon
+      # as its Traefik Ingress reconciles.
+      {
+        hostname       = "registry.guiosoft.info"
+        service        = "http_status:404"
+        origin_request = {}
+      },
       # Firecrawl is LAN-only. Keep this rule before the wildcard so requests
       # arriving through Cloudflare never reach Traefik, even though the
       # wildcard DNS record still points *.guiosoft.info at this tunnel.
