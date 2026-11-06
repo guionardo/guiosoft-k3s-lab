@@ -263,6 +263,29 @@ O conteúdo do registry é derivável: imagens são reconstruídas a partir do g
 
 O texto normativo está em `docs/disaster-recovery.md` (seção "Registry cache exclusion").
 
+## Certificado TLS para o navegador (mkcert)
+
+O Traefik usa o certificado autoassinado padrão, que o navegador não confia (e cujo SAN não inclui `registry.guiosoft.info`). Para eliminar o aviso de segurança e permitir que o navegador salve as credenciais, use o [mkcert](https://github.com/FiloSottile/mkcert):
+
+```bash
+brew install mkcert
+mkcert -install                          # cria a CA local e adiciona ao trust store
+mkcert registry.guiosoft.info            # gera registry.guiosoft.info.pem + -key.pem
+```
+
+Aplique no cluster:
+
+```bash
+kubectl -n registry create secret tls registry-tls \
+  --cert=registry.guiosoft.info.pem --key=registry.guiosoft.info-key.pem
+# o Ingress já referencia secretName: registry-tls (manifest em kubernetes/apps/registry/ingress.yaml)
+kubectl -n registry rollout restart deploy/zot
+```
+
+O certificado tem validade de ~2,5 anos e pode ser renovado com o mesmo comando. Para outras máquinas na LAN, copie `$(mkcert -CAROOT)/rootCA.pem` e instale no trust store de cada uma.
+
+O `insecure-registries` no daemon Docker do nó continua necessário para o `docker push` — o mkcert resolve apenas o navegador.
+
 ## Como expor publicamente no futuro
 
 Hoje o registry é deliberadamente LAN-only. Para expô-lo publicamente, nesta ordem:

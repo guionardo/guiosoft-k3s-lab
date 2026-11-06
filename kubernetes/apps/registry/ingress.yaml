@@ -9,6 +9,7 @@ spec:
   ingressClassName: traefik
   tls:
     - hosts: [registry.guiosoft.info]
+      secretName: registry-tls
   rules:
     - host: registry.guiosoft.info
       http:
