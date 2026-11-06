@@ -29,6 +29,16 @@ for sts in "${writers[@]}"; do
   [[ "${replicas:-0}" == "0" ]] || { echo "error: writer StatefulSet $sts has replicas=$replicas; refusing inconsistent backup" >&2; exit 1; }
 done
 
+# registry-data is a disposable cache rebuildable from git: keep its PV directory out of the snapshot.
+REGISTRY_DIR=""
+registry_pv="$(k3s kubectl -n registry get pvc registry-data -o jsonpath='{.spec.volumeName}' 2>/dev/null || true)"
+if [[ -n "$registry_pv" ]] && registry_dir="$(k3s kubectl get pv "$registry_pv" -o jsonpath='{.spec.local.path}' 2>/dev/null)"; then
+  [[ "$registry_dir" == "$PV_ROOT/"* ]] || { echo "error: registry PV path '$registry_dir' is not under $PV_ROOT; refusing inconsistent backup" >&2; exit 1; }
+  REGISTRY_DIR="$registry_dir"
+else
+  echo "registry cache PVC absent; nothing to exclude"
+fi
+
 set -a
 # shellcheck disable=SC1090
 source "$RESTIC_ENV"
@@ -38,7 +48,9 @@ export RESTIC_PASSWORD_FILE="$RESTIC_PASSWORD_PATH"
 export RESTIC_REPOSITORY_FILE="$RESTIC_REPOSITORY_PATH"
 
 restic snapshots >/dev/null
-restic backup "$PV_ROOT" --tag "$TAG" --host "$HOST"
+backup_cmd=(restic backup "$PV_ROOT" --tag "$TAG" --host "$HOST")
+if [[ -n "$REGISTRY_DIR" ]]; then backup_cmd+=(--exclude "$REGISTRY_DIR"); fi
+"${backup_cmd[@]}"
 if [[ "$SKIP_CHECK" == 1 ]]; then
   echo "Full Restic repository check deferred by K3S_PV_RESTIC_SKIP_CHECK=1."
 else
@@ -52,6 +64,7 @@ snapshot_time="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["tim
 echo "Persistent-volume backup completed."
 echo "tag=$TAG"
 echo "path=$PV_ROOT"
+echo "exclude=${REGISTRY_DIR:-none}"
 echo "host=$HOST"
 echo "snapshot_id=$snapshot_id"
 echo "snapshot_time=$snapshot_time"
