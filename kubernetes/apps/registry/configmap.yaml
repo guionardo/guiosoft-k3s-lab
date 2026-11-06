@@ -29,5 +29,9 @@ data:
         "port": "5000",
         "auth": { "htpasswd": { "path": "/etc/zot/htpasswd" } }
       },
-      "log": { "level": "info" }
+      "log": { "level": "info" },
+    "extensions": {
+      "search": { "enable": true },
+      "ui": { "enable": true }
+    }
     }

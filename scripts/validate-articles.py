@@ -2,7 +2,7 @@
 """Validate the multilingual technical article series.
 
 Checks that are cheap and deterministic locally/CI:
-- exactly six numbered articles exist in PT, EN and ES;
+- the numbered articles match the catalog in PT, EN and ES;
 - every article has a single H1 and at least one Mermaid diagram;
 - Mermaid timeline period labels do not contain ':' (Mermaid uses ':' as separator);
 - local Markdown image references resolve to existing files;

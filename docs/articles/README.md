@@ -16,6 +16,7 @@ Os artigos estão disponíveis em **Português**, **English** e **Español**. Di
 | 4 | [Backup não significa Disaster Recovery](04-backup-nao-e-dr.md) | [Backup does not mean Disaster Recovery](en/04-backup-is-not-dr.md) | [Backup no significa Disaster Recovery](es/04-backup-no-es-dr.md) |
 | 5 | [Medindo Disaster Recovery: reduzindo o RTO em 29,9%](05-medindo-disaster-recovery.md) | [Measuring Disaster Recovery: reducing RTO by 29.9%](en/05-measuring-disaster-recovery.md) | [Midiendo Disaster Recovery: reduciendo el RTO un 29,9%](es/05-midiendo-disaster-recovery.md) |
 | 6 | [O problema dos backups consistentes em Kubernetes](06-backup-consistente.md) | [The problem of consistent backups in Kubernetes](en/06-consistent-backups.md) | [El problema de los backups consistentes en Kubernetes](es/06-backups-consistentes.md) |
+| 7 | [Do `docker save` ao `docker push`: imagens OCI sem privilégio no nó](07-registry-oci-push.md) | [From `docker save` to `docker push`: OCI images without node privilege](en/07-registry-oci-push.md) | [De `docker save` a `docker push`: imágenes OCI sin privilegios en el nodo](es/07-registry-oci-push.md) |
 
 ## Linha editorial
 

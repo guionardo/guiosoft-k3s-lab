@@ -208,7 +208,7 @@ A fundação de métricas, traces e logs está operacional e validada. O histór
 - [ ] `terraform apply` da regra de bloqueio do Tunnel — sem credenciais Cloudflare nesta estação; hoje a rota pública já morre com `404` no Traefik por causa do pin `websecure`;
 - [x] split-DNS no MikroTik `registry.guiosoft.info -> 192.168.88.9` — aplicado; a asserção 1 do `validate` passou a resolver para o IP interno;
 - [x] playbook Ansible do k3s executado no host: `registries.yaml`, `/etc/hosts` e o `HelmChartConfig` do Traefik aplicados, com pull por Pod comprovado pela asserção 7 (`pod pull (containerd): … pulled successfully`);
-- [ ] exercer retenção/GC com sonda de 12 tags via `docker push` assim que a resolução da estação existir;
+- [x] exercer retenção/GC com sonda de 12 tags via `docker push`: 12 tags pushed em `retention-probe-20261106114603`; após restart do zot (GC no startup), restaram 10 (`v3..v12`), `v1` e `v2` evictados (manifests → 404). Confirma que o GC roda no startup e que `delay: 1h` não bloqueia evicção de tags.
 - [ ] adotar no `gh-eva`: substituir `docker save` + `ctr images import` por `docker push` + `imagePullSecrets`;
 - [ ] dívida técnica: `puller` consegue push — o zot v2.1.22 autentica o htpasswd mas não impõe separação leitura/escrita; revisar em upgrade do zot ou com camada de autorização na frente.
 

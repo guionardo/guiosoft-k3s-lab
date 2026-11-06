@@ -40,6 +40,10 @@ O registry é **LAN-only**. A rota pública possui duas camadas de bloqueio:
 
 O split-DNS no MikroTik (`registry.guiosoft.info -> 192.168.88.9`) está configurado: estações que usam o DNS da LAN resolvem o hostname para o IP interno do nó, sem passar pelo Cloudflare. Máquinas fora desse DNS precisam de uma entrada própria — veja a seção de diagnóstico.
 
+## Interface web
+
+O Zot expõe uma interface web em `https://registry.guiosoft.info/` (raiz), habilitada via `extensions.ui` e `extensions.search` no ConfigMap `registry/registry-config`. Login com o mesmo htpasswd (`pusher`/`puller`). Lista repositórios, tags, manifests, camadas e o histórico de push/GC; útil para acompanhar a retenção sem usar a API. A extensão de busca cria um índice BadgerDB no PVC e indexa na inicialização — o primeiro start após habilitar pode levar ~40s.
+
 ## Credenciais
 
 Dois usuários htpasswd:
@@ -98,6 +102,102 @@ TAG="registry.guiosoft.info/gh-eva/gh-eva-api:k3s-$(date +%Y%m%d%H%M%S)"
 docker tag gh-eva-api:dev "$TAG"
 docker push "$TAG"
 ```
+
+## Tutorial: do zero ao primeiro push
+
+Sequência mínima para publicar e consumir uma imagem, do estado vazio.
+
+### 1. Confiança no certificado (autoassinado)
+
+O Traefik usa o certificado padrão (autoassinado). O daemon do Docker da estação precisa confiar no host:
+
+```json
+// ~/.docker/daemon.json
+{ "insecure-registries": ["registry.guiosoft.info"] }
+```
+
+Reinicie o Docker depois. No nó, a confiança é feita via `/etc/rancher/k3s/registries.yaml` (role Ansible `k3s`).
+
+### 2. Resolução do hostname
+
+Se a estação não usa o DNS da LAN, adicione em `/etc/hosts`:
+
+```text
+192.168.88.9 registry.guiosoft.info
+```
+
+### 3. Obter a senha do pusher
+
+```bash
+cd /caminho/do/guiosoft-k3s-lab
+bash scripts/registry-credentials.sh password pusher
+```
+
+O script descripta o SOPS **no host** onde vive a chave age (via SSH). A chave privada nunca sai do nó. A senha tem 64 caracteres hex.
+
+### 4. Login
+
+```bash
+make registry-login          # imprime o comando
+docker login registry.guiosoft.info -u pusher
+# cole a senha do passo 3
+```
+
+### 5. Build, tag e push
+
+```bash
+TAG="registry.guiosoft.info/<repo>/<app>:k3s-$(date +%Y%m%d%H%M%S)"
+docker build -t "$TAG" .
+docker push "$TAG"
+```
+
+O push devolve o digest `sha256:…`. Guarde-o se quiser reprodutibilidade.
+
+### 6. Consumir no cluster
+
+```bash
+kubectl -n <namespace> create secret docker-registry registry-pull \
+  --docker-server=registry.guiosoft.info \
+  --docker-username=puller \
+  --docker-password="$(bash scripts/registry-credentials.sh password puller)" \
+  --dry-run=client -o yaml | kubectl -n <namespace> apply -f -
+```
+
+No Deployment:
+
+```yaml
+spec:
+  imagePullSecrets:
+    - name: registry-pull
+  containers:
+    - name: app
+      image: registry.guiosoft.info/<repo>/<app>:k3s-<timestamp>
+      imagePullPolicy: Always
+```
+
+### 7. Verificar
+
+```bash
+make registry-validate          # 7 asserções, termina em OK
+# ou
+curl -sk -u pusher:<senha> https://registry.guiosoft.info/v2/_catalog
+# interface web: https://registry.guiosoft.info/  (login pusher)
+```
+
+Se as senhas forem regeradas (`generate`), aplique o Secret e reinicie o zot (`rollout restart`).
+
+### Evidência: retenção exercitada
+
+A retenção foi exercitada com uma sonda de 12 tags distintas no repositório `retention-probe-20261106114603`:
+
+```text
+antes do GC:  12 tags (v1..v12)
+após restart do zot (GC no startup): 10 tags (v3..v12)
+manifests v1, v2 -> HTTP 404   (evictados)
+manifest v12    -> HTTP 200     (retido)
+```
+
+Confirma que o GC roda no startup do Pod, que `delay: 1h` não bloqueia a evicção de tags (afeta apenas untagged/referrers) e que as 10 mais recentemente pushed são mantidas. Os logs do zot registram cada decisão com `reason: retained by mostRecentlyPushedCount:10 policy`.
 
 ## Como consumir
 

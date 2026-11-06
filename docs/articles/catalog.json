@@ -249,6 +249,50 @@
           "disaster-recovery"
         ]
       }
+    },
+    {
+      "order": 7,
+      "translationKey": "homelab-oci-registry",
+      "sources": {
+        "pt": "07-registry-oci-push.md",
+        "en": "en/07-registry-oci-push.md",
+        "es": "es/07-registry-oci-push.md"
+      },
+      "siteFiles": {
+        "pt": "registry-oci-push.pt.md",
+        "en": "registry-oci-push.en.md",
+        "es": "registry-oci-push.es.md"
+      },
+      "slugs": {
+        "pt": "registry-oci-push",
+        "en": "oci-registry-push",
+        "es": "registry-oci-push"
+      },
+      "descriptions": {
+        "pt": "Por que troquei docker save e ctr images import por um push de verdade, e o que isso muda quando build e publish precisam fazer parte do CI.",
+        "en": "Why I replaced docker save and ctr images import with a real push, and what that changes when build and publish belong in CI.",
+        "es": "Por qué cambié docker save y ctr images import por un push de verdad, y qué cambia cuando build y publish forman parte del CI."
+      },
+      "tags": {
+        "pt": [
+          "kubernetes",
+          "homelab",
+          "oci",
+          "ci"
+        ],
+        "en": [
+          "kubernetes",
+          "homelab",
+          "oci",
+          "ci"
+        ],
+        "es": [
+          "kubernetes",
+          "homelab",
+          "oci",
+          "ci"
+        ]
+      }
     }
   ]
 }
