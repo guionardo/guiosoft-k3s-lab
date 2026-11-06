@@ -162,7 +162,7 @@ O registry OCI roda no namespace `registry`: Deployment `zot` (Zot v2.1.22 pinad
 
 A autenticação usa htpasswd (`pusher`/`puller`) com Secret cifrado via SOPS + age. A retenção mantém as 10 tags pushed mais recentes por repositório, com GC a cada 24h, e a PrometheusRule `registry/registry-storage` alerta com menos de 15% livre em `/mnt/store1`.
 
-Como o Firecrawl, o hostname é LAN-only: a regra de bloqueio no Tunnel está declarada no Terraform (**pendente de apply**) e hoje a rota pública já responde `404` no Traefik por causa do pin `websecure`. Passos humanos pendentes: split-DNS `registry.guiosoft.info -> 192.168.88.9` no MikroTik, `terraform apply` da regra de bloqueio e execução do playbook do k3s para ativar a confiança do containerd. Dívida registrada: o `puller` consegue push (o zot não impõe separação leitura/escrita). Operação e diagnóstico em `docs/registry.md`.
+Como o Firecrawl, o hostname é LAN-only: a regra de bloqueio no Tunnel está declarada no Terraform (**pendente de apply**) e hoje a rota pública já responde `404` no Traefik por causa do pin `websecure`. O split-DNS `registry.guiosoft.info -> 192.168.88.9` está configurado no MikroTik e o playbook do k3s foi executado no host, de modo que o containerd do nó confia no registry e pods puxam imagens dele. Dívida registrada: o `puller` consegue push (o zot não impõe separação leitura/escrita). Operação e diagnóstico em `docs/registry.md`.
 
 ### Lab e observabilidade
 

@@ -38,7 +38,7 @@ O registry é **LAN-only**. A rota pública possui duas camadas de bloqueio:
 1. regra explícita `registry.guiosoft.info -> http_status:404` antes do wildcard no Cloudflare Tunnel, declarada em `terraform/cloudflare/main.tf` — **pendente de `terraform apply`** (não há credenciais Cloudflare nesta estação);
 2. enquanto a regra não é aplicada, o pin ao entrypoint `websecure` faz a rota pública morrer com `404` no próprio Traefik, porque o origin do Tunnel aponta para a porta 80.
 
-O split-DNS no MikroTik (`registry.guiosoft.info -> 192.168.88.9`) é o caminho de acesso da LAN e continua **pendente (passo humano manual)**. Até essa entrada existir, estações da LAN resolvem o hostname para o Cloudflare — veja a seção de diagnóstico.
+O split-DNS no MikroTik (`registry.guiosoft.info -> 192.168.88.9`) está configurado: estações que usam o DNS da LAN resolvem o hostname para o IP interno do nó, sem passar pelo Cloudflare. Máquinas fora desse DNS precisam de uma entrada própria — veja a seção de diagnóstico.
 
 ## Credenciais
 
@@ -89,7 +89,7 @@ Enquanto o certificado for o autoassinado padrão do Traefik, o daemon do Docker
 }
 ```
 
-Enquanto o split-DNS do MikroTik não existir, a estação também precisa da entrada temporária `192.168.88.9 registry.guiosoft.info` no próprio `/etc/hosts`.
+A resolução fica a cargo do split-DNS do MikroTik; uma estação que não use o DNS da LAN precisa da entrada `192.168.88.9 registry.guiosoft.info` no próprio `/etc/hosts` para não cair na rota pública.
 
 Build, tag e push (o padrão de tag usado pela adoção do `gh-eva`):
 
@@ -122,7 +122,7 @@ spec:
       imagePullPolicy: Always
 ```
 
-O containerd do nó confia no registry por meio de `/etc/rancher/k3s/registries.yaml` (mirror + `insecure_skip_verify` no bloco top-level `configs`) e de uma entrada em `/etc/hosts`, ambos codificados no role Ansible `k3s`. **Pendente:** o playbook ainda não foi executado no host (`make k3s`); até lá, pulls a partir de Pods falham e a asserção de pull do `validate` imprime `SKIP: containerd trust not active: run the k3s playbook`.
+O containerd do nó confia no registry por meio de `/etc/rancher/k3s/registries.yaml` (mirror + `insecure_skip_verify` no bloco top-level `configs`) e de uma entrada em `/etc/hosts`, ambos codificados no role Ansible `k3s` e já aplicados no host: `make k3s` grava os arquivos, reinicia o k3s e o pull por Pod passa a funcionar. A asserção de pull do `validate` comprova isso imprimindo `pod pull (containerd): <imagem> pulled successfully`.
 
 ## Retenção e coleta de lixo
 
@@ -176,38 +176,37 @@ make registry-status      # Deployment, PVC, Ingress (com o entrypoint) e Pods
 make registry-validate    # 7 asserções: resolução, bloqueio público, 401, round trip, puller, push-as-puller, pull por Pod
 ```
 
-Com os passos humanos pendentes (split-DNS e playbook do k3s), o comportamento **esperado** é:
+Com o split-DNS ativo e o playbook do k3s aplicado, o comportamento **esperado** é a validação completa, sem override:
 
 ```bash
 bash scripts/registry.sh validate
-# error: registry.guiosoft.info resolves publicly; add the MikroTik split-DNS entry
-# exit 1 — esperado até a entrada split-DNS existir no MikroTik
 ```
 
-Para exercitar as asserções LAN antes do split-DNS, fixe o alvo do `--resolve`:
-
-```bash
-REGISTRY_RESOLVE_IP=192.168.88.9 bash scripts/registry.sh validate
-```
-
-Saída esperada hoje, terminando em `Registry end-to-end validation: OK`:
+Saída esperada, terminando em `Registry end-to-end validation: OK` com `exit 0`:
 
 ```text
-warn: REGISTRY_RESOLVE_IP is set; continuing with --resolve target 192.168.88.9
+resolution: registry.guiosoft.info -> 192.168.88.9 (OK)
 public block: https://registry.guiosoft.info/v2/ -> 404 (via Cloudflare <ip>)
 unauthenticated LAN: https://registry.guiosoft.info/v2/ -> 401
 push/pull round trip: registry/smoke:smoke-<timestamp> (...) -> 201/200/200
 pull as puller: registry/smoke:smoke-<timestamp> -> 200
 warn: puller can push; read-only separation is not enforced by zot
-SKIP: containerd trust not active: run the k3s playbook
+pod pull (containerd): registry/smoke:smoke-<timestamp> pulled successfully
+note: the smoke image is zero-layer with no command, so the pod is not expected to start; a successful pull is the pass criterion
+```
+
+A imagem de fumaça é zero-layer e sem `command`: o critério de PASS é o kubelet relatar o pull, não o Pod ficar `Ready`. Em estações que não usam o DNS da LAN, force o alvo do `--resolve`:
+
+```bash
+REGISTRY_RESOLVE_IP=192.168.88.9 bash scripts/registry.sh validate
 ```
 
 Sintomas comuns:
 
 - **`401` em `/v2/` sem credencial** — comportamento esperado; é a autenticação htpasswd. `401` no `docker login` significa credencial errada; se as senhas foram regeradas com `generate`, aplique o Secret e reinicie o zot (`rollout restart`).
-- **`404 page not found` no push/pull** — quase sempre o hostname resolveu para a rota pública: Cloudflare -> Tunnel -> Traefik:80, e o Ingress só responde no `websecure`. Confirme a resolução na estação (`getent hosts registry.guiosoft.info` deve retornar `192.168.88.9`); até o split-DNS existir, use a entrada temporária em `/etc/hosts`. Um hostname errado sem Ingress também recebe `404` do Traefik (default deny por ausência de rota).
+- **`404 page not found` no push/pull** — quase sempre o hostname resolveu para a rota pública: Cloudflare -> Tunnel -> Traefik:80, e o Ingress só responde no `websecure`. Confirme a resolução na estação (`getent hosts registry.guiosoft.info` deve retornar `192.168.88.9`); se a estação não usa o DNS da LAN, use a entrada em `/etc/hosts`. Um hostname errado sem Ingress também recebe `404` do Traefik (default deny por ausência de rota).
 - **erro x509/certificado** — o cliente não confia no certificado autoassinado; configure `insecure-registries` (Docker) ou o `registries.yaml` (containerd do nó).
-- **Pod em `ErrImagePull`/`ImagePullBackOff` puxando do registry** — confiança do containerd ainda não ativada; rode o playbook do k3s (`make k3s`) no host.
+- **Pod em `ErrImagePull`/`ImagePullBackOff` puxando do registry** — a confiança do containerd já está ativa; confira se o `registries.yaml` continua presente no nó (`sudo cat /etc/rancher/k3s/registries.yaml`) e se o hostname resolve para `192.168.88.9` dentro do nó (`grep registry.guiosoft.info /etc/hosts`). Se o arquivo sumiu, reaplique com `make k3s`.
 
 ## Adoção no gh-eva
 

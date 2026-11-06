@@ -206,8 +206,8 @@ A fundação de métricas, traces e logs está operacional e validada. O histór
 - [x] alerta `K3sLocalPathLowFreeSpace` (< 15% livre em `/mnt/store1`) via PrometheusRule `registry/registry-storage`;
 - [x] documentação operacional em `docs/registry.md`, incluindo o diff de adoção pelo `gh-eva`;
 - [ ] `terraform apply` da regra de bloqueio do Tunnel — sem credenciais Cloudflare nesta estação; hoje a rota pública já morre com `404` no Traefik por causa do pin `websecure`;
-- [ ] split-DNS no MikroTik `registry.guiosoft.info -> 192.168.88.9` — passo humano; enquanto não existir, `scripts/registry.sh validate` falha na primeira asserção;
-- [ ] executar o playbook Ansible do k3s no host (`make k3s`) para ativar a confiança do containerd — até lá o pull por Pod é `SKIP` na validação;
+- [x] split-DNS no MikroTik `registry.guiosoft.info -> 192.168.88.9` — aplicado; a asserção 1 do `validate` passou a resolver para o IP interno;
+- [x] playbook Ansible do k3s executado no host: `registries.yaml`, `/etc/hosts` e o `HelmChartConfig` do Traefik aplicados, com pull por Pod comprovado pela asserção 7 (`pod pull (containerd): … pulled successfully`);
 - [ ] exercer retenção/GC com sonda de 12 tags via `docker push` assim que a resolução da estação existir;
 - [ ] adotar no `gh-eva`: substituir `docker save` + `ctr images import` por `docker push` + `imagePullSecrets`;
 - [ ] dívida técnica: `puller` consegue push — o zot v2.1.22 autentica o htpasswd mas não impõe separação leitura/escrita; revisar em upgrade do zot ou com camada de autorização na frente.

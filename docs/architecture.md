@@ -57,10 +57,11 @@ O registry de imagens segue o fluxo inverso: o consumidor é a LAN, e a internet
 ```text
 Estações da LAN (docker push/pull)          Internet
         │                                      │
-  split-DNS MikroTik (pendente)          Cloudflare Tunnel
+  split-DNS MikroTik                     Cloudflare Tunnel
   registry.guiosoft.info                 registry.guiosoft.info
-        -> 192.168.88.9                        -> http_status:404 (regra não aplicada;
-        │                                       hoje o 404 sai do Traefik via pin websecure)
+        -> 192.168.88.9                        -> http_status:404 (regra declarada,
+        │                                       ainda não aplicada; o 404 público
+        │                                       sai do Traefik via pin websecure)
         ▼                                      ✕
 Traefik :443 (entrypoint websecure, certificado autoassinado padrão)
         │

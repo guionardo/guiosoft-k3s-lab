@@ -106,13 +106,13 @@ firecrawl.guiosoft.info -> http_status:404
 
 Assim, o split-DNS da LAN pode apontar `firecrawl.guiosoft.info` diretamente para o servidor K3s, enquanto o mesmo hostname solicitado pela Internet é encerrado no Tunnel com HTTP 404 sem alcançar Traefik.
 
-O registry OCI segue o mesmo padrão. A regra de bloqueio no Tunnel já existe (`registry.guiosoft.info -> http_status:404`), mas o split-DNS no MikroTik ainda é um passo manual pendente:
+O registry OCI segue o mesmo padrão. A regra de bloqueio no Tunnel está declarada (`registry.guiosoft.info -> http_status:404`) e o split-DNS no MikroTik está configurado:
 
 ```text
 registry.guiosoft.info -> 192.168.88.9
 ```
 
-Até essa entrada existir, estações da LAN resolvem `registry.guiosoft.info` para o Cloudflare e `scripts/registry.sh validate` falha logo na primeira asserção.
+Com isso, estações da LAN resolvem o hostname para o IP interno e `scripts/registry.sh validate` exercita todas as asserções. O bloqueio público da regra do Tunnel ainda depende de `terraform apply`; até lá, a rota pública morre no próprio Traefik por causa do pin ao entrypoint `websecure`.
 
 Por isso:
 
