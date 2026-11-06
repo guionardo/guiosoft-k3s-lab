@@ -1,0 +1,21 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: registry-storage
+  namespace: registry
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: registry-storage
+      rules:
+        - alert: K3sLocalPathLowFreeSpace
+          expr: |
+            node_filesystem_avail_bytes{mountpoint="/mnt/store1"}
+            / node_filesystem_size_bytes{mountpoint="/mnt/store1"} < 0.15
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: /mnt/store1 is below 15% free
+            description: Persistent volumes, including the registry cache, may fail to grow.
