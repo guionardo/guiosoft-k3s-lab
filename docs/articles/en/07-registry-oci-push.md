@@ -97,7 +97,7 @@ That has concrete consequences, and they are what make the property real instead
 
 The distinction I started using: *backup* answers "what can I not rebuild"; *registry* answers "what do I want to move fast". Mixing the two is how a cache becomes a dependency.
 
-## Two traps that cost real time
+## Three traps that cost real time
 
 ### The 404 that looked like an authentication problem
 
@@ -127,6 +127,18 @@ configs:
 ```
 
 The lesson: **configuration that fails silently is worse than configuration that fails loudly**. And the only check that counts is behavioural — a real pull from inside a Pod, not "the service started" and not "the file exists".
+
+### The certificate Docker did not trust
+
+Symptom: `docker push` failed with a TLS error (`x509: certificate signed by unknown authority`), even though the hostname resolved correctly to the internal IP. `docker login` failed too.
+
+Cause: Traefik uses its default self-signed certificate. The node's containerd trusts it via `insecure_skip_verify` in `registries.yaml`, but the Docker daemon is a separate process with its own TLS configuration. The node's Docker daemon had no `/etc/docker/daemon.json` — so no `insecure-registries` entry.
+
+What made it confusing was that the node could reach the registry (curl worked), so it looked like an authentication or routing problem. But it was trust: the Docker daemon did not have the certificate in its trust chain.
+
+The fix: create `/etc/docker/daemon.json` with `{ "insecure-registries": ["registry.guiosoft.info"] }` and restart Docker. This is separate from the containerd configuration (which uses `registries.yaml`).
+
+The lesson: **containerd and Docker are different runtimes with independent TLS configurations.** Trusting the certificate in one does not imply trusting it in the other. And when push fails with TLS, the temptation is to give up and go back to `ctr images import` — which is exactly what I did before discovering that one line was missing from the daemon.
 
 ## Build and publish as part of CI
 

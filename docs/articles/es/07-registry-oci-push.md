@@ -97,7 +97,7 @@ Eso tiene consecuencias concretas, y son ellas las que hacen la propiedad real e
 
 La distinción que empecé a usar: *backup* responde "qué no puedo reconstruir"; *registry* responde "qué quiero mover rápido". Mezclar las dos cosas es cómo una caché se convierte en dependencia.
 
-## Dos trampas que costaron tiempo de verdad
+## Tres trampas que costaron tiempo de verdad
 
 ### El 404 que parecía un problema de autenticación
 
@@ -127,6 +127,18 @@ configs:
 ```
 
 La lección: **la configuración que falla en silencio es peor que la que falla alto**. Y la única verificación que vale es de comportamiento — un pull real desde dentro de un Pod, no "el servicio arrancó" ni "el archivo existe".
+
+### El certificado en el que Docker no confiaba
+
+Síntoma: `docker push` fallaba con error de TLS (`x509: certificate signed by unknown authority`), aunque el hostname resolvía correctamente a la IP interna. `docker login` también fallaba.
+
+Causa: Traefik usa el certificado autofirmado por defecto. El containerd del nodo confía en él vía `insecure_skip_verify` en `registries.yaml`, pero el daemon de Docker es un proceso separado con su propia configuración de TLS. El daemon de Docker del nodo no tenía `/etc/docker/daemon.json` — por tanto, ninguna entrada en `insecure-registries`.
+
+Lo que confundió fue que el nodo alcanzaba el registry (curl funcionaba), así que parecía un problema de autenticación o de ruteo. Pero era de confianza: el daemon de Docker no tenía el certificado en su cadena de confianza.
+
+La corrección: crear `/etc/docker/daemon.json` con `{ "insecure-registries": ["registry.guiosoft.info"] }` y reiniciar Docker. Esto es independiente de la configuración de containerd (que usa `registries.yaml`).
+
+La lección: **containerd y Docker son runtimes distintos con configuraciones de TLS independientes.** Confiar en el certificado en uno no implica confiar en el otro. Y cuando el push falla con TLS, la tentación es rendirse y volver a `ctr images import` — que fue exactamente lo que hice antes de descubrir que faltaba una línea en el daemon.
 
 ## Build y publish como parte del CI
 

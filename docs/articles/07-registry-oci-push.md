@@ -97,7 +97,7 @@ Isso tem consequências concretas, e são elas que tornam a propriedade real em 
 
 A distinção que eu passei a usar: *backup* responde "o que eu não consigo reconstruir"; *registry* responde "o que eu quero mover rápido". Misturar as duas coisas é como um cache vira dependência.
 
-## Duas armadilhas que custaram tempo de verdade
+## Três armadilhas que custaram tempo de verdade
 
 ### O 404 que parecia problema de autenticação
 
@@ -127,6 +127,18 @@ configs:
 ```
 
 A lição: **configuração que falha em silêncio é pior que configuração que falha alto**. E a única verificação que vale é comportamental — um pull real de dentro de um Pod, não "o serviço subiu" nem "o arquivo existe".
+
+### O certificado que o Docker não confiava
+
+Sintoma: `docker push` falhava com erro de TLS (`x509: certificate signed by unknown authority`), mesmo com o hostname resolvendo corretamente para o IP interno. `docker login` também falhava.
+
+Causa: o Traefik usa o certificado autoassinado padrão. O containerd do nó confia nele via `insecure_skip_verify` no `registries.yaml`, mas o daemon Docker é um processo separado com sua própria configuração de TLS. O daemon Docker do nó não tinha `/etc/docker/daemon.json` — logo, nenhuma entrada em `insecure-registries`.
+
+A confusão foi que o nó alcançava o registry (curl funcionava), então parecia problema de autenticação ou rota. Mas era trust: o daemon Docker não tinha o certificado na sua cadeia de confiança.
+
+A correção: criar `/etc/docker/daemon.json` com `{ "insecure-registries": ["registry.guiosoft.info"] }` e reiniciar o Docker. Isso é separado da configuração do containerd (que usa `registries.yaml`).
+
+A lição: **containerd e Docker são runtimes diferentes com configurações de TLS independentes.** Confiar no certificado em um não implica confiar no outro. E quando o push falha com TLS, a tentação é desistir e voltar ao `ctr images import` — que foi exatamente o que eu fiz antes de descobrir que faltava uma linha no daemon.
 
 ## Build e publish como parte do CI
 
