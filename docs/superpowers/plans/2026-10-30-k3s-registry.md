@@ -384,6 +384,11 @@ kind: Ingress
 metadata:
   name: registry
   namespace: registry
+  annotations:
+    # The Cloudflare Tunnel wildcard origin is the node's port 80. Without this
+    # pin, the Ingress also matches on the `web` entrypoint and the registry is
+    # reachable from the internet even before the Tunnel deny rule is applied.
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
 spec:
   ingressClassName: traefik
   tls:
@@ -453,10 +458,13 @@ mirrors:
   registry.guiosoft.info:
     endpoint:
       - "https://registry.guiosoft.info"
-    config:
-      tls:
-        insecure_skip_verify: true
+configs:
+  "registry.guiosoft.info":
+    tls:
+      insecure_skip_verify: true
 ```
+
+TLS settings live under top-level `configs`, not inside a mirror entry: `mirrors.<registry>` accepts only `endpoint` and `rewrite`, so a nested `config:` block is silently ignored by containerd.
 
 `ansible/roles/k3s/files/traefik-helmchartconfig.yaml`:
 
@@ -513,10 +521,10 @@ Esperado: os quatro `additionalArguments`.
 - [ ] **Step 6: Confirmar que o containerd incorporou o mirror**
 
 ```bash
-ssh guionardo@192.168.88.9 'sudo grep -A3 "registry.guiosoft.info" /var/lib/rancher/k3s/agent/etc/containerd/config.toml'
+ssh guionardo@192.168.88.9 'sudo cat /var/lib/rancher/k3s/agent/etc/containerd/certs.d/registry.guiosoft.info/hosts.toml'
 ```
 
-Esperado: um bloco `[plugins."io.containerd.grpc.v1.cri".registry.mirrors."registry.guiosoft.info"]` com endpoint `https://registry.guiosoft.info`. Ausência do bloco significa que o `registries.yaml` não foi lido — o restart não ocorreu ou o arquivo está no caminho errado. O pull autenticado a partir do node é verificado na Task 7.
+Esperado: `server = "https://registry.guiosoft.info"` e `skip_verify = true`. K3s materializa o `registries.yaml` como `hosts.toml` por registry em `certs.d/`; se o diretório não existir, o fallback é procurar o host em `/var/lib/rancher/k3s/agent/etc/containerd/config.toml`. Ausência nos dois significa que o `registries.yaml` não foi lido — o restart não ocorreu ou o arquivo está no caminho errado. O pull autenticado a partir do node é verificado na Task 7.
 
 - [ ] **Step 7: Commit**
 

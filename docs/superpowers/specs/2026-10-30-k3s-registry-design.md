@@ -109,6 +109,11 @@ O desenho falhou se:
    confiável — e não precisa ser, porque a verificação está desligada dos dois
    lados. Subir para TLS real depois é trocar o certificado e remover a flag
    `insecure` dos clientes.
+
+   O Ingress é **pinado no entrypoint `websecure`**. O origin do wildcard no
+   Tunnel é a porta 80 do node, então um Ingress sem pin também casa no
+   entrypoint `web` — e a exposição pública deixa de depender só da regra do
+   Cloudflare, que pode estar atrasada ou ausente.
 3. **Regra de bloqueio no Cloudflare é entregável, não detalhe.** O hostname já
    é público por wildcard; sem uma entrada `registry.guiosoft.info ->
    http_status:404` antes do wildcard em `terraform/cloudflare/main.tf`, o
