@@ -1,7 +1,20 @@
 all:
   children:
     k3s_servers:
-      hosts:
-        guiosoft-info:
-          ansible_connection: local
-          ansible_host: 127.0.0.1
+      children:
+        # The `prod` group is the explicit gate for production-only variables:
+        # it loads inventory/group_vars/prod.yml (node name, storage layout,
+        # service-preservation policy). Without it those variables are undefined
+        # for guiosoft-info and every playbook fails on its first template.
+        # `k3s_servers` is the parent so every playbook that targets it still
+        # matches this host.
+        prod:
+          hosts:
+            guiosoft-info:
+              # The provisioning playbooks are designed to run on the node
+              # itself (`ssh guiosoft-info`, then `make k3s`). Running them from
+              # a workstation with this inventory would apply the same changes
+              # to the workstation: override the connection, e.g.
+              #   -e ansible_connection=ssh -e ansible_host=192.168.88.9
+              ansible_connection: local
+              ansible_host: 127.0.0.1

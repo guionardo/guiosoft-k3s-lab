@@ -100,22 +100,22 @@ ansible-deps:
 	cd ansible && ansible-galaxy collection install -r requirements.yml
 
 preflight:
-	cd ansible && ansible-playbook -K playbooks/preflight.yml
+	cd ansible && ansible-playbook -K -i inventory/production.yml playbooks/preflight.yml
 
 bootstrap:
-	cd ansible && ansible-playbook -K playbooks/bootstrap.yml
+	cd ansible && ansible-playbook -K -i inventory/production.yml playbooks/bootstrap.yml
 
 tools:
-	cd ansible && ansible-playbook -K playbooks/tools.yml
+	cd ansible && ansible-playbook -K -i inventory/production.yml playbooks/tools.yml
 
 k3s:
-	cd ansible && ansible-playbook -K playbooks/k3s.yml
+	cd ansible && ansible-playbook -K -i inventory/production.yml playbooks/k3s.yml
 
 kubeconfig-external:
 	@K3S_EXTERNAL_ADDRESS="$(ADDRESS)" K3S_EXTERNAL_PORT="$(PORT)" bash scripts/kubeconfig-external.sh
 
 storage:
-	cd ansible && ansible-playbook -K playbooks/storage.yml
+	cd ansible && ansible-playbook -K -i inventory/production.yml playbooks/storage.yml
 
 storage-test:
 	kubectl apply -f kubernetes/namespaces/lab.yaml
@@ -172,7 +172,7 @@ backup-verify:
 	sudo bash scripts/k3s-backup-verify.sh $(if $(FILE),"$(FILE)",)
 
 backup-install:
-	cd ansible && ansible-playbook -K playbooks/backup.yml
+	cd ansible && ansible-playbook -K -i inventory/production.yml playbooks/backup.yml
 
 backup-status:
 	sudo systemctl status k3s-backup.timer --no-pager
@@ -353,7 +353,7 @@ registry-login:
 	bash scripts/registry-credentials.sh login
 
 firewall-audit:
-	cd ansible && ansible-playbook -K playbooks/firewall-audit.yml
+	cd ansible && ansible-playbook -K -i inventory/production.yml playbooks/firewall-audit.yml
 
 cluster-status:
 	kubectl get nodes -o wide
@@ -445,7 +445,7 @@ tf-r2-apply:
 .PHONY: ansible-check-prod
 ansible-check-prod:
 	@test -f ansible/inventory/prod.yml || { \
-	  echo "ERROR: ansible/inventory/prod.yml not found; copy prod.example.yml and configure it first." >&2; \
+	  echo "ERROR: ansible/inventory/prod.yml not found; copy inventory-examples/prod.example.yml to inventory/prod.yml and configure it first." >&2; \
 	  exit 1; \
 	}
 	ANSIBLE_CONFIG="$(CURDIR)/ansible/ansible.cfg" \
