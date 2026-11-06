@@ -140,7 +140,7 @@ Para cada workload futuro:
 - [x] cadeia automatizada local -> R2 e `restic check`;
 - [x] inventário read-only de PVC/PV;
 - [ ] validar round-trip local do Restic;
-- [ ] adicionar alerta de pouco espaço livre para `/mnt/store1` quando houver necessidade operacional;
+- [x] adicionar alerta de pouco espaço livre para `/mnt/store1` quando houver necessidade operacional — `K3sLocalPathLowFreeSpace` na Fase 9;
 - [ ] estratégia para bancos de dados e PVCs de aplicações reais;
 - [ ] restore completo em host/VM DR;
 - [ ] testes periódicos de restore.
@@ -191,14 +191,35 @@ A fundação de métricas, traces e logs está operacional e validada. O histór
 - [ ] restaurar K3s e aplicações em ambiente separado;
 - [ ] teste completo de reconstrução e registro de RTO/RPO.
 
-## Fase 9 — Segundo nó
+## Fase 9 — Registry OCI LAN-only
+
+- [x] regra de bloqueio `registry.guiosoft.info -> http_status:404` antes do wildcard no Cloudflare Tunnel, declarada no Terraform;
+- [x] namespace `registry` e wiring Flux (`registry-namespace -> registry-secrets -> registry`);
+- [x] credenciais htpasswd `pusher`/`puller` cifradas com SOPS + age, com Secret aplicado separado do arquivo de senhas (fora da kustomization);
+- [x] Zot v2.1.22 pinado por digest com PVC `local-path` de 20Gi (`registry/registry-data`) como cache descartável;
+- [x] Ingress `registry.guiosoft.info` via Traefik com certificado autoassinado padrão, pinado ao entrypoint `websecure`;
+- [x] retenção das 10 tags pushed mais recentes por repositório, com `gc: true` e intervalo de 24h;
+- [x] confiança do containerd (`registries.yaml` com TLS no bloco top-level `configs` + `/etc/hosts`) e timeouts de leitura/escrita do Traefik sem limite, codificados no role Ansible `k3s`;
+- [x] validação ponta a ponta com `scripts/registry.sh` e alvos `make registry-status`/`registry-validate`/`registry-login`;
+- [x] exclusão do cache do registry do snapshot de PVs, calculada do `claimRef` vivo e com falha ruidosa em resolução ambígua;
+- [x] asserção no DR preflight de que o PV do registry está ausente do recovery set;
+- [x] alerta `K3sLocalPathLowFreeSpace` (< 15% livre em `/mnt/store1`) via PrometheusRule `registry/registry-storage`;
+- [x] documentação operacional em `docs/registry.md`, incluindo o diff de adoção pelo `gh-eva`;
+- [ ] `terraform apply` da regra de bloqueio do Tunnel — sem credenciais Cloudflare nesta estação; hoje a rota pública já morre com `404` no Traefik por causa do pin `websecure`;
+- [ ] split-DNS no MikroTik `registry.guiosoft.info -> 192.168.88.9` — passo humano; enquanto não existir, `scripts/registry.sh validate` falha na primeira asserção;
+- [ ] executar o playbook Ansible do k3s no host (`make k3s`) para ativar a confiança do containerd — até lá o pull por Pod é `SKIP` na validação;
+- [ ] exercer retenção/GC com sonda de 12 tags via `docker push` assim que a resolução da estação existir;
+- [ ] adotar no `gh-eva`: substituir `docker save` + `ctr images import` por `docker push` + `imagePullSecrets`;
+- [ ] dívida técnica: `puller` consegue push — o zot v2.1.22 autentica o htpasswd mas não impõe separação leitura/escrita; revisar em upgrade do zot ou com camada de autorização na frente.
+
+## Fase 10 — Segundo nó
 
 - [ ] adicionar K3s agent/server;
 - [ ] scheduling, affinity, taints/tolerations e DaemonSets;
 - [ ] cordon/drain e simulação de indisponibilidade;
 - [ ] avaliar storage distribuído apenas quando houver benefício real.
 
-## Fase 10 — Documentação de estudo e publicação
+## Fase 11 — Documentação de estudo e publicação
 
 Ao final do projeto, consolidar a experiência em material independente do README operacional.
 

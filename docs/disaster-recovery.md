@@ -68,6 +68,12 @@ DR_PV_TARGET_NODE=$(hostname -s)
 
 Override them explicitly when the production or recovery host uses a different layout.
 
+## Registry cache exclusion
+
+The LAN-only OCI registry (Zot, namespace `registry`) keeps its blobs in the local-path PVC `registry/registry-data`. This volume is a **disposable cache and is excluded from the persistent-volume Restic snapshot**: `scripts/k3s-pv-backup-r2.sh` resolves the PV directory from the live PVC `claimRef` and passes it to `restic backup --exclude`, so the exclusion survives PVC reprovisioning; any resolution failure other than an absent PVC aborts the backup loudly. `scripts/dr-preflight.sh` asserts that no registry PV is part of the DR recovery set and fails when one appears.
+
+Registry content is **not backed up**. Images are rebuilt from git and re-pushed by their publish pipelines; after a recovery the registry simply starts empty and is repopulated on the next push. Do not add the registry PV to a recovery set, and do not treat its absence after a restore as data loss. See `docs/registry.md` for the operational contract.
+
 ## Bounded-consistency production recovery sets
 
 `scripts/k3s-consistent-backup.sh` closes the historical RPO gap between independently scheduled control-plane and persistent-volume backups. It first validates the K3s API and the off-host Restic/R2 repository, then records original writer replica counts, gracefully quiesces Grafana, Tempo and Loki StatefulSets, and changes Prometheus through its operator-managed Prometheus CR rather than fighting the generated StatefulSet. It never force-deletes production writer pods.

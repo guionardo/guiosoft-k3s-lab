@@ -50,6 +50,32 @@ Pods
 
 Manter Traefik mesmo sendo possível rotear `cloudflared` diretamente para Services é uma decisão deliberada: o laboratório deve permitir aprendizado de Ingress, middlewares, roteamento e load balancing Kubernetes, além de possibilitar acesso interno independente do Cloudflare no futuro.
 
+## Registry OCI LAN-only
+
+O registry de imagens segue o fluxo inverso: o consumidor é a LAN, e a internet é explicitamente bloqueada.
+
+```text
+Estações da LAN (docker push/pull)          Internet
+        │                                      │
+  split-DNS MikroTik (pendente)          Cloudflare Tunnel
+  registry.guiosoft.info                 registry.guiosoft.info
+        -> 192.168.88.9                        -> http_status:404 (regra não aplicada;
+        │                                       hoje o 404 sai do Traefik via pin websecure)
+        ▼                                      ✕
+Traefik :443 (entrypoint websecure, certificado autoassinado padrão)
+        │
+Service zot:5000
+        │
+Pod zot (namespace registry)
+        │
+PVC registry-data — local-path em /mnt/store1 (cache descartável, fora do backup)
+
+Pods do cluster ──> containerd (registries.yaml + /etc/hosts via Ansible)
+                    ──> pull autenticado com imagePullSecrets (usuário puller)
+```
+
+Detalhes operacionais, credenciais e diagnóstico em `docs/registry.md`.
+
 ## Infrastructure as Code
 
 ### Ansible

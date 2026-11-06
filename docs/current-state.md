@@ -1,6 +1,6 @@
 # Estado atual e decisões de escopo
 
-Atualizado em 2026-09-14 após a validação do firewall em reboot real, a migração do Cloudflare Tunnel connector do systemd do host para o K3s e a conclusão da adoção GitOps com Flux para cloudflared, Firecrawl e observabilidade.
+Atualizado em 2026-11-06 após a publicação do registry OCI LAN-only (Zot) no namespace `registry`, com validação ponta a ponta, retenção de tags, exclusão do snapshot de PVs e alerta de espaço em `/mnt/store1`. A atualização anterior (2026-09-14) cobriu a validação do firewall em reboot real, a migração do Cloudflare Tunnel connector do systemd do host para o K3s e a conclusão da adoção GitOps com Flux para cloudflared, Firecrawl e observabilidade.
 
 ## Host
 
@@ -151,6 +151,18 @@ firecrawl.guiosoft.info -> http_status:404
 ```
 
 Assim, o hostname continua utilizável na LAN, mas é bloqueado na rota pública. A antiga aplicação Cloudflare Access e os Service Tokens Hermes/OpenCode foram removidos declarativamente.
+
+### Registry OCI (LAN-only)
+
+O registry OCI roda no namespace `registry`: Deployment `zot` (Zot v2.1.22 pinado por digest), Service `zot` na porta 5000 e Ingress `registry.guiosoft.info` via Traefik com o certificado autoassinado padrão, pinado ao entrypoint `websecure`. É reconciliado pelo Flux na cadeia `registry-namespace -> registry-secrets -> registry`.
+
+| Workload | PVC | Classificação |
+| --- | --- | --- |
+| `zot` (ns `registry`) | `registry-data`, 20Gi `local-path` | **cache descartável** — fora do snapshot de PVs; imagens são reconstruídas do git e reenviadas por push |
+
+A autenticação usa htpasswd (`pusher`/`puller`) com Secret cifrado via SOPS + age. A retenção mantém as 10 tags pushed mais recentes por repositório, com GC a cada 24h, e a PrometheusRule `registry/registry-storage` alerta com menos de 15% livre em `/mnt/store1`.
+
+Como o Firecrawl, o hostname é LAN-only: a regra de bloqueio no Tunnel está declarada no Terraform (**pendente de apply**) e hoje a rota pública já responde `404` no Traefik por causa do pin `websecure`. Passos humanos pendentes: split-DNS `registry.guiosoft.info -> 192.168.88.9` no MikroTik, `terraform apply` da regra de bloqueio e execução do playbook do k3s para ativar a confiança do containerd. Dívida registrada: o `puller` consegue push (o zot não impõe separação leitura/escrita). Operação e diagnóstico em `docs/registry.md`.
 
 ### Lab e observabilidade
 

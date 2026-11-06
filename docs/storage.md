@@ -101,7 +101,7 @@ node_filesystem_avail_bytes
 node_filesystem_size_bytes
 ```
 
-Um alerta específico para pouco espaço livre em `/mnt/store1` pode ser adicionado quando houver workloads persistentes relevantes.
+O alerta específico para pouco espaço livre em `/mnt/store1` já existe: `K3sLocalPathLowFreeSpace`, definido na PrometheusRule `registry/registry-storage`, que dispara quando o espaço livre fica abaixo de 15% por 15 minutos.
 
 ## Regras de segurança do role Ansible
 
