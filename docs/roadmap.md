@@ -209,7 +209,7 @@ A fundação de métricas, traces e logs está operacional e validada. O histór
 - [x] split-DNS no MikroTik `registry.guiosoft.info -> 192.168.88.9` — aplicado; a asserção 1 do `validate` passou a resolver para o IP interno;
 - [x] playbook Ansible do k3s executado no host: `registries.yaml`, `/etc/hosts` e o `HelmChartConfig` do Traefik aplicados, com pull por Pod comprovado pela asserção 7 (`pod pull (containerd): … pulled successfully`);
 - [x] exercer retenção/GC com sonda de 12 tags via `docker push`: 12 tags pushed em `retention-probe-20261106114603`; após restart do zot (GC no startup), restaram 10 (`v3..v12`), `v1` e `v2` evictados (manifests → 404). Confirma que o GC roda no startup e que `delay: 1h` não bloqueia evicção de tags.
-- [ ] adotar no `gh-eva`: substituir `docker save` + `ctr images import` por `docker push` + `imagePullSecrets`;
+- [ ] adotar no `gh-eva`: substituir `docker save` + `ctr images import` por `docker push` + `imagePullSecrets` — bloqueio de TLS resolvido: daemon Docker do nó configurado com `insecure-registries` (push verificado com sucesso);
 - [ ] dívida técnica: `puller` consegue push — o zot v2.1.22 autentica o htpasswd mas não impõe separação leitura/escrita; revisar em upgrade do zot ou com camada de autorização na frente.
 - [ ] varredura de CVE automatizada (opção B): imagem customizada do Zot com Trivy embutido (multi-stage a partir de `ghcr.io/project-zot/zot:v2.1.22`), habilitar `extensions.search.cve` (updateInterval 2h) no ConfigMap, reiniciar o Pod; scan dispara após o push e resultados aparecem na UI (ícones de bug). Pré-requisito: Pod com saída para `ghcr.io/aquasecurity/trivy-db`. Até lá, scan sob demanda com `trivy image --insecure` na estação.
 

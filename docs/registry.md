@@ -116,7 +116,13 @@ O Traefik usa o certificado padrão (autoassinado). O daemon do Docker da estaç
 { "insecure-registries": ["registry.guiosoft.info"] }
 ```
 
-Reinicie o Docker depois. No nó, a confiança é feita via `/etc/rancher/k3s/registries.yaml` (role Ansible `k3s`).
+Reinicie o Docker depois. No nó, a confiança é feita via `/etc/rancher/k3s/registries.yaml` (role Ansible `k3s`) para o containerd. O daemon Docker do nó (usado para build/push) precisa de uma entrada separada em `/etc/docker/daemon.json`:
+
+```json
+{ "insecure-registries": ["registry.guiosoft.info"] }
+```
+
+Crie o arquivo e reinicie o Docker (`sudo systemctl restart docker`). Sem isso, `docker push` falha com erro de TLS mesmo que o nó alcance o registry.
 
 ### 2. Resolução do hostname
 
