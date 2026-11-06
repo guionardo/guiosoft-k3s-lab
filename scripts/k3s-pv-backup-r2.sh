@@ -31,12 +31,17 @@ done
 
 # registry-data is a disposable cache rebuildable from git: keep its PV directory out of the snapshot.
 REGISTRY_DIR=""
-registry_pv="$(k3s kubectl -n registry get pvc registry-data -o jsonpath='{.spec.volumeName}' 2>/dev/null || true)"
-if [[ -n "$registry_pv" ]] && registry_dir="$(k3s kubectl get pv "$registry_pv" -o jsonpath='{.spec.local.path}' 2>/dev/null)"; then
-  [[ "$registry_dir" == "$PV_ROOT/"* ]] || { echo "error: registry PV path '$registry_dir' is not under $PV_ROOT; refusing inconsistent backup" >&2; exit 1; }
-  REGISTRY_DIR="$registry_dir"
-else
+registry_pv=""
+if ! registry_pv="$(k3s kubectl -n registry get pvc registry-data -o jsonpath='{.spec.volumeName}' 2>&1)"; then
+  [[ "$registry_pv" == *"(NotFound)"* ]] || { echo "error: unable to resolve registry cache PVC registry/registry-data: $registry_pv" >&2; exit 1; }
   echo "registry cache PVC absent; nothing to exclude"
+else
+  registry_dir=""
+  if ! registry_dir="$(k3s kubectl get pv "$registry_pv" -o jsonpath='{.spec.local.path}' 2>&1)"; then
+    echo "error: unable to resolve registry cache PV $registry_pv: $registry_dir" >&2; exit 1
+  fi
+  [[ "$registry_dir" == "$PV_ROOT/"?* ]] || { echo "error: registry PV path '$registry_dir' is not under $PV_ROOT; refusing inconsistent backup" >&2; exit 1; }
+  REGISTRY_DIR="$registry_dir"
 fi
 
 set -a
