@@ -222,7 +222,7 @@
       "slugs": {
         "pt": "backups-consistentes",
         "en": "consistent-backups",
-        "es": "backups-consistentes"
+        "es": "backups-consistentes-es"
       },
       "descriptions": {
         "pt": "Como transformei backups independentes de control plane e PVs em recovery sets com identidade exata e uma janela de consistência medida em 64 segundos.",
@@ -266,7 +266,7 @@
       "slugs": {
         "pt": "registry-oci-push",
         "en": "oci-registry-push",
-        "es": "registry-oci-push"
+        "es": "registro-oci-push"
       },
       "descriptions": {
         "pt": "Por que troquei docker save e ctr images import por um push de verdade, e o que isso muda quando build e publish precisam fazer parte do CI.",
