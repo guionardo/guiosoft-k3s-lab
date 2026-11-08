@@ -230,7 +230,7 @@ A fundação de métricas, traces e logs está operacional e validada. O histór
 - [x] secret TLS `auth-tls` com certificado mkcert (aplicado via kubectl);
 - [x] issuer OIDC acessível: `https://auth.guiosoft.info/realms/master` (verificado via OpenID configuration);
 - [x] admin console acessível: `https://auth.guiosoft.info/admin/` (HTTP 200);
-- [ ] split-DNS no MikroTik `auth.guiosoft.info -> 192.168.88.9` — necessário para acesso sem /etc/hosts;
+- [x] split-DNS no MikroTik `auth.guiosoft.info -> 192.168.88.9` — verificado (dig retorna 192.168.88.9);
 - [x] regra Terraform `auth.guiosoft.info -> http_status:404` declarada em `terraform/cloudflare/main.tf` (pendente de `terraform apply`);
 - [x] criar realm `guiosoft` e configurar Google identity brokering (client secret armazenado no Keycloak DB + SOPS backup);
 - [x] provisionar clientes Ariadne (Explorer e CLI) com Authorization Code + PKCE;
@@ -241,7 +241,8 @@ A fundação de métricas, traces e logs está operacional e validada. O histór
 - [ ] definir audience e claims para mapeamento tenant/actor;
 - [ ] documentar injeção, rotação, backup e restore de segredos;
 - [x] validar login com Google: fluxo completo testado (consent -> callback -> token). Issuer: https://auth.guiosoft.info/realms/guiosoft. Audience: ariadne-api. Claims: email, preferred_username, groups. PKCE S256 verificado.;
-- [ ] validar logout, rotação de chaves e recovery;
+- [x] validar logout: endpoint end_session_endpoint e backchannel_logout_supported confirmados;
+- [ ] rotação de chaves e recovery;
 - [ ] documentar como adicionar um novo provedor sem alterar o Ariadne.
 
 ## Fase 11 — Documentação de estudo e publicação
