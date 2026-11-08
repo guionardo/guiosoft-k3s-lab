@@ -231,7 +231,7 @@ A fundação de métricas, traces e logs está operacional e validada. O histór
 - [x] issuer OIDC acessível: `https://auth.guiosoft.info/realms/master` (verificado via OpenID configuration);
 - [x] admin console acessível: `https://auth.guiosoft.info/admin/` (HTTP 200);
 - [x] split-DNS no MikroTik `auth.guiosoft.info -> 192.168.88.9` — verificado (dig retorna 192.168.88.9);
-- [x] regra Terraform `auth.guiosoft.info -> http_status:404` declarada em `terraform/cloudflare/main.tf` (pendente de `terraform apply`);
+- [x] regra Terraform `auth.guiosoft.info -> http_status:404` aplicada e verificada (404 de fora da LAN, 200 de dentro);
 - [x] criar realm `guiosoft` e configurar Google identity brokering (client secret armazenado no Keycloak DB + SOPS backup);
 - [x] provisionar clientes Ariadne (Explorer e CLI) com Authorization Code + PKCE;
 - [x] audience mapper `ariadne-api` nos dois clientes públicos;
