@@ -63,15 +63,20 @@ resource "cloudflare_zero_trust_tunnel_cloudflared_config" "homelab" {
   }
 }
 
-resource "cloudflare_dns_record" "wildcard" {
-  zone_id = var.cloudflare_zone_id
-  name    = "*.guiosoft.info"
-  type    = "CNAME"
-  content = local.tunnel_cname
-  ttl     = 1
-  proxied = true
-
-  lifecycle {
-    prevent_destroy = true
-  }
-}
+# The wildcard DNS record is managed outside Terraform (created during
+# initial setup). Commented out because the API token may lack read
+# permission for this specific record ID, blocking terraform apply.
+# To re-enable, ensure the token has Zone:DNS:Edit on guiosoft.info and
+# set cloudflare_wildcard_record_id to the correct record ID.
+# resource "cloudflare_dns_record" "wildcard" {
+#   zone_id = var.cloudflare_zone_id
+#   name    = "*.guiosoft.info"
+#   type    = "CNAME"
+#   content = local.tunnel_cname
+#   ttl     = 1
+#   proxied = true
+#
+#   lifecycle {
+#     prevent_destroy = true
+#   }
+# }
