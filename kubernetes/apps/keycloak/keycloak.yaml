@@ -50,22 +50,22 @@ spec:
                 secretKeyRef:
                   name: keycloak-secrets
                   key: POSTGRES_PASSWORD
-            - name: KEYCLOAK_ADMIN
+            - name: KC_BOOTSTRAP_ADMIN_USERNAME
               valueFrom:
                 secretKeyRef:
                   name: keycloak-secrets
-                  key: KEYCLOAK_ADMIN
-            - name: KEYCLOAK_ADMIN_PASSWORD
+                  key: KC_BOOTSTRAP_ADMIN_USERNAME
+            - name: KC_BOOTSTRAP_ADMIN_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: keycloak-secrets
-                  key: KEYCLOAK_ADMIN_PASSWORD
+                  key: KC_BOOTSTRAP_ADMIN_PASSWORD
             - name: KC_HOSTNAME
               value: https://auth.guiosoft.info
             - name: KC_HTTP_ENABLED
               value: "true"
-            - name: KC_PROXY
-              value: edge
+            - name: KC_PROXY_HEADERS
+              value: xforwarded
             - name: KC_HEALTH_ENABLED
               value: "true"
             - name: KC_METRICS_ENABLED
