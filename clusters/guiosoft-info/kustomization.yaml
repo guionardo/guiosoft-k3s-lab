@@ -13,6 +13,9 @@ resources:
   - planetapeia-namespace.yaml
   - planetapeia-secrets.yaml
   - planetapeia.yaml
+  - keycloak-namespace.yaml
+  - keycloak-secrets.yaml
+  - keycloak.yaml
   - registry-namespace.yaml
   - registry-secrets.yaml
   - registry.yaml
