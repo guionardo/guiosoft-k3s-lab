@@ -236,6 +236,7 @@ A fundação de métricas, traces e logs está operacional e validada. O histór
 - [x] provisionar clientes Ariadne (Explorer e CLI) com Authorization Code + PKCE;
 - [x] audience mapper `ariadne-api` nos dois clientes públicos;
 - [x] claim mappers padrão (email, preferred_username, groups) nos dois clientes públicos;
+- [x] redirect URIs ajustados para wildcard de porta (http://localhost:*) — kc_idp_hint=google redireciona para Google (verificado);
 - [ ] definir audience e claims para mapeamento tenant/actor (ajustar conforme Ariadne#162);
 - [ ] definir audience e claims para mapeamento tenant/actor;
 - [ ] documentar injeção, rotação, backup e restore de segredos;
