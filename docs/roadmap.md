@@ -232,8 +232,11 @@ A fundação de métricas, traces e logs está operacional e validada. O histór
 - [x] admin console acessível: `https://auth.guiosoft.info/admin/` (HTTP 200);
 - [ ] split-DNS no MikroTik `auth.guiosoft.info -> 192.168.88.9` — necessário para acesso sem /etc/hosts;
 - [ ] regra Terraform `auth.guiosoft.info -> http_status:404` para bloqueio público (LAN-only);
-- [ ] criar realm Guiosoft e configurar Google identity brokering (sem commitar client secrets);
-- [ ] provisionar clientes Ariadne (Explorer e CLI) com Authorization Code + PKCE;
+- [x] criar realm `guiosoft` e configurar Google identity brokering (client secret armazenado no Keycloak DB + SOPS backup);
+- [x] provisionar clientes Ariadne (Explorer e CLI) com Authorization Code + PKCE;
+- [x] audience mapper `ariadne-api` nos dois clientes públicos;
+- [x] claim mappers padrão (email, preferred_username, groups) nos dois clientes públicos;
+- [ ] definir audience e claims para mapeamento tenant/actor (ajustar conforme Ariadne#162);
 - [ ] definir audience e claims para mapeamento tenant/actor;
 - [ ] documentar injeção, rotação, backup e restore de segredos;
 - [ ] validar login, token audience/issuer, logout, rotação de chaves e recovery;

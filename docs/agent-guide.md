@@ -235,6 +235,11 @@ curl -sk -u pusher:<senha> https://registry.guiosoft.info/v2/_catalog
 - **Split-DNS**: necessário `auth.guiosoft.info -> 192.168.88.9` no MikroTik (ou /etc/hosts)
 - **LAN-only**: adicionar regra `auth.guiosoft.info -> http_status:404` no Terraform (pendente)
 - **Health**: `/health/ready` na porta 9000 (management), não 8080
+- **Realm**: `guiosoft` (issuer: `https://auth.guiosoft.info/realms/guiosoft`)
+- **Google IdP**: configurado (alias: `google`, trustEmail: true). Redirect URI no Google Cloud Console: `https://auth.guiosoft.info/realms/guiosoft/broker/google/endpoint`
+- **Clientes**: `ariadne-explorer` (public, PKCE S256), `ariadne-cli` (public, PKCE S256 + device code), `ariadne-api` (bearer-only)
+- **Claim mappers**: email, preferred_username, groups, ariadne-api (audience) em explorer e cli
+- **Credenciais Google**: armazenadas no Keycloak DB + backup SOPS (`keycloak-google-idp.sops.yaml`, não no kustomization)
 
 ## Referências
 
