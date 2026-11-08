@@ -36,6 +36,13 @@ resource "cloudflare_zero_trust_tunnel_cloudflared_config" "homelab" {
         service        = "http_status:404"
         origin_request = {}
       },
+      # Keycloak is LAN-only. Same pattern: block public access before the
+      # wildcard so the OIDC issuer is not reachable from the internet.
+      {
+        hostname       = "auth.guiosoft.info"
+        service        = "http_status:404"
+        origin_request = {}
+      },
       {
         hostname = "*.guiosoft.info"
         # This origin must be reachable by both the current host systemd
