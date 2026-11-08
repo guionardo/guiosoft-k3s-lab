@@ -35,10 +35,14 @@ ssh guionardo@192.168.88.9 'cd ~/guiosoft-k3s-lab && sops --decrypt kubernetes/s
 
 **Admin password:**
 1. Gere nova senha: `openssl rand -hex 16`
-2. Atualize o secret SOPS no host (re-cripte com sops)
-3. Aplique: `kubectl apply -f <decrypted-secret>` ou force Flux reconcile
-4. Reinicie o Keycloak: `kubectl -n keycloak rollout restart deploy/keycloak`
-5. O Keycloak atualiza a senha do admin no bootstrap (se `KC_BOOTSTRAP_ADMIN_PASSWORD` mudar, o usuário admin é atualizado)
+2. Atualize o secret SOPS no host (re-cripte com sops) — mantém a senha sincronizada para disaster recovery
+3. Aplique o secret: `kubectl apply -f <decrypted-secret>`
+4. Obtenha token com a senha **antiga** (ainda funciona): `curl ... -d "password=<senha-antiga>"`
+5. Obtenha o UUID do admin: `GET /admin/realms/master/users?username=admin&exact=true`
+6. Atualize a senha via Admin API: `PUT /admin/realms/master/users/{uuid}/reset-password` com `{"type":"password","value":"<nova-senha>","temporary":false}`
+7. Verifique: login com a nova senha deve funcionar; a senha antiga deve ser rejeitada
+
+> **Nota**: o `KC_BOOTSTRAP_ADMIN_PASSWORD` só é usado na **primeira inicialização** (quando o usuário admin não existe). Após isso, a rotação é feita via Admin API. O secret SOPS mantém a senha sincronizada para recovery.
 
 **Google client secret:**
 1. Gere novo secret no Google Cloud Console
