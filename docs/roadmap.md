@@ -238,12 +238,11 @@ A fundação de métricas, traces e logs está operacional e validada. O histór
 - [x] claim mappers padrão (email, preferred_username, groups) nos dois clientes públicos;
 - [x] redirect URIs ajustados para wildcard de porta (http://localhost:*) — kc_idp_hint=google redireciona para Google (verificado);
 - [ ] definir audience e claims para mapeamento tenant/actor (ajustar conforme Ariadne#162);
-- [ ] definir audience e claims para mapeamento tenant/actor;
-- [ ] documentar injeção, rotação, backup e restore de segredos;
+- [x] documentar injeção, rotação, backup e restore de segredos (docs/keycloak.md);
 - [x] validar login com Google: fluxo completo testado (consent -> callback -> token). Issuer: https://auth.guiosoft.info/realms/guiosoft. Audience: ariadne-api. Claims: email, preferred_username, groups. PKCE S256 verificado.;
 - [x] validar logout: endpoint end_session_endpoint e backchannel_logout_supported confirmados;
 - [ ] rotação de chaves e recovery;
-- [ ] documentar como adicionar um novo provedor sem alterar o Ariadne.
+- [x] documentar como adicionar um novo provedor sem alterar o Ariadne (docs/keycloak.md).
 
 ## Fase 11 — Documentação de estudo e publicação
 
