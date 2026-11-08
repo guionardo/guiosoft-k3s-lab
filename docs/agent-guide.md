@@ -244,6 +244,7 @@ curl -sk -u pusher:<senha> https://registry.guiosoft.info/v2/_catalog
 ## Referências
 
 - `docs/registry.md` — contrato operacional do registry
+- `docs/keycloak.md` — operação do Keycloak (OIDC broker)
 - `docs/networking.md` — DNS, Tunnel, Traefik
 - `docs/architecture.md` — arquitetura do cluster
 - `docs/gitops.md` — Flux e layout
