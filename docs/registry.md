@@ -95,6 +95,30 @@ Enquanto o certificado for o autoassinado padrão do Traefik, o daemon do Docker
 
 A resolução fica a cargo do split-DNS do MikroTik; uma estação que não use o DNS da LAN precisa da entrada `192.168.88.9 registry.guiosoft.info` no próprio `/etc/hosts` para não cair na rota pública.
 
+## Metadados OCI (vendor e description)
+
+Toda imagem publicada deve incluir labels OCI de vendor e description. A UI do Zot exibe essas informações e elas são consultáveis via API.
+
+No Dockerfile (stage final):
+
+```dockerfile
+LABEL org.opencontainers.image.vendor="Guiosoft"
+LABEL org.opencontainers.image.title="<nome do servico>"
+LABEL org.opencontainers.image.description="<descricao curta>"
+LABEL org.opencontainers.image.source="https://github.com/guionardo/<repo>"
+LABEL org.opencontainers.image.licenses="MIT"
+```
+
+Ou via build-args:
+
+```bash
+docker build \
+  --label "org.opencontainers.image.vendor=Guiosoft" \
+  --label "org.opencontainers.image.description=Descricao do servico" \
+  --label "org.opencontainers.image.source=https://github.com/guionardo/<repo>" \
+  -t "$TAG" .
+```
+
 Build, tag e push (o padrão de tag usado pela adoção do `gh-eva`):
 
 ```bash
