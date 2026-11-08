@@ -61,7 +61,7 @@ spec:
                   name: keycloak-secrets
                   key: KEYCLOAK_ADMIN_PASSWORD
             - name: KC_HOSTNAME
-              value: auth.guiosoft.info
+              value: https://auth.guiosoft.info
             - name: KC_HTTP_ENABLED
               value: "true"
             - name: KC_PROXY
@@ -73,10 +73,12 @@ spec:
           ports:
             - name: http
               containerPort: 8080
+            - name: management
+              containerPort: 9000
           readinessProbe:
             httpGet:
               path: /health/ready
-              port: http
+              port: management
             initialDelaySeconds: 30
             periodSeconds: 10
             timeoutSeconds: 5
@@ -84,7 +86,7 @@ spec:
           livenessProbe:
             httpGet:
               path: /health/live
-              port: http
+              port: management
             initialDelaySeconds: 60
             periodSeconds: 30
             timeoutSeconds: 5

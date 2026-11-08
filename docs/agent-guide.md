@@ -223,6 +223,19 @@ curl -sk -u pusher:<senha> https://registry.guiosoft.info/v2/_catalog
 - **Secrets**: nunca commitar em claro. Usar SOPS + age. A chave privada age vive apenas no nó.
 - **Registry**: cache descartável — imagens reconstruíveis do git. Nunca dependência de DR.
 
+## Keycloak (OIDC broker)
+
+- **Namespace**: `keycloak`
+- **URL**: `https://auth.guiosoft.info` (LAN-only, cert mkcert)
+- **Admin console**: `https://auth.guiosoft.info/admin/` (credenciais no secret SOPS `keycloak-secrets`: `KEYCLOAK_ADMIN` / `KEYCLOAK_ADMIN_PASSWORD`)
+- **Issuer**: `https://auth.guiosoft.info/realms/master`
+- **Banco**: PostgreSQL 16 (`keycloak-postgres` deployment, PVC 5Gi, `local-path`)
+- **Imagem**: `quay.io/keycloak/keycloak:26.0.7`
+- **Ingress**: pinado ao entrypoint `websecure`, cert mkcert (`auth-tls` secret)
+- **Split-DNS**: necessário `auth.guiosoft.info -> 192.168.88.9` no MikroTik (ou /etc/hosts)
+- **LAN-only**: adicionar regra `auth.guiosoft.info -> http_status:404` no Terraform (pendente)
+- **Health**: `/health/ready` na porta 9000 (management), não 8080
+
 ## Referências
 
 - `docs/registry.md` — contrato operacional do registry

@@ -220,6 +220,25 @@ A fundação de métricas, traces e logs está operacional e validada. O histór
 - [ ] cordon/drain e simulação de indisponibilidade;
 - [ ] avaliar storage distribuído apenas quando houver benefício real.
 
+## Fase 12 — Keycloak (OIDC broker)
+
+- [x] namespace `keycloak` e wiring Flux (`keycloak-namespace -> keycloak-secrets -> keycloak`);
+- [x] PostgreSQL 16 com PVC `local-path` de 5Gi (`keycloak-postgres-data`) para estado durável;
+- [x] Keycloak v26.0.7 com `start` (produção), KC_PROXY=edge, KC_HOSTNAME=https://auth.guiosoft.info;
+- [x] Ingress `auth.guiosoft.info` via Traefik com certificado mkcert, pinado ao entrypoint `websecure`;
+- [x] secret SOPS `keycloak-secrets` com credenciais de DB e admin (cifradas com age);
+- [x] secret TLS `auth-tls` com certificado mkcert (aplicado via kubectl);
+- [x] issuer OIDC acessível: `https://auth.guiosoft.info/realms/master` (verificado via OpenID configuration);
+- [x] admin console acessível: `https://auth.guiosoft.info/admin/` (HTTP 200);
+- [ ] split-DNS no MikroTik `auth.guiosoft.info -> 192.168.88.9` — necessário para acesso sem /etc/hosts;
+- [ ] regra Terraform `auth.guiosoft.info -> http_status:404` para bloqueio público (LAN-only);
+- [ ] criar realm Guiosoft e configurar Google identity brokering (sem commitar client secrets);
+- [ ] provisionar clientes Ariadne (Explorer e CLI) com Authorization Code + PKCE;
+- [ ] definir audience e claims para mapeamento tenant/actor;
+- [ ] documentar injeção, rotação, backup e restore de segredos;
+- [ ] validar login, token audience/issuer, logout, rotação de chaves e recovery;
+- [ ] documentar como adicionar um novo provedor sem alterar o Ariadne.
+
 ## Fase 11 — Documentação de estudo e publicação
 
 Ao final do projeto, consolidar a experiência em material independente do README operacional.
