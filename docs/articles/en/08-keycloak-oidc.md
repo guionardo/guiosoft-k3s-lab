@@ -175,7 +175,7 @@ The lesson: **a database backup is not a recovery until it is tested.** The pg_d
 
 ## Integration with Ariadne
 
-> **Note:** Ariadne is a project under development that will become a product. Detailed documentation will be published on the blog soon, in the Homelab section.
+> **Note:** Ariadne is an engineering context platform for humans and AI agents — it maintains a traceable knowledge graph of projects, code, dependencies, decisions and change history, so context does not have to be rediscovered from scratch in every session. Detailed documentation coming soon to the blog, in the Homelab section.
 
 Ariadne uses Keycloak as its OIDC provider. The configuration in Ariadne (ADR 0008):
 

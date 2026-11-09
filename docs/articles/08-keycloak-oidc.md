@@ -175,7 +175,7 @@ A lição: **um backup de banco de dados não é um recovery até ser testado.**
 
 ## Integração com o Ariadne
 
-> **Nota:** Ariadne é um projeto em desenvolvimento que se tornará um produto. A documentação detalhada será publicada em breve no blog, na seção Homelab.
+> **Nota:** Ariadne é uma plataforma de contexto de engenharia para humanos e agentes de IA — mantém um grafo de conhecimento rastreável sobre projetos, código, dependências, decisões e histórico de mudanças, para que contexto não precise ser redescoberto a cada sessão. Documentação detalhada em breve no blog, na seção Homelab.
 
 O Ariadne usa o Keycloak como provedor OIDC. A configuração no Ariadne (ADR 0008):
 
