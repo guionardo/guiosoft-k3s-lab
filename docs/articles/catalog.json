@@ -293,6 +293,53 @@
           "ci"
         ]
       }
+    },
+    {
+      "order": 8,
+      "translationKey": "homelab-keycloak-oidc",
+      "sources": {
+        "pt": "08-keycloak-oidc.md",
+        "en": "en/08-keycloak-oidc.md",
+        "es": "es/08-keycloak-oidc.md"
+      },
+      "siteFiles": {
+        "pt": "keycloak-oidc.pt.md",
+        "en": "keycloak-oidc.en.md",
+        "es": "keycloak-oidc.es.md"
+      },
+      "slugs": {
+        "pt": "keycloak-oidc",
+        "en": "keycloak-oidc-broker",
+        "es": "keycloak-oidc-broker"
+      },
+      "descriptions": {
+        "pt": "Como provisionei o Keycloak como broker OIDC no homelab: PostgreSQL durável, Google identity brokering, backup e recovery testados, e integração com o Ariadne via ADR 0008.",
+        "en": "How I provisioned Keycloak as an OIDC broker in the homelab: durable PostgreSQL, Google identity brokering, tested backup and recovery, and Ariadne integration via ADR 0008.",
+        "es": "Cómo provisioné Keycloak como broker OIDC en el homelab: PostgreSQL duradero, brokering de identidad con Google, backup y recovery probados, e integración con Ariadne vía ADR 0008."
+      },
+      "tags": {
+        "pt": [
+          "kubernetes",
+          "homelab",
+          "keycloak",
+          "oidc",
+          "identidade"
+        ],
+        "en": [
+          "kubernetes",
+          "homelab",
+          "keycloak",
+          "oidc",
+          "identity"
+        ],
+        "es": [
+          "kubernetes",
+          "homelab",
+          "keycloak",
+          "oidc",
+          "identidad"
+        ]
+      }
     }
   ]
 }
