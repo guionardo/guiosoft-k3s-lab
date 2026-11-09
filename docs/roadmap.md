@@ -235,9 +235,9 @@ A fundação de métricas, traces e logs está operacional e validada. O histór
 - [x] criar realm `guiosoft` e configurar Google identity brokering (client secret armazenado no Keycloak DB + SOPS backup);
 - [x] provisionar clientes Ariadne (Explorer e CLI) com Authorization Code + PKCE;
 - [x] audience mapper `ariadne-api` nos dois clientes públicos;
-- [x] claim mappers padrão (email, preferred_username, groups) nos dois clientes públicos;
+- [x] claim mappers nos dois clientes públicos: `sub` (Subject), email, preferred_username, groups e `ariadne-api` (audience);
 - [x] redirect URIs ajustados para wildcard de porta (http://localhost:*) — kc_idp_hint=google redireciona para Google (verificado);
-- [x] claims verificados contra ADR 0008 (External Identity and Internal Authorization): Ariadne lê apenas iss, sub, aud do token. Keycloak já emite iss (https://auth.guiosoft.info/realms/guiosoft), sub (UUID do usuário ab332186-528e-43ef-8b0a-3ba3bb9037c3), aud (ariadne-api). Nenhum mapper customizado necessário. Tenant configurado por instância (não via token). Roles/groups não usados para autorização (Ariadne é autoritativo). Ref: ADR 0008, oidc_verifier.go, oidc_authenticator.go, federated_identity.go.;
+- [x] claims verificados contra ADR 0008 (External Identity and Internal Authorization): Ariadne lê apenas `iss`, `sub`, `aud` do token. O cliente deve incluir explicitamente o mapper `Subject (sub)` quando o client scope padrão `basic` não estiver associado. Keycloak emite `iss` (https://auth.guiosoft.info/realms/guiosoft), `sub` (UUID do usuário ab332186-528e-43ef-8b0a-3ba3bb9037c3), `aud` (ariadne-api). Tenant configurado por instância (não via token). Roles/groups não usados para autorização (Ariadne é autoritativo). Ref: ADR 0008, oidc_verifier.go, oidc_authenticator.go, federated_identity.go.;
 - [x] documentar injeção, rotação, backup e restore de segredos (docs/keycloak.md);
 - [x] validar login com Google: fluxo completo testado (consent -> callback -> token). Issuer: https://auth.guiosoft.info/realms/guiosoft. Audience: ariadne-api. Claims: email, preferred_username, groups. PKCE S256 verificado.;
 - [x] validar logout: endpoint end_session_endpoint e backchannel_logout_supported confirmados;

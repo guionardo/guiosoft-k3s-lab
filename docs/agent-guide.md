@@ -238,7 +238,7 @@ curl -sk -u pusher:<senha> https://registry.guiosoft.info/v2/_catalog
 - **Realm**: `guiosoft` (issuer: `https://auth.guiosoft.info/realms/guiosoft`)
 - **Google IdP**: configurado (alias: `google`, trustEmail: true). Redirect URI no Google Cloud Console: `https://auth.guiosoft.info/realms/guiosoft/broker/google/endpoint`
 - **Clientes**: `ariadne-explorer` (public, PKCE S256), `ariadne-cli` (public, PKCE S256 + device code), `ariadne-api` (bearer-only)
-- **Claim mappers**: email, preferred_username, groups, ariadne-api (audience) em explorer e cli
+- **Claim mappers**: `sub` (Subject), email, preferred_username, groups e ariadne-api (audience) em Explorer e CLI
 - **Credenciais Google**: armazenadas no Keycloak DB + backup SOPS (`keycloak-google-idp.sops.yaml`, não no kustomization)
 
 ## Ariadne OIDC config
@@ -256,7 +256,7 @@ identity:
 ```
 
 - Ariadne lê apenas `iss`, `sub`, `aud` do token. Tenant é configurado por instância.
-- Nenhum mapper customizado necessário no Keycloak para tenant/actor/roles/groups.
+- O mapper `Subject (sub)` deve estar presente no client scope de cada cliente; tenant e autorização continuam sendo resolvidos pelo Ariadne, não por roles/groups do Keycloak.
 - O usuário deve ser provisionado no `identities.json` com o par exato `(issuer, subject)`.
 - O issuer deve ser exatamente `https://auth.guiosoft.info/realms/guiosoft` (sem barra final).
 - Ref: ADR 0008, `oidc_verifier.go`, `oidc_authenticator.go`, `federated_identity.go` (repo ariadne).
