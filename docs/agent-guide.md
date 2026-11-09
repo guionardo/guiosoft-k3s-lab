@@ -241,6 +241,26 @@ curl -sk -u pusher:<senha> https://registry.guiosoft.info/v2/_catalog
 - **Claim mappers**: email, preferred_username, groups, ariadne-api (audience) em explorer e cli
 - **Credenciais Google**: armazenadas no Keycloak DB + backup SOPS (`keycloak-google-idp.sops.yaml`, não no kustomization)
 
+## Ariadne OIDC config
+
+Configuração recomendada no Ariadne (conforme ADR 0008):
+
+```yaml
+identity:
+  oidc:
+    issuer: "https://auth.guiosoft.info/realms/guiosoft"
+    audience: "ariadne-api"
+    bootstrap:
+      subject: "ab332186-528e-43ef-8b0a-3ba3bb9037c3"
+      user_id: "<id-interno-do-usuario-no-ariadne>"
+```
+
+- Ariadne lê apenas `iss`, `sub`, `aud` do token. Tenant é configurado por instância.
+- Nenhum mapper customizado necessário no Keycloak para tenant/actor/roles/groups.
+- O usuário deve ser provisionado no `identities.json` com o par exato `(issuer, subject)`.
+- O issuer deve ser exatamente `https://auth.guiosoft.info/realms/guiosoft` (sem barra final).
+- Ref: ADR 0008, `oidc_verifier.go`, `oidc_authenticator.go`, `federated_identity.go` (repo ariadne).
+
 ## Referências
 
 - `docs/registry.md` — contrato operacional do registry
