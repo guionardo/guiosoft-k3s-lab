@@ -252,7 +252,7 @@ identity:
     audience: "ariadne-api"
     bootstrap:
       subject: "ab332186-528e-43ef-8b0a-3ba3bb9037c3"
-      user_id: "<id-interno-do-usuario-no-ariadne>"
+      user_id: "guionardo"
 ```
 
 - Ariadne lê apenas `iss`, `sub`, `aud` do token. Tenant é configurado por instância.
