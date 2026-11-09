@@ -198,7 +198,7 @@ Only three claims (per `oidc_verifier.go`):
 - `sub` — stable user identifier
 - `aud` — validated against `identity.oidc.audience`
 
-The tenant is configured per instance (not from the token). Roles and groups are not used for authorization (Ariadne is authoritative). No custom mappers are needed in Keycloak.
+The tenant is configured per instance (not from the token). Roles and groups are not used for authorization (Ariadne is authoritative). The `Subject (sub)` mapper must be present in the client's scope; if the default `basic` scope is not associated, add it explicitly.
 
 ### The bootstrap
 

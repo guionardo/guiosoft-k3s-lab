@@ -138,6 +138,16 @@ Para adicionar um novo IdP (ex.: GitHub, Microsoft) sem alterar o Ariadne:
 
 O Ariadne não precisa mudar — ele valida tokens contra o issuer do Keycloak, não contra o provedor upstream.
 
+### Clientes Ariadne: claims obrigatórios
+
+Nos clientes públicos `ariadne-explorer` e `ariadne-cli`, mantenha os mappers:
+
+- `Subject (sub)` — identificador estável do usuário no Keycloak;
+- `Audience` para `ariadne-api` — inclui `ariadne-api` no `aud`;
+- `email`, `preferred_username` e `groups` — informativos, não usados para autorização pelo Ariadne.
+
+O mapper `Subject (sub)` é obrigatório para o Ariadne autenticar o ator. Em realms onde o client scope padrão `basic` não está associado ao cliente, adicione-o explicitamente no client scope dedicado. Valide o access token emitido verificando `iss`, `sub` e `aud` antes de testar o Explorer ou a CLI.
+
 ## Verificação de saúde
 
 ```bash
