@@ -242,6 +242,7 @@ A fundação de métricas, traces e logs está operacional e validada. O histór
 - [x] validar login com Google: fluxo completo testado (consent -> callback -> token). Issuer: https://auth.guiosoft.info/realms/guiosoft. Audience: ariadne-api. Claims: email, preferred_username, groups. PKCE S256 verificado.;
 - [x] validar logout: endpoint end_session_endpoint e backchannel_logout_supported confirmados;
 - [x] rotação de chaves: admin password rotacionada via Admin API (reset-password), senha antiga rejeitada, nova senha funciona. Procedimento documentado em docs/keycloak.md.;
+- [x] recovery testado: pg_dump do PostgreSQL (324K, 87 tabelas), drop+recreate do database, restore via psql. Keycloak reiniciou, issuer acessível, admin login OK, clientes e Google IdP preservados.;
 - [x] documentar como adicionar um novo provedor sem alterar o Ariadne (docs/keycloak.md).
 
 ## Fase 11 — Documentação de estudo e publicação
